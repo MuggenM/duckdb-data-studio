@@ -1321,6 +1321,9 @@ def index():
                     
                     # Endpoints List Container
                     api_endpoints_list_container = ui.column().classes('w-full gap-4 overflow-auto').style('max-height: 480px;')
+            
+            # Telemetry Metrics Dashboard Container
+            dashboard_container = ui.column().classes('w-full gap-6 mt-4 flex-none')
 
         # API Creator Helper Functions inside index()
         columns_checkboxes = {}
@@ -1602,6 +1605,41 @@ def index():
         def refresh_api_endpoints_grid():
             api_endpoints_list_container.clear()
             
+            # Query aggregate metrics for endpoints
+            metrics_map = {}
+            try:
+                explorer.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS _duckdb_studio_api_metrics (
+                        endpoint_path VARCHAR,
+                        timestamp TIMESTAMP,
+                        latency_ms DOUBLE,
+                        status_code INTEGER,
+                        error_message VARCHAR
+                    );
+                """)
+                m_rows = explorer.conn.execute("""
+                    SELECT 
+                        endpoint_path,
+                        COUNT(*) as total_calls,
+                        AVG(latency_ms) as avg_latency,
+                        MIN(latency_ms) as min_latency,
+                        MAX(latency_ms) as max_latency,
+                        SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as total_errors
+                    FROM _duckdb_studio_api_metrics
+                    GROUP BY endpoint_path;
+                """).fetchall()
+                for m_path, m_calls, m_avg, m_min, m_max, m_errs in m_rows:
+                    metrics_map[m_path] = {
+                        'calls': m_calls,
+                        'avg': m_avg,
+                        'min': m_min,
+                        'max': m_max,
+                        'errors': m_errs,
+                        'error_rate': (m_errs * 100.0 / m_calls) if m_calls > 0 else 0.0
+                    }
+            except Exception as e:
+                print(f"DEBUG: Failed to query API metrics: {e}", flush=True)
+            
             try:
                 rows = explorer.conn.execute("SELECT id, path, description, sql_code FROM _duckdb_studio_api_endpoints ORDER BY created_at DESC;").fetchall()
             except Exception as e:
@@ -1634,6 +1672,30 @@ def index():
                         if ep_desc:
                             ui.label(ep_desc).classes('text-xs text-slate-400 font-normal leading-relaxed')
                             
+                        # Telemetry Stats Badge/Bar
+                        stats = metrics_map.get(ep_path, {
+                            'calls': 0,
+                            'avg': 0.0,
+                            'min': 0.0,
+                            'max': 0.0,
+                            'errors': 0,
+                            'error_rate': 0.0
+                        })
+                        with ui.row().classes('w-full items-center gap-4 text-[11px] bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-850'):
+                            with ui.row().classes('items-center gap-1'):
+                                ui.icon('analytics', color='primary', size='xs')
+                                ui.label('Telemetry:').classes('font-bold text-slate-500')
+                            with ui.row().classes('items-center gap-1'):
+                                ui.label('Calls:').classes('text-slate-400')
+                                ui.label(str(stats['calls'])).classes('font-bold text-slate-700 dark:text-slate-350')
+                            with ui.row().classes('items-center gap-1'):
+                                ui.label('Avg Latency:').classes('text-slate-400')
+                                ui.label(f"{stats['avg']:.1f}ms").classes('font-bold text-slate-700 dark:text-slate-350')
+                            with ui.row().classes('items-center gap-1'):
+                                ui.label('Error Rate:').classes('text-slate-400')
+                                err_color = 'rose-500' if stats['error_rate'] > 0 else 'emerald-500'
+                                ui.label(f"{stats['error_rate']:.1f}%").classes(f'font-bold text-{err_color}')
+                            
                         # Code Snippet: Monospace SQL code
                         with ui.expansion('Source Query SQL', icon='code').classes('w-full border border-slate-100 dark:border-slate-900 rounded-lg text-xs'):
                             ui.code(ep_sql, language='sql').classes('w-full text-[10px] rounded-lg p-2 dark:bg-slate-950')
@@ -1650,6 +1712,161 @@ def index():
             
             # Keep API Docs explorer in perfect sync!
             refresh_api_docs_explorer()
+            
+            # Keep Telemetry Metrics Dashboard in perfect sync!
+            refresh_metrics_dashboard()
+
+        def refresh_metrics_dashboard():
+            dashboard_container.clear()
+            
+            # Query global metrics
+            try:
+                explorer.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS _duckdb_studio_api_metrics (
+                        endpoint_path VARCHAR,
+                        timestamp TIMESTAMP,
+                        latency_ms DOUBLE,
+                        status_code INTEGER,
+                        error_message VARCHAR
+                    );
+                """)
+                
+                global_stats = explorer.conn.execute("""
+                    SELECT 
+                        COUNT(*),
+                        AVG(latency_ms),
+                        SUM(CASE WHEN status_code < 400 THEN 1 ELSE 0 END)
+                    FROM _duckdb_studio_api_metrics;
+                """).fetchone()
+                
+                total_calls = global_stats[0] if global_stats[0] is not None else 0
+                avg_latency = global_stats[1] if global_stats[1] is not None else 0.0
+                success_count = global_stats[2] if global_stats[2] is not None else 0
+                
+                success_rate = (success_count * 100.0 / total_calls) if total_calls > 0 else 100.0
+                
+                active_endpoints_count = explorer.conn.execute("SELECT COUNT(*) FROM _duckdb_studio_api_endpoints;").fetchone()[0]
+                
+            except Exception as e:
+                print(f"DEBUG: Failed to load global API metrics: {e}", flush=True)
+                total_calls = 0
+                avg_latency = 0.0
+                success_rate = 100.0
+                active_endpoints_count = 0
+
+            with dashboard_container:
+                with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-6'):
+                    # Header row
+                    with ui.row().classes('w-full items-center justify-between no-wrap'):
+                        with ui.row().classes('items-center gap-3'):
+                            ui.icon('analytics', color='primary').classes('text-2xl')
+                            ui.label('Live API Telemetry & Performance Dashboard').classes('text-lg font-bold text-slate-800 dark:text-white')
+                        
+                        # Reset / Clear metrics button
+                        def handle_clear_metrics():
+                            try:
+                                explorer.conn.execute("DELETE FROM _duckdb_studio_api_metrics;")
+                                ui.notify('Telemetry logs cleared successfully!', type='positive')
+                                refresh_api_endpoints_grid()
+                            except Exception as ex:
+                                ui.notify(f"Failed to clear telemetry: {ex}", type='negative')
+                        
+                        ui.button('Clear Telemetry Logs', icon='cleaning_services', on_click=handle_clear_metrics).props('outline dense color=negative size=sm').classes('px-3 text-xs')
+                    
+                    ui.separator().classes('opacity-50')
+                    
+                    # 4 KPI Cards Grid
+                    with ui.grid(columns=(1, 4)).classes('w-full gap-4'):
+                        # KPI 1: Active Endpoints
+                        with ui.card().classes('p-4 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/40 flex-row items-center gap-4'):
+                            ui.icon('dns', color='primary').classes('text-3xl p-2 bg-indigo-50 dark:bg-indigo-950/50 rounded-lg')
+                            with ui.column().classes('gap-0'):
+                                ui.label('Active API Routes').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
+                                ui.label(str(active_endpoints_count)).classes('text-xl font-black text-slate-700 dark:text-slate-200')
+                                
+                        # KPI 2: Total Calls
+                        with ui.card().classes('p-4 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/40 flex-row items-center gap-4'):
+                            ui.icon('call', color='secondary').classes('text-3xl p-2 bg-purple-50 dark:bg-purple-950/50 rounded-lg')
+                            with ui.column().classes('gap-0'):
+                                ui.label('Total Requests').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
+                                ui.label(f"{total_calls:,}").classes('text-xl font-black text-slate-700 dark:text-slate-200')
+
+                        # KPI 3: Avg Latency
+                        with ui.card().classes('p-4 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/40 flex-row items-center gap-4'):
+                            ui.icon('speed', color='warning').classes('text-3xl p-2 bg-amber-50 dark:bg-amber-950/50 rounded-lg')
+                            with ui.column().classes('gap-0'):
+                                ui.label('Avg Latency').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
+                                ui.label(f"{avg_latency:.1f} ms").classes('text-xl font-black text-slate-700 dark:text-slate-200')
+
+                        # KPI 4: Success Rate
+                        with ui.card().classes('p-4 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/40 flex-row items-center gap-4'):
+                            color_indicator = 'positive' if success_rate >= 95 else ('warning' if success_rate >= 80 else 'negative')
+                            bg_class = 'bg-emerald-50 dark:bg-emerald-950/50' if success_rate >= 95 else 'bg-rose-50 dark:bg-rose-950/50'
+                            ui.icon('health_and_safety', color=color_indicator).classes(f'text-3xl p-2 {bg_class} rounded-lg')
+                            with ui.column().classes('gap-0'):
+                                ui.label('Success Rate').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
+                                ui.label(f"{success_rate:.1f}%").classes('text-xl font-black text-slate-700 dark:text-slate-200')
+
+                    # Metrics Details Table
+                    ui.label('Endpoint Performance Analytics').classes('text-sm font-bold text-slate-700 dark:text-slate-300 mt-2')
+                    
+                    try:
+                        detail_rows = explorer.conn.execute("""
+                            SELECT 
+                                m.endpoint_path,
+                                COUNT(*) as calls,
+                                AVG(m.latency_ms) as avg_lat,
+                                MIN(m.latency_ms) as min_lat,
+                                MAX(m.latency_ms) as max_lat,
+                                SUM(CASE WHEN m.status_code < 400 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as success_rate,
+                                MAX(m.timestamp) as last_called
+                            FROM _duckdb_studio_api_metrics m
+                            GROUP BY m.endpoint_path
+                            ORDER BY calls DESC;
+                        """).fetchall()
+                    except Exception:
+                        detail_rows = []
+                        
+                    if not detail_rows:
+                        with ui.column().classes('w-full items-center justify-center py-8 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-900/20'):
+                            ui.icon('hourglass_empty', color='grey').classes('text-3xl')
+                            ui.label('No performance data logged yet.').classes('text-xs text-slate-400 font-medium mt-1')
+                            ui.label('Hit your exposed API endpoints to see live stats populate here in real-time.').classes('text-[10px] text-slate-500')
+                    else:
+                        # Draw high quality interactive HTML/CSS table
+                        with ui.element('div').classes('w-full overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-lg'):
+                            # Table structure
+                            with ui.element('table').classes('w-full text-left border-collapse text-xs'):
+                                # Table Header
+                                with ui.element('thead').classes('bg-slate-100 dark:bg-slate-900 text-slate-500 font-bold uppercase tracking-wider text-[10px]'):
+                                    with ui.element('tr'):
+                                        ui.element('th').classes('p-3').text('Endpoint Route')
+                                        ui.element('th').classes('p-3 text-center').text('Invocations')
+                                        ui.element('th').classes('p-3 text-center').text('Avg Latency')
+                                        ui.element('th').classes('p-3 text-center').text('Min / Max')
+                                        ui.element('th').classes('p-3 text-center').text('Success Ratio')
+                                        ui.element('th').classes('p-3 text-right').text('Last Triggered')
+                                
+                                # Table Body
+                                with ui.element('tbody').classes('divide-y divide-slate-100 dark:divide-slate-850 text-slate-700 dark:text-slate-350 font-mono'):
+                                    for path, calls, avg_lat, min_lat, max_lat, succ_rate, last_called in detail_rows:
+                                        with ui.element('tr').classes('hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors'):
+                                            # Path
+                                            ui.element('td').classes('p-3 font-bold text-slate-800 dark:text-slate-200').text(f"/api/{path}")
+                                            # Calls
+                                            ui.element('td').classes('p-3 text-center font-bold').text(f"{calls:,}")
+                                            # Avg Latency
+                                            ui.element('td').classes('p-3 text-center text-primary font-bold').text(f"{avg_lat:.1f} ms")
+                                            # Min / Max
+                                            ui.element('td').classes('p-3 text-center text-slate-500 text-[11px]').text(f"{min_lat:.1f}ms / {max_lat:.1f}ms")
+                                            
+                                            # Success Rate
+                                            succ_color = 'text-emerald-500' if succ_rate >= 95 else ('text-amber-500' if succ_rate >= 80 else 'text-rose-500')
+                                            ui.element('td').classes(f'p-3 text-center font-bold {succ_color}').text(f"{succ_rate:.1f}%")
+                                            
+                                            # Last Triggered
+                                            time_str = last_called.strftime('%Y-%m-%d %H:%M:%S') if last_called else '-'
+                                            ui.element('td').classes('p-3 text-right text-slate-400 text-[11px]').text(time_str)
 
         def refresh_api_docs_explorer():
             api_docs_container.clear()
@@ -1824,6 +2041,15 @@ def index():
                         description VARCHAR,
                         sql_code VARCHAR,
                         created_at TIMESTAMP
+                    );
+                """)
+                explorer.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS _duckdb_studio_api_metrics (
+                        endpoint_path VARCHAR,
+                        timestamp TIMESTAMP,
+                        latency_ms DOUBLE,
+                        status_code INTEGER,
+                        error_message VARCHAR
                     );
                 """)
                 existing = explorer.conn.execute("SELECT COUNT(*) FROM _duckdb_studio_api_endpoints;").fetchone()[0]
@@ -4418,9 +4644,15 @@ def list_endpoints():
 
 @app.get("/api/{endpoint_path:path}")
 def handle_dynamic_endpoint(endpoint_path: str, request: Request):
+    import time, datetime
+    start_time = time.time()
+    status_code = 200
+    error_message = None
+    
     db_path = DB_NAME
-    conn = duckdb.connect(db_path)
+    conn = None
     try:
+        conn = duckdb.connect(db_path)
         # Load and attach configured databases so the query can access them if needed
         load_attached_databases_for_connection(conn)
         
@@ -4432,7 +4664,9 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
         
         if not res:
             from fastapi import HTTPException
-            raise HTTPException(status_code=404, detail=f"API Endpoint '/api/{endpoint_path}' not found")
+            status_code = 404
+            error_message = f"API Endpoint '/api/{endpoint_path}' not found"
+            raise HTTPException(status_code=404, detail=error_message)
             
         sql_code = res[0]
         
@@ -4446,7 +4680,7 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
             offset = max(int(request.query_params.get('offset', 0)), 0)
         except ValueError:
             offset = 0
-
+ 
         # Extract placeholders starting with $ (e.g. $min_stock)
         import re
         placeholders = re.findall(r'\$([a-zA-Z0-9_]+)', sql_code)
@@ -4481,14 +4715,14 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
                         bind_params[param] = val
             else:
                 bind_params[param] = None
-
+ 
         # Ensure limit/offset parameters are set in the dictionary if they were detected as placeholders
         lower_placeholders = [p.lower() for p in placeholders]
         if 'limit' in lower_placeholders:
             bind_params['limit'] = limit + 1
         if 'offset' in lower_placeholders:
             bind_params['offset'] = offset
-
+ 
         # Parse potential hard-coded trailing LIMIT clauses using split_sql_trailing_clauses
         sql_clean = sql_code.strip()
         if sql_clean.endswith(';'):
@@ -4506,7 +4740,7 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
                 if hard_limit > 10000:
                     # Cap the hard-coded limit in the query at 10000
                     trailing = re.sub(r'(?i)\bLIMIT\s+\d+\b', 'LIMIT 10000', trailing)
-
+ 
         has_limit_placeholder = 'limit' in lower_placeholders
         
         # If the base query does not have a limit (neither placeholder nor hard-coded limit), add one of 10000 (using request limit)
@@ -4545,10 +4779,34 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
     except Exception as e:
         from fastapi import HTTPException
         if isinstance(e, HTTPException):
+            status_code = e.status_code
+            error_message = e.detail
             raise e
+        status_code = 500
+        error_message = str(e)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        conn.close()
+        if conn is not None:
+            try:
+                # Log telemetry metrics
+                latency_ms = (time.time() - start_time) * 1000.0
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS _duckdb_studio_api_metrics (
+                        endpoint_path VARCHAR,
+                        timestamp TIMESTAMP,
+                        latency_ms DOUBLE,
+                        status_code INTEGER,
+                        error_message VARCHAR
+                    );
+                """)
+                conn.execute("""
+                    INSERT INTO _duckdb_studio_api_metrics (endpoint_path, timestamp, latency_ms, status_code, error_message)
+                    VALUES (?, ?, ?, ?, ?);
+                """, [endpoint_path, datetime.datetime.now(), latency_ms, status_code, error_message])
+            except Exception as log_err:
+                print(f"ERROR logging API telemetry metrics: {log_err}", flush=True)
+            finally:
+                conn.close()
 
 
 # --- INITIALIZE AND SEED DATABASE ON STARTUP ---
