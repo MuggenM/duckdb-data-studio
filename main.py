@@ -138,6 +138,150 @@ class DuckDBExplorer:
             print(f"Error deleting saved query: {e}")
             return False
 
+def calculate_next_run(interval: str, now=None):
+    import datetime
+    if now is None:
+        now = datetime.datetime.now()
+    if interval == "Every Minute":
+        return now + datetime.timedelta(minutes=1)
+    elif interval == "Every 5 Minutes":
+        return now + datetime.timedelta(minutes=5)
+    elif interval == "Every 15 Minutes":
+        return now + datetime.timedelta(minutes=15)
+    elif interval == "Every Hour":
+        return now + datetime.timedelta(hours=1)
+    elif interval == "Every 12 Hours":
+        return now + datetime.timedelta(hours=12)
+    elif interval == "Daily":
+        next_day = now + datetime.timedelta(days=1)
+        return datetime.datetime(next_day.year, next_day.month, next_day.day, 0, 0, 0)
+    else:
+        return now + datetime.timedelta(minutes=1)
+
+
+def run_background_scheduler():
+    import time, datetime, os, duckdb, uuid
+    print("INFO: Starting Background Query Scheduler Thread...", flush=True)
+    
+    export_dir = "/home/martin/volumes/duckdb-studio/exports"
+    try:
+        os.makedirs(export_dir, exist_ok=True)
+    except Exception as e:
+        print(f"ERROR: Failed to create export directory: {e}", flush=True)
+        
+    db_path = DB_NAME
+    
+    while True:
+        try:
+            conn = duckdb.connect(db_path)
+            
+            # Ensure tables exist
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS _duckdb_studio_scheduled_jobs (
+                    id VARCHAR PRIMARY KEY,
+                    name VARCHAR,
+                    sql_code VARCHAR,
+                    interval_str VARCHAR,
+                    export_format VARCHAR,
+                    partition_column VARCHAR,
+                    export_filename VARCHAR,
+                    last_run TIMESTAMP,
+                    next_run TIMESTAMP,
+                    status VARCHAR,
+                    error_message VARCHAR
+                );
+            """)
+            
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS _duckdb_studio_scheduler_logs (
+                    id VARCHAR PRIMARY KEY,
+                    job_id VARCHAR,
+                    job_name VARCHAR,
+                    executed_at TIMESTAMP,
+                    duration_ms DOUBLE,
+                    row_count INTEGER,
+                    file_size_bytes INTEGER,
+                    status VARCHAR,
+                    error_message VARCHAR
+                );
+            """)
+            
+            # Get active jobs where next_run <= NOW
+            now = datetime.datetime.now()
+            jobs = conn.execute("""
+                SELECT 
+                    id, name, sql_code, interval_str, export_format, 
+                    partition_column, export_filename, next_run 
+                FROM _duckdb_studio_scheduled_jobs 
+                WHERE status = 'Active' AND next_run <= ?;
+            """, [now]).fetchall()
+            
+            for j_id, j_name, j_sql, j_interval, j_format, j_part_col, j_filename, j_next in jobs:
+                start_time = time.time()
+                row_count = 0
+                file_size = 0
+                run_status = "Success"
+                run_err = None
+                
+                try:
+                    # Construct paths
+                    copy_options = f"FORMAT '{j_format.upper()}'"
+                    if j_part_col and j_part_col.strip():
+                        copy_options += f", PARTITION_BY '{j_part_col.strip()}'"
+                        dest_path = os.path.join(export_dir, j_filename + f"_{j_format.lower()}_partitioned")
+                        os.makedirs(dest_path, exist_ok=True)
+                    else:
+                        ext = j_format.lower()
+                        dest_path = os.path.join(export_dir, f"{j_filename}.{ext}")
+                    
+                    # Attach any configured databases if required
+                    load_attached_databases_for_connection(conn)
+                    
+                    # Run the export query
+                    conn.execute(f"COPY ({j_sql.strip().rstrip(';')}) TO '{dest_path}' ({copy_options});")
+                    
+                    # Calculate row count
+                    count_df = conn.execute(f"SELECT COUNT(*) FROM ({j_sql.strip().rstrip(';')});").fetchone()
+                    row_count = count_df[0] if count_df else 0
+                    
+                    # Calculate file size
+                    if os.path.exists(dest_path):
+                        if os.path.isdir(dest_path):
+                            for root, dirs, files in os.walk(dest_path):
+                                for f in files:
+                                    file_size += os.path.getsize(os.path.join(root, f))
+                        else:
+                            file_size = os.path.getsize(dest_path)
+                            
+                except Exception as query_ex:
+                    run_status = "Failed"
+                    run_err = str(query_ex)
+                    print(f"ERROR: Scheduled job '{j_name}' failed: {query_ex}", flush=True)
+                
+                duration_ms = (time.time() - start_time) * 1000.0
+                
+                # Update job execution status and schedule the next run
+                next_run_time = calculate_next_run(j_interval, now)
+                conn.execute("""
+                    UPDATE _duckdb_studio_scheduled_jobs 
+                    SET last_run = ?, next_run = ?, status = ?, error_message = ? 
+                    WHERE id = ?;
+                """, [now, next_run_time, "Active", run_err, j_id])
+                
+                # Insert into log history
+                log_id = str(uuid.uuid4())
+                conn.execute("""
+                    INSERT INTO _duckdb_studio_scheduler_logs (id, job_id, job_name, executed_at, duration_ms, row_count, file_size_bytes, status, error_message)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """, [log_id, j_id, j_name, now, duration_ms, row_count, file_size, run_status, run_err])
+            
+            conn.close()
+        except Exception as conn_ex:
+            print(f"ERROR: Background Scheduler encountered database error: {conn_ex}", flush=True)
+            
+        time.sleep(10)
+
+
 def init_saved_queries_table(db_file):
     """Ensure the custom queries persistence table exists."""
     conn = duckdb.connect(db_file)
@@ -1096,7 +1240,7 @@ def index():
                 last_tab = app.storage.client.get('active_tab', 'Explorer')
             except Exception:
                 last_tab = 'Explorer'
-            if last_tab not in ['Explorer', 'JupyterLab', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer']:
+            if last_tab not in ['Explorer', 'JupyterLab', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer', 'Scheduler']:
                 last_tab = 'Explorer'
                 
             with ui.tabs(value=last_tab, on_change=lambda e: handle_tab_change_global(e.value)).classes('text-white') as tabs:
@@ -1106,6 +1250,7 @@ def index():
                 db_tools_tab = ui.tab('Database Tools', icon='construction').classes('text-sm uppercase font-semibold')
                 api_creator_tab = ui.tab('API Endpoints', icon='api').classes('text-sm uppercase font-semibold')
                 api_docs_tab = ui.tab('API Docs & Explorer', icon='menu_book').classes('text-sm uppercase font-semibold')
+                scheduler_tab = ui.tab('Scheduler', icon='schedule').classes('text-sm uppercase font-semibold')
                 
             ui.row().classes('w-32 justify-end') # balancer/actions placeholder
             
@@ -1115,6 +1260,7 @@ def index():
         db_tools_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         api_creator_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         api_docs_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
+        scheduler_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         
         # Build Database Tools Container Content
         with db_tools_container:
@@ -2086,6 +2232,372 @@ def index():
         init_api_endpoints_table()
         refresh_api_endpoints_grid()
 
+        # Build Background Query Scheduler Container Content
+        with scheduler_container:
+            # Header Card
+            with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-none'):
+                with ui.row().classes('items-center gap-3'):
+                    ui.icon('schedule', color='primary').classes('text-3xl')
+                    ui.label('Background Query Scheduler & Exporter').classes('text-2xl font-black text-slate-800 dark:text-white')
+                ui.label('Expose, automate, and export high-performance DuckDB query results to Parquet, CSV, or JSON in the background on periodic schedules. Supports automatic data partitioning.').classes('text-sm text-slate-500 dark:text-slate-400')
+
+            # Sub Cards Layout (Grid)
+            with ui.grid(columns=(1, 2)).classes('w-full gap-6 flex-none'):
+                # CARD 1: CREATE SCHEDULER JOB FORM
+                with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.icon('add_alarm', color='primary').classes('text-2xl')
+                        ui.label('Schedule New Export Job').classes('text-lg font-bold text-slate-800 dark:text-white')
+                    ui.separator().classes('opacity-50')
+
+                    # Preset from Saved Query helper
+                    try:
+                        queries = explorer.list_saved_queries()
+                        query_options = {q[3]: f"{q[1]} ({q[5] if q[5] else 'Analytical'})" for q in queries}
+                    except Exception:
+                        query_options = {}
+
+                    def handle_preset_query_change(e):
+                        if e.value:
+                            scheduler_sql_input.value = e.value
+                            # Auto set job name if empty
+                            for q in queries:
+                                if q[3] == e.value:
+                                    if not scheduler_name_input.value:
+                                        scheduler_name_input.value = f"Export {q[1]}"
+                                    if not scheduler_filename_input.value:
+                                        scheduler_filename_input.value = q[1].lower().replace(' ', '_')
+
+                    ui.select(options=query_options, label='Preset: Load from Saved Query', on_change=handle_preset_query_change).props('dense outlined clearable').classes('w-full')
+
+                    scheduler_name_input = ui.input(label='Job Name', placeholder='e.g., Hourly Sales Report').props('dense outlined clearable').classes('w-full')
+                    
+                    with ui.column().classes('w-full gap-1'):
+                        ui.label('SQL Query Source').classes('text-xs font-semibold text-slate-400')
+                        scheduler_sql_input = ui.textarea(placeholder='e.g., SELECT * FROM sales;').props('dense outlined autogrow').classes('w-full font-mono text-xs').style('min-height: 100px;')
+
+                    with ui.row().classes('w-full gap-4'):
+                        scheduler_interval_select = ui.select(
+                            options=['Every Minute', 'Every 5 Minutes', 'Every 15 Minutes', 'Every Hour', 'Every 12 Hours', 'Daily'],
+                            label='Interval Schedule', value='Every Hour'
+                        ).props('dense outlined').classes('flex-grow')
+
+                        scheduler_format_select = ui.select(
+                            options=['Parquet', 'CSV', 'JSON'],
+                            label='Export Format', value='Parquet'
+                        ).props('dense outlined').classes('w-32')
+
+                    scheduler_partition_input = ui.input(label='Partition Column (Optional)', placeholder='e.g., category').props('dense outlined clearable').classes('w-full').tooltip('Partition directory export by this column (DuckDB native PARTITION_BY)')
+                    scheduler_filename_input = ui.input(label='Export Base Filename', placeholder='e.g., hourly_sales').props('dense outlined clearable').classes('w-full')
+
+                    def handle_create_scheduled_job():
+                        name = scheduler_name_input.value
+                        sql = scheduler_sql_input.value
+                        interval = scheduler_interval_select.value
+                        fmt = scheduler_format_select.value
+                        part_col = scheduler_partition_input.value
+                        filename = scheduler_filename_input.value
+
+                        if not name or not sql or not filename:
+                            ui.notify('Please fill out all required fields (Name, SQL, and Export Filename)!', type='warning')
+                            return
+
+                        # Safe character validation for filename
+                        import re
+                        filename_clean = re.sub(r'[^a-zA-Z0-9_\-]', '_', filename)
+
+                        try:
+                            import uuid, datetime
+                            job_id = str(uuid.uuid4())
+                            now = datetime.datetime.now()
+                            next_run = calculate_next_run(interval, now)
+
+                            explorer.conn.execute("""
+                                INSERT INTO _duckdb_studio_scheduled_jobs (
+                                    id, name, sql_code, interval_str, export_format, 
+                                    partition_column, export_filename, last_run, next_run, status, error_message
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                            """, [job_id, name, sql, interval, fmt, part_col, filename_clean, None, next_run, 'Active', None])
+
+                            ui.notify(f"Scheduled export job '{name}' created successfully!", type='success')
+                            
+                            # Clear form
+                            scheduler_name_input.value = ''
+                            scheduler_sql_input.value = ''
+                            scheduler_partition_input.value = ''
+                            scheduler_filename_input.value = ''
+
+                            refresh_scheduler_jobs_list()
+                        except Exception as err:
+                            ui.notify(f"Failed to create scheduled job: {err}", type='negative')
+
+                    ui.button('Create Export Job', icon='schedule', color='primary', on_click=handle_create_scheduled_job).props('elevated dense').classes('px-4 self-end mt-2')
+
+                # CARD 2: ACTIVE JOBS LIST
+                with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                    with ui.row().classes('items-center justify-between no-wrap w-full'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.icon('assignment', color='positive').classes('text-2xl')
+                            ui.label('Active Scheduled Jobs').classes('text-lg font-bold text-slate-800 dark:text-white')
+                        ui.button(icon='refresh', on_click=lambda: refresh_scheduler_jobs_list()).props('flat dense size=sm color=primary').classes('p-1')
+                    ui.separator().classes('opacity-50')
+
+                    scheduler_jobs_list_container = ui.column().classes('w-full gap-4 overflow-auto').style('max-height: 480px;')
+
+            # SECTION 2: EXECUTION LOGS
+            with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                with ui.row().classes('w-full items-center justify-between no-wrap'):
+                    with ui.row().classes('items-center gap-3'):
+                        ui.icon('history', color='primary').classes('text-2xl')
+                        ui.label('Job Execution Logs').classes('text-lg font-bold text-slate-800 dark:text-white')
+                    ui.button('Clear Execution Logs', icon='cleaning_services', on_click=lambda: handle_clear_scheduler_logs()).props('outline dense color=negative size=sm').classes('px-3 text-xs')
+                
+                ui.separator().classes('opacity-50')
+                scheduler_logs_table_container = ui.column().classes('w-full gap-2')
+
+        # Scheduler Helpers
+        def handle_clear_scheduler_logs():
+            try:
+                explorer.conn.execute("DELETE FROM _duckdb_studio_scheduler_logs;")
+                ui.notify('Scheduled query logs cleared successfully!', type='positive')
+                refresh_scheduler_logs_table()
+            except Exception as ex:
+                ui.notify(f"Failed to clear logs: {ex}", type='negative')
+
+        def refresh_scheduler_jobs_list():
+            scheduler_jobs_list_container.clear()
+            try:
+                explorer.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS _duckdb_studio_scheduled_jobs (
+                        id VARCHAR PRIMARY KEY,
+                        name VARCHAR,
+                        sql_code VARCHAR,
+                        interval_str VARCHAR,
+                        export_format VARCHAR,
+                        partition_column VARCHAR,
+                        export_filename VARCHAR,
+                        last_run TIMESTAMP,
+                        next_run TIMESTAMP,
+                        status VARCHAR,
+                        error_message VARCHAR
+                    );
+                """)
+                rows = explorer.conn.execute("SELECT id, name, sql_code, interval_str, export_format, partition_column, export_filename, last_run, next_run, status, error_message FROM _duckdb_studio_scheduled_jobs ORDER BY name ASC;").fetchall()
+            except Exception as e:
+                with scheduler_jobs_list_container:
+                    ui.label(f"Failed to load scheduled jobs: {e}").classes('text-xs text-negative')
+                return
+
+            if not rows:
+                with scheduler_jobs_list_container:
+                    with ui.column().classes('w-full items-center justify-center py-12 gap-2'):
+                        ui.icon('alarm_off', color='grey').classes('text-5xl')
+                        ui.label("No active background export jobs.").classes('text-sm text-slate-400 font-medium')
+                        ui.label("Define a query and schedule interval in the form to configure background automation!").classes('text-xs text-slate-500')
+                return
+
+            with scheduler_jobs_list_container:
+                for j_id, j_name, j_sql, j_interval, j_format, j_part_col, j_filename, j_last, j_next, j_status, j_err in rows:
+                    with ui.card().classes('w-full p-4 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-3'):
+                        # Top Row
+                        with ui.row().classes('w-full items-center justify-between no-wrap'):
+                            with ui.row().classes('items-center gap-2 no-wrap'):
+                                status_color = 'positive' if j_status == 'Active' else 'grey'
+                                ui.badge(j_status, color=status_color).classes('text-[10px] font-bold px-2 py-0.5')
+                                ui.label(j_name).classes('text-sm font-bold text-slate-800 dark:text-white truncate')
+                            
+                            with ui.row().classes('items-center gap-1'):
+                                # Toggle Status Action
+                                def make_toggle_status_handler(job_id=j_id, curr_status=j_status):
+                                    def toggle_status():
+                                        new_status = 'Active' if curr_status == 'Inactive' else 'Inactive'
+                                        try:
+                                            explorer.conn.execute("UPDATE _duckdb_studio_scheduled_jobs SET status = ? WHERE id = ?;", [new_status, job_id])
+                                            ui.notify(f"Job status changed to {new_status}!", type='success')
+                                            refresh_scheduler_jobs_list()
+                                        except Exception as e:
+                                            ui.notify(f"Failed to toggle status: {e}", type='negative')
+                                    return toggle_status
+
+                                # Run Now Manual Trigger Action
+                                def make_run_now_handler(job_id=j_id, name=j_name, sql=j_sql, fmt=j_format, part_col=j_part_col, filename=j_filename):
+                                    def run_now():
+                                        import time, uuid, os, datetime
+                                        ui.notify(f"Triggering scheduled job '{name}' manually...", type='info')
+                                        start_t = time.time()
+                                        row_cnt = 0
+                                        file_sz = 0
+                                        status = "Success"
+                                        err = None
+                                        export_dir = "/home/martin/volumes/duckdb-studio/exports"
+
+                                        try:
+                                            copy_options = f"FORMAT '{fmt.upper()}'"
+                                            if part_col and part_col.strip():
+                                                copy_options += f", PARTITION_BY '{part_col.strip()}'"
+                                                dest_path = os.path.join(export_dir, filename + f"_{fmt.lower()}_partitioned")
+                                                os.makedirs(dest_path, exist_ok=True)
+                                            else:
+                                                ext = fmt.lower()
+                                                dest_path = os.path.join(export_dir, f"{filename}.{ext}")
+
+                                            # Load attached databases
+                                            load_attached_databases_for_connection(explorer.conn)
+                                            
+                                            # Run manual export
+                                            explorer.conn.execute(f"COPY ({sql.strip().rstrip(';')}) TO '{dest_path}' ({copy_options});")
+                                            
+                                            # Row count
+                                            count_df = explorer.conn.execute(f"SELECT COUNT(*) FROM ({sql.strip().rstrip(';')});").fetchone()
+                                            row_cnt = count_df[0] if count_df else 0
+                                            
+                                            # File size
+                                            if os.path.exists(dest_path):
+                                                if os.path.isdir(dest_path):
+                                                    for root, dirs, files in os.walk(dest_path):
+                                                        for f in files:
+                                                            file_sz += os.path.getsize(os.path.join(root, f))
+                                                else:
+                                                    file_sz = os.path.getsize(dest_path)
+                                                    
+                                            ui.notify(f"Manual export completed successfully! Exported {row_cnt:,} rows.", type='success')
+                                        except Exception as ex:
+                                            status = "Failed"
+                                            err = str(ex)
+                                            ui.notify(f"Manual trigger failed: {ex}", type='negative')
+
+                                        dur = (time.time() - start_t) * 1000.0
+                                        now = datetime.datetime.now()
+                                        
+                                        try:
+                                            # Update last_run
+                                            explorer.conn.execute("UPDATE _duckdb_studio_scheduled_jobs SET last_run = ? WHERE id = ?;", [now, job_id])
+                                            # Log execution
+                                            explorer.conn.execute("""
+                                                INSERT INTO _duckdb_studio_scheduler_logs (id, job_id, job_name, executed_at, duration_ms, row_count, file_size_bytes, status, error_message)
+                                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+                                            """, [str(uuid.uuid4()), job_id, name, now, dur, row_cnt, file_sz, status, err])
+                                            
+                                            refresh_scheduler_jobs_list()
+                                            refresh_scheduler_logs_table()
+                                        except Exception as db_err:
+                                            print(f"DEBUG: Failed manual run telemetry update: {db_err}", flush=True)
+
+                                    return run_now
+
+                                # Delete Action
+                                def make_delete_handler(job_id=j_id, name=j_name):
+                                    def delete_job():
+                                        try:
+                                            explorer.conn.execute("DELETE FROM _duckdb_studio_scheduled_jobs WHERE id = ?;", [job_id])
+                                            ui.notify(f"Scheduled job '{name}' deleted.", type='success')
+                                            refresh_scheduler_jobs_list()
+                                        except Exception as e:
+                                            ui.notify(f"Failed to delete scheduled job: {e}", type='negative')
+                                    return delete_job
+
+                                toggle_icon = 'pause' if j_status == 'Active' else 'play_arrow'
+                                ui.button(icon=toggle_icon, on_click=make_toggle_status_handler()).props('flat dense size=sm color=secondary').tooltip('Pause/Resume Job')
+                                ui.button(icon='play_circle_outline', on_click=make_run_now_handler()).props('flat dense size=sm color=primary').tooltip('Trigger Manually Now')
+                                ui.button(icon='delete', on_click=make_delete_handler()).props('flat dense size=sm color=negative').tooltip('Delete Job')
+
+                        # Info row
+                        with ui.row().classes('w-full items-center gap-4 text-[11px] bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-850'):
+                            with ui.row().classes('items-center gap-1'):
+                                ui.icon('schedule', color='slate', size='xs')
+                                ui.label('Schedule:').classes('font-bold text-slate-500')
+                                ui.label(j_interval).classes('font-bold text-slate-700 dark:text-slate-350')
+                            with ui.row().classes('items-center gap-1'):
+                                ui.icon('save', color='slate', size='xs')
+                                ui.label('Format:').classes('font-bold text-slate-500')
+                                ui.label(f"{j_format} ({j_filename})").classes('font-bold text-slate-700 dark:text-slate-355')
+                            if j_part_col:
+                                with ui.row().classes('items-center gap-1'):
+                                    ui.icon('folder', color='slate', size='xs')
+                                    ui.label('Partition:').classes('font-bold text-slate-500')
+                                    ui.label(j_part_col).classes('font-bold text-indigo-500')
+
+                        # Code Expansion
+                        with ui.expansion('Automated Query SQL', icon='code').classes('w-full border border-slate-100 dark:border-slate-900 rounded-lg text-xs'):
+                            ui.code(j_sql, language='sql').classes('w-full text-[10px] rounded-lg p-2 dark:bg-slate-950')
+
+                        # Last & Next Run times
+                        with ui.row().classes('w-full justify-between items-center text-[10px] text-slate-400 border-t border-slate-100 dark:border-slate-900 pt-2'):
+                            last_str = j_last.strftime('%Y-%m-%d %H:%M:%S') if j_last else 'Never'
+                            next_str = j_next.strftime('%Y-%m-%d %H:%M:%S') if j_next else 'Pending'
+                            ui.label(f"Last Export: {last_str}")
+                            ui.label(f"Next Target: {next_str}")
+                            
+                        # Error message if any
+                        if j_err:
+                            ui.label(f"⚠️ Last Error: {j_err}").classes('text-[10px] text-rose-500 font-mono w-full p-2 bg-rose-50 dark:bg-rose-950/20 rounded border border-rose-100 dark:border-rose-900')
+
+        def refresh_scheduler_logs_table():
+            scheduler_logs_table_container.clear()
+            try:
+                explorer.conn.execute("""
+                    CREATE TABLE IF NOT EXISTS _duckdb_studio_scheduler_logs (
+                        id VARCHAR PRIMARY KEY,
+                        job_id VARCHAR,
+                        job_name VARCHAR,
+                        executed_at TIMESTAMP,
+                        duration_ms DOUBLE,
+                        row_count INTEGER,
+                        file_size_bytes INTEGER,
+                        status VARCHAR,
+                        error_message VARCHAR
+                    );
+                """)
+                logs = explorer.conn.execute("SELECT job_name, executed_at, duration_ms, row_count, file_size_bytes, status, error_message FROM _duckdb_studio_scheduler_logs ORDER BY executed_at DESC LIMIT 50;").fetchall()
+            except Exception as e:
+                with scheduler_logs_table_container:
+                    ui.label(f"Failed to load logs: {e}").classes('text-xs text-negative')
+                return
+
+            if not logs:
+                with scheduler_logs_table_container:
+                    with ui.column().classes('w-full items-center justify-center py-8 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-900/20'):
+                        ui.icon('hourglass_empty', color='grey').classes('text-3xl')
+                        ui.label('No scheduler executions logged yet.').classes('text-xs text-slate-400 font-medium mt-1')
+                        ui.label('Schedules will automatically execute in the background when their target time is met.').classes('text-[10px] text-slate-500')
+                return
+
+            with scheduler_logs_table_container:
+                with ui.element('div').classes('w-full overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-lg'):
+                    with ui.element('table').classes('w-full text-left border-collapse text-xs'):
+                        with ui.element('thead').classes('bg-slate-100 dark:bg-slate-900 text-slate-500 font-bold uppercase tracking-wider text-[10px]'):
+                            with ui.element('tr'):
+                                ui.element('th').classes('p-3').text('Job Name')
+                                ui.element('th').classes('p-3 text-center').text('Executed At')
+                                ui.element('th').classes('p-3 text-center').text('Duration')
+                                ui.element('th').classes('p-3 text-center').text('Rows')
+                                ui.element('th').classes('p-3 text-center').text('File Size')
+                                ui.element('th').classes('p-3 text-right').text('Status')
+                        
+                        with ui.element('tbody').classes('divide-y divide-slate-100 dark:divide-slate-855 text-slate-700 dark:text-slate-350 font-mono'):
+                            for name, exec_time, duration, rows_cnt, bytes_cnt, status, err_msg in logs:
+                                with ui.element('tr').classes('hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors'):
+                                    ui.element('td').classes('p-3 font-bold text-slate-800 dark:text-slate-200').text(name)
+                                    ui.element('td').classes('p-3 text-center text-slate-500').text(exec_time.strftime('%Y-%m-%d %H:%M:%S'))
+                                    ui.element('td').classes('p-3 text-center text-primary').text(f"{duration:.1f}ms")
+                                    ui.element('td').classes('p-3 text-center').text(f"{rows_cnt:,}")
+                                    
+                                    # Beautify file size
+                                    if bytes_cnt >= 1024 * 1024:
+                                        sz_str = f"{bytes_cnt / (1024*1024):.2f} MB"
+                                    elif bytes_cnt >= 1024:
+                                        sz_str = f"{bytes_cnt / 1024:.2f} KB"
+                                    else:
+                                        sz_str = f"{bytes_cnt} B"
+                                    ui.element('td').classes('p-3 text-center text-slate-400').text(sz_str)
+                                    
+                                    status_cls = 'text-emerald-500' if status == 'Success' else 'text-rose-500'
+                                    status_label = status if status == 'Success' else f"Failed: {err_msg[:20]}..." if err_msg else 'Failed'
+                                    ui.element('td').classes(f'p-3 text-right font-bold {status_cls}').text(status_label).tooltip(err_msg if err_msg else status)
+
+        refresh_scheduler_jobs_list()
+        refresh_scheduler_logs_table()
+
         # Bind visibility based on active tab
         studio_container.bind_visibility_from(tabs, 'value', value='Explorer')
         jupyter_container.bind_visibility_from(tabs, 'value', value='JupyterLab')
@@ -2093,6 +2605,7 @@ def index():
         db_tools_container.bind_visibility_from(tabs, 'value', value='Database Tools')
         api_creator_container.bind_visibility_from(tabs, 'value', value='API Endpoints')
         api_docs_container.bind_visibility_from(tabs, 'value', value='API Docs & Explorer')
+        scheduler_container.bind_visibility_from(tabs, 'value', value='Scheduler')
         
     # Main split layout container
     with studio_container:
@@ -2921,6 +3434,9 @@ def index():
             refresh_seeding_metrics()
         elif value == 'API Endpoints':
             refresh_api_endpoints_grid()
+        elif value == 'Scheduler':
+            refresh_scheduler_jobs_list()
+            refresh_scheduler_logs_table()
 
     def refresh_extensions_grid():
         """Fetch available extensions from DuckDB's local metadata catalog and render beautiful, interactive cards inside the grid wrapper."""
@@ -4813,6 +5329,12 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
 print("INFO: Initializing and seeding database on startup...", flush=True)
 seed_database(DB_NAME)
 init_saved_queries_table(DB_NAME)
+
+
+# Start Background Scheduler Thread
+import threading
+scheduler_thread = threading.Thread(target=run_background_scheduler, daemon=True)
+scheduler_thread.start()
 
 
 # Start application server
