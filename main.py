@@ -1096,7 +1096,7 @@ def index():
                 last_tab = app.storage.client.get('active_tab', 'Explorer')
             except Exception:
                 last_tab = 'Explorer'
-            if last_tab not in ['Explorer', 'JupyterLab', 'Extensions', 'Database Tools', 'API Endpoints']:
+            if last_tab not in ['Explorer', 'JupyterLab', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer']:
                 last_tab = 'Explorer'
                 
             with ui.tabs(value=last_tab, on_change=lambda e: handle_tab_change_global(e.value)).classes('text-white') as tabs:
@@ -1105,6 +1105,7 @@ def index():
                 extensions_tab = ui.tab('Extensions', icon='extension').classes('text-sm uppercase font-semibold')
                 db_tools_tab = ui.tab('Database Tools', icon='construction').classes('text-sm uppercase font-semibold')
                 api_creator_tab = ui.tab('API Endpoints', icon='api').classes('text-sm uppercase font-semibold')
+                api_docs_tab = ui.tab('API Docs & Explorer', icon='menu_book').classes('text-sm uppercase font-semibold')
                 
             ui.row().classes('w-32 justify-end') # balancer/actions placeholder
             
@@ -1113,6 +1114,7 @@ def index():
         extensions_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-4 flex-nowrap').style('margin: 0; padding: 0;')
         db_tools_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         api_creator_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
+        api_docs_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         
         # Build Database Tools Container Content
         with db_tools_container:
@@ -1645,6 +1647,172 @@ def index():
                                 with ui.link(target=f'/api/{ep_path}', new_tab=True).style('text-decoration: none'):
                                     ui.button('Test Endpoint', icon='open_in_new').props('flat dense size=sm color=primary').classes('text-xs')
                                 ui.button('Copy Path', icon='content_copy', on_click=lambda _, p=full_relative_path: ui.run_javascript(f"navigator.clipboard.writeText(window.location.origin + '{p}')")).props('flat dense size=sm color=secondary').classes('text-xs')
+            
+            # Keep API Docs explorer in perfect sync!
+            refresh_api_docs_explorer()
+
+        def refresh_api_docs_explorer():
+            api_docs_container.clear()
+            
+            with api_docs_container:
+                # Header Card
+                with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-none'):
+                    with ui.row().classes('items-center gap-3'):
+                        ui.icon('menu_book', color='primary').classes('text-3xl')
+                        ui.label('Interactive API Docs & Explorer').classes('text-2xl font-black text-slate-800 dark:text-white')
+                    ui.label('Inspect all active REST API microservices, dynamically test request payloads, and explore formatted metered responses in real-time.').classes('text-sm text-slate-500 dark:text-slate-400')
+                
+                try:
+                    rows = explorer.conn.execute("SELECT id, path, description, sql_code FROM _duckdb_studio_api_endpoints ORDER BY created_at DESC;").fetchall()
+                except Exception as e:
+                    ui.label(f"Failed to load endpoints: {e}").classes('text-xs text-negative')
+                    return
+                    
+                if not rows:
+                    with ui.card().classes('w-full p-8 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col items-center justify-center gap-2'):
+                        ui.icon('cloud_off', color='grey').classes('text-5xl')
+                        ui.label("No active API endpoints to document.").classes('text-sm text-slate-400 font-medium')
+                        ui.label("Go to 'API Endpoints' tab to create your first dynamic API!").classes('text-xs text-slate-500')
+                    return
+                    
+                # Sub Cards List
+                with ui.column().classes('w-full gap-4'):
+                    for ep_id, ep_path, ep_desc, ep_sql in rows:
+                        with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                            # Header Row: HTTP Method + Path
+                            with ui.row().classes('w-full items-center justify-between no-wrap'):
+                                with ui.row().classes('items-center gap-2 no-wrap'):
+                                    ui.badge('GET', color='positive').classes('text-xs font-bold px-2 py-1')
+                                    ui.label(f"/api/{ep_path}").classes('text-base font-bold text-slate-800 dark:text-white')
+                                ui.label(ep_desc if ep_desc else 'No description provided').classes('text-xs text-slate-400 font-normal italic')
+                                
+                            ui.separator().classes('opacity-50')
+                            
+                            # Extract placeholders starting with $ (e.g. $min_qty)
+                            import re
+                            placeholders = re.findall(r'\$([a-zA-Z0-9_]+)', ep_sql)
+                            # Remove limit and offset if present in placeholders to avoid duplicates
+                            placeholders = [p for p in placeholders if p.lower() not in ['limit', 'offset']]
+                            
+                            # Build interactive input fields dictionary
+                            input_fields = {}
+                            
+                            with ui.row().classes('w-full gap-4 items-start flex-wrap'):
+                                # Standard Paging parameters
+                                with ui.column().classes('gap-2').style('width: 140px;'):
+                                    ui.label('limit').classes('text-xs font-bold text-slate-700 dark:text-slate-300')
+                                    input_fields['limit'] = ui.input(placeholder='e.g., 100').props('outlined dense type=number').classes('w-full')
+                                    ui.label('Query parameter').classes('text-[10px] text-slate-400 -mt-1')
+                                    
+                                with ui.column().classes('gap-2').style('width: 140px;'):
+                                    ui.label('offset').classes('text-xs font-bold text-slate-700 dark:text-slate-300')
+                                    input_fields['offset'] = ui.input(placeholder='e.g., 0').props('outlined dense type=number').classes('w-full')
+                                    ui.label('Query parameter').classes('text-[10px] text-slate-400 -mt-1')
+                                    
+                                # Custom placeholders
+                                for p in placeholders:
+                                    with ui.column().classes('gap-2').style('width: 180px;'):
+                                        ui.label(p).classes('text-xs font-bold text-indigo-500 dark:text-indigo-400')
+                                        input_fields[p] = ui.input(placeholder=f'Value for ${p}').props('outlined dense').classes('w-full')
+                                        ui.label('Dynamic query filter').classes('text-[10px] text-slate-400 -mt-1')
+                                        
+                            # Action Row
+                            with ui.row().classes('w-full justify-end gap-2 pt-2'):
+                                clear_btn = ui.button('Clear', color='grey').props('flat size=sm')
+                                execute_btn = ui.button('Execute Request', icon='bolt', color='primary').props('elevated size=sm').classes('px-4')
+                                
+                            # Response Container (Hidden initially)
+                            response_panel = ui.column().classes('w-full gap-3 mt-4 border border-slate-100 dark:border-slate-800 rounded-xl p-4 bg-slate-50 dark:bg-slate-950').style('display: none;')
+                            
+                            with response_panel:
+                                # Stats row
+                                with ui.row().classes('w-full justify-between items-center no-wrap'):
+                                    with ui.row().classes('items-center gap-2'):
+                                        status_badge = ui.badge('', color='positive').classes('text-xs font-bold px-2 py-0.5')
+                                        latency_label = ui.label('').classes('text-xs font-semibold text-slate-500')
+                                    url_label = ui.label('').classes('text-[10px] font-mono text-slate-400 truncate max-w-[400px] cursor-pointer').tooltip('Click to copy relative API URL')
+                                    
+                                ui.separator().classes('opacity-30')
+                                
+                                # Response body container
+                                response_code_block_wrapper = ui.column().classes('w-full overflow-auto max-h-[300px]')
+                                
+                            # Wire action handlers using helper closures
+                            def make_clear_handler(inputs=input_fields, panel=response_panel):
+                                def handle_clear():
+                                    for inp in inputs.values():
+                                        inp.value = ''
+                                    panel.style('display: none;')
+                                return handle_clear
+                                
+                            def make_execute_handler(path=ep_path, inputs=input_fields, panel=response_panel, s_badge=status_badge, lat_lbl=latency_label, u_lbl=url_label, code_wrapper=response_code_block_wrapper):
+                                def handle_execute():
+                                    panel.style('display: flex;')
+                                    s_badge.text = "Loading..."
+                                    s_badge.color = "amber"
+                                    lat_lbl.text = ""
+                                    u_lbl.text = ""
+                                    code_wrapper.clear()
+                                    
+                                    # Fetch values
+                                    params = {}
+                                    for k, inp in inputs.items():
+                                        if inp.value and inp.value.strip():
+                                            params[k] = inp.value.strip()
+                                            
+                                    import time, requests, json
+                                    start_time = time.perf_counter()
+                                    
+                                    # Form target url
+                                    target_url = f"/api/{path}"
+                                    query_str = "&".join([f"{k}={v}" for k, v in params.items()])
+                                    full_url_display = f"{target_url}?{query_str}" if query_str else target_url
+                                    
+                                    try:
+                                        # Execute dynamic endpoint internally on local interface
+                                        response = requests.get(f"http://127.0.0.1:8085/api/{path}", params=params, timeout=5)
+                                        latency = int((time.perf_counter() - start_time) * 1000)
+                                        status = response.status_code
+                                        
+                                        # Render metered stats
+                                        s_badge.text = f"HTTP {status}"
+                                        if status == 200:
+                                            s_badge.color = "positive"
+                                        else:
+                                            s_badge.color = "negative"
+                                            
+                                        lat_lbl.text = f"Latency: {latency} ms"
+                                        u_lbl.text = f"GET {full_url_display}"
+                                        
+                                        # Bind click to copy relative URL
+                                        def make_copy_url_callback(u=full_url_display):
+                                            return lambda _: [
+                                                ui.run_javascript(f"navigator.clipboard.writeText(window.location.origin + '{u}')"),
+                                                ui.notify('Full API URL copied to clipboard!', type='positive')
+                                            ]
+                                        u_lbl.on('click', make_copy_url_callback())
+                                        
+                                        # Format response body
+                                        try:
+                                            resp_body = json.dumps(response.json(), indent=2)
+                                        except:
+                                            resp_body = response.text
+                                            
+                                        with code_wrapper:
+                                            ui.code(resp_body, language='json').classes('text-[10px] w-full p-2 rounded-lg bg-slate-900 text-slate-100 font-mono')
+                                            
+                                    except Exception as err:
+                                        s_badge.text = "Error"
+                                        s_badge.color = "negative"
+                                        lat_lbl.text = ""
+                                        u_lbl.text = f"Failed: GET {full_url_display}"
+                                        with code_wrapper:
+                                            ui.code(f"Connection failed: {err}", language='text').classes('text-[10px] w-full p-2 rounded-lg bg-slate-900 text-red-400 font-mono')
+                                            
+                                return handle_execute
+                                
+                            clear_btn.on_click(make_clear_handler())
+                            execute_btn.on_click(make_execute_handler())
 
         # Initialize API Endpoints Table & Preseed
         def init_api_endpoints_table():
@@ -1698,6 +1866,7 @@ def index():
         extensions_container.bind_visibility_from(tabs, 'value', value='Extensions')
         db_tools_container.bind_visibility_from(tabs, 'value', value='Database Tools')
         api_creator_container.bind_visibility_from(tabs, 'value', value='API Endpoints')
+        api_docs_container.bind_visibility_from(tabs, 'value', value='API Docs & Explorer')
         
     # Main split layout container
     with studio_container:
