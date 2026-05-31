@@ -1,82 +1,171 @@
 # 📖 DuckDB Studio & API Explorer Manual
 
-Welcome to the official user manual for **DuckDB Studio & API Explorer**. This document provides detailed, step-by-step instructions on utilizing the diverse capabilities of this high-performance database management platform.
+Welcome to the official, complete user manual for **DuckDB Studio & API Explorer**. This document covers every single screen, utility, and dynamic capability built into the application.
+
+> [!NOTE]
+> *Visual Reference Note*: The high-fidelity mockups in `./assets/` represent conceptual UI layout designs. The interactive Markdown maps inside this manual represent the exact fields, buttons, and visual flows implemented in the active Python codebase.
 
 ---
 
-## 🧭 Navigating the Workspace
+## 🧭 Navigating the Workspace Tabs
 
 DuckDB Studio organizes its toolset into specialized workspace tabs:
 
 | Workspace Tab | Icon | Purpose |
 | :--- | :---: | :--- |
-| **Explorer** | `query_stats` | Database schema catalog, visual column structure query builder, and ad-hoc SQL console. |
-| **JupyterLab** | `terminal` | Embedded Jupyter console terminal for writing integrated Python and pandas data science notebooks. |
-| **Extensions** | `extension` | Graphical DuckDB extension repository enabling one-click library installation and loading. |
-| **Database Tools** | `construction` | Utility workshop containing database schema backups, schema restores, and test data seeding routines. |
-| **API Endpoints** | `api` | Dynamic REST API compiler, custom parameter binders, and live endpoints manager. |
-| **API Docs & Explorer** | `menu_book` | OpenAPI interactive Swagger playground and Loopback testing sandbox. |
-| **Scheduler** | `schedule` | Background automation query scheduler, Parquet/CSV exporter, and telemetry logs. |
+| [1. Explorer](#1-explorer) | `query_stats` | Database schema catalog, visual column structure query builder, and ad-hoc SQL console. |
+| [2. JupyterLab](#2-jupyterlab) | `terminal` | Embedded Jupyter console terminal for writing integrated Python and pandas data science notebooks. |
+| [3. Extensions](#3-extensions) | `extension` | Graphical DuckDB extension repository enabling one-click library installation and loading. |
+| [4. Database Tools](#4-database-tools) | `construction` | Utility workshop containing database schema backups, schema restores, and test data seeding routines. |
+| [5. API Endpoints](#5-api-endpoints) | `api` | Dynamic REST API creator, custom parameter binders, and live endpoints manager. |
+| [6. API Docs & Explorer](#6-api-docs--explorer) | `menu_book` | OpenAPI interactive Swagger playground and Loopback testing sandbox. |
+| [7. Scheduler](#7-scheduler) | `schedule` | Background automation query scheduler, Parquet/CSV exporter, and telemetry logs. |
 
 ---
 
-## 🛠️ Step-by-Step Feature Walkthroughs
+## 🛠️ Comprehensive Screen-by-Screen Walkthroughs
 
-### 1. Designing & Exposing REST APIs ⚡
-With DuckDB Studio, exposing local datasets to production web apps is instantaneous:
+### 1. Explorer
 
-1. Navigate to the **API Endpoints** tab.
-2. In **Create API Endpoint**, choose a descriptive route path (e.g. `top-sales`).
-3. Enter your SQL select query. You can add dynamic request filters using the `$parameter_name` notation:
-   ```sql
-   SELECT name, price, stock FROM product_inventory WHERE stock >= $min_stock;
-   ```
-4. Click **Create Endpoint**.
-5. *Premium Tip*: If you are unsure of column names or want to generate automatic filters, click **Analyze Columns for Auto-Params**, check the columns you want to query against, choose a comparator (e.g. `>=`, `=`), and let the system compile the query for you!
+The core IDE of DuckDB Studio. It features a dual-column layout dividing the database metadata tree and active SQL editor workspace.
 
----
+#### Interface Layout Map:
+```text
++------------------------------------+---------------------------------------------------+
+|  [DATABASE EXPLORER]               |  [SQL QUERY WORKSPACE]                            |
+|                                    |  [ SQL Editor Area ]                              |
+|  [Select Active DB Dropdown] [Rec] |  SELECT name, category, stock FROM...             |
+|                                    |                                                   |
+|  v main (schema)                   |  [ Run Query (Ctrl+Enter) ]         [ Save Snippet ] |
+|    v tables                        |                                                   |
+|      v product_inventory           |  [QUERY RESULTS GRID]                             |
+|        - name (VARCHAR)            |  [Columns: name | category | stock]               |
+|        - category (VARCHAR)        |  - Laptop   | Computing| 42                       |
+|        - stock (INTEGER)           |  - Keyboard | Periphs  | 108                      |
+|                                    |                                                   |
+|  [QUERY HISTORY LOGS]              |  [VISUAL QUERY BUILDER]                           |
+|  - SELECT * FROM product... (12ms) |  [Select Table Dropdown] [Sort By] [Filter Col]   |
++------------------------------------+---------------------------------------------------+
+```
 
-### 2. Live API Telemetry & Performance Monitoring 📈
-Every invocation to your dynamically exposed REST routes is captured by our metrics logging framework.
-
-![Telemetry Dashboard](./assets/telemetry_dashboard.png)
-
-1. Open the **API Endpoints** tab and scroll down to the **Live API Telemetry & Performance Dashboard**.
-2. **KPI Metrics Panel**: Review global performance summaries:
-   - **Active API Routes**: Total count of custom endpoints running on the FastAPI router.
-   - **Total Requests**: Cumulative number of HTTP requests handled.
-   - **Avg Latency**: Average response time in milliseconds.
-   - **Success Rate**: Live health ratio (successful `2xx` vs failed `5xx` responses).
-3. **Endpoint Performance Table**: Dive deep into per-route metrics. The logs trace row counts, latency limits, min/max bounds, success ratios, and last trigger times.
-4. **Resets**: Click **Clear Telemetry Logs** to flush the database and start a fresh profiling session.
-
----
-
-### 3. Background Query Schedulers & Automations ⏰
-Automate your reporting and analytical pipelines directly from the user interface.
-
-![Query Scheduler](./assets/query_scheduler.png)
-
-#### Creating a Scheduled Job:
-1. Navigate to the **Scheduler** tab.
-2. Choose **Preset: Load from Saved Query** to populate the form using a saved SQL query snippet, or type in a fresh query manually.
-3. Choose a name and choose a periodic interval (options range from `Every Minute` to `Daily`).
-4. Select the export format:
-   - **Parquet** (High-performance compressed columnar data)
-   - **CSV** (Standard comma-separated text)
-   - **JSON** (Structured object data)
-5. **Partitioning**: Under **Partition Column (Optional)**, type in a database column name (e.g., `category`). DuckDB will dynamically split the exports folder into partitioned subfolders natively!
-6. Enter an export base filename and click **Create Export Job**.
-
-#### Managing Scheduled Exports:
-* **Manual Run**: Click the **Run Now** (`play_circle_outline`) button to execute the query immediately, trace rows, and export files to `/exports/` on-demand.
-* **Pause / Resume**: Toggle the execution state with the `pause` / `play_arrow` button.
-* **Audit Execution Logs**: Check the **Job Execution Logs** table at the bottom to verify execution duration, processed rows, and exact output file sizes (e.g., `2.45 MB`).
+#### Functions:
+* **Ad-Hoc Editor**: Write standard or complex SQL statements with hot-reloaded autocomplete and execute them using `Ctrl + Enter`.
+* **Database Catalog Tree**: Visually trace attached databases, schemas, tables, views, columns, and data types. Click any table node to automatically preview its data inside the query terminal!
+* **Visual Query Builder**: Build projections dynamically by checking columns, configuring sort columns (`ASC`/`DESC`), and injecting filter clauses without typing raw SQL.
+* **History Trace**: Access recently executed commands with runtime latencies to quickly restore a previous state.
 
 ---
 
-## 📂 Directories & Mounted Storage
+### 2. JupyterLab
 
-When executing file operations or scheduling query dumps, the app uses standard relative mounts inside the project root:
-* **Database Mounts**: Located in `/databases/`. Perfect for loading or attaching sqlite databases, duckdb files, or raw logs.
-* **Scheduler Exports**: Automated background query results are dumped directly into `/exports/` relative to the workspace directory.
+An integrated interactive data science console:
+* **Python Notebooks**: Launch Jupyter notebook kernels to write advanced Python code alongside your DuckDB instance.
+* **Pandas Scans**: Direct loopbacks inside notebooks to read from the DuckDB local catalogs:
+  ```python
+  import duckdb
+  df = duckdb.query("SELECT * FROM product_inventory").df()
+  ```
+
+---
+
+### 3. Extensions
+
+A visual manager for DuckDB's unique runtime plugins.
+
+#### Functions:
+* **Extension Grid**: Visual status cards for extensions (`httpfs`, `postgres_scanner`, `sqlite_scanner`, `spatial`, `icu`, `json`).
+* **Interactive Badges**: Beautiful color indicators showing whether an extension is **Installed** (Grey) or **Loaded** (Green).
+* **One-Click Actions**: Click **Install** to pull the binary directly from DuckDB's servers, and **Load** to initialize it into the active execution connection.
+
+---
+
+### 4. Database Tools
+
+A backup, restore, and scalability benchmarker for DuckDB local databases.
+
+#### Interface Layout Map:
+```text
++----------------------------------------------------------------------------------------+
+|  [DATABASE BACKUP & CATALOG RESTORE]      |  [HIGH-PERFORMANCE DATA SEEDING]           |
+|  [Create Backup File]                     |  [Select Seed Target Table]                |
+|  - product_catalog_backup.sql             |  [Seeding Record Density (Slider): 10,000] |
+|                                           |                                            |
+|  [ Restore Catalog ] [ Delete Backup ]    |  [ Trigger Seed Generation ]               |
++----------------------------------------------------------------------------------------+
+```
+
+#### Functions:
+* **Backup Utilities**: Export the structural database catalog into clean SQL recovery files.
+* **Restore Catalog**: Execute a selected backup SQL file to instantly restore schemas, tables, and views structure.
+* **Scalability Seeding**: Move the record density slider from `100` to `100,000` rows and click **Trigger Seed Generation** to populate test tables, allowing you to validate performance metrics under realistic data scale.
+
+---
+
+### 5. API Endpoints
+
+Turn any SQL select query into an active REST API microservice.
+
+#### Interface Layout Map:
+```text
++------------------------------------------+---------------------------------------------+
+|  [CREATE API ENDPOINT FORM]              |  [EXPOSED HTTP ENDPOINTS LIST]              |
+|  Path: [ recent-sales ]                  |  v GET /api/recent-sales                    |
+|  Desc: [ Sales with qty >= $min_qty ]    |    Telemetry: [Calls: 42 | 12ms avg | 0% err] |
+|                                          |    [Source Query SQL] (Expandable)          |
+|  SQL Source:                             |    - [Test Endpoint] [Copy Path]            |
+|  SELECT * FROM sales WHERE qty >= $qty;  |                                             |
+|                                          |  v GET /api/top-products                    |
+|  [Analyze Columns] [Create Endpoint]     |    Telemetry: [Calls: 108 | 5ms avg | 0% err] |
++------------------------------------------+---------------------------------------------+
+|  [LIVE API TELEMETRY & LATENCY DASHBOARD]                                              |
+|  [KPIs: Active Routes: 2 | Total Calls: 150 | Avg Latency: 8.5ms | Success: 100.0%]    |
+|  [Table Logs: Path | Invocations | Avg Latency | Min/Max Bounds | Success Rate | Last] |
++----------------------------------------------------------------------------------------+
+```
+
+#### Functions:
+* **Form Compiler**: Specify an endpoint slug (e.g. `recent-sales`) and write a query.
+* **Auto-Generated Query Parameters**: Use the `$parameter_name` notation to automatically capture dynamic query parameters from incoming requests (e.g. `?min_qty=10`).
+* **Column Analysis Filter Creator**: Under the editor, click **Analyze Columns for Auto-Params** to parse the schema of your target database table and auto-generate parameter logic based on dynamic ranges.
+* **Safe Metered API Pagination**: Dynamic pagination enforcing a default limit of 100 records and a safety ceiling of 10,000, automatically wrapping unbounded queries.
+* **Live Telemetry & Performance Dashboard**: Read overall KPI metrics (Total requests, average response speeds, success rates) and audit detailed routes logs (Min/Max Latency, Success Ratios, and Trigger times) directly. Click **Clear Telemetry Logs** to flush health metrics at any time.
+
+---
+
+### 6. API Docs & Explorer
+
+An embedded Swagger-style sandbox to document and run loops against dynamic APIs.
+
+#### Functions:
+* **Interactive Sandbox**: Auto-detects endpoint parameters and generates input forms inside the UI.
+* **Loopback Executor**: Executes requests via internal HTTP loops, measuring request latency, status codes, and absolute URLs.
+* **Formatted JSON View**: Renders dynamic query results as formatted syntax-highlighted JSON trees.
+
+---
+
+### 7. Scheduler
+
+Automate your query reporting and data extraction pipelines.
+
+#### Interface Layout Map:
+```text
++------------------------------------------+---------------------------------------------+
+|  [SCHEDULE NEW EXPORT JOB]               |  [ACTIVE SCHEDULED JOBS GRID]               |
+|  [Preset: Load from Saved Query]         |  v Active: Hourly Sales Report              |
+|  Job Name: [ Hourly Sales Report ]       |    [Schedule: Every Hour] [Format: Parquet] |
+|  Interval: [ Every Hour ]                |    - [Pause] [Trigger Now] [Delete]         |
+|  Format:   [ Parquet ]                   |    Next Target: 2026-05-31 13:00:00         |
+|  Partition Column: [ category ]          |                                             |
+|  Filename: [ hourly_sales ]              |  v Active: Daily Summary                    |
+|  [ Create Export Job ]                   |    Next Target: 2026-06-01 00:00:00         |
++------------------------------------------+---------------------------------------------+
+|  [JOB EXECUTION LOGS]                                                                  |
+|  - Hourly Sales Report | 2026-05-31 12:00:00 | 124.5ms | 4,200 rows | 120.4 KB | Success|
++----------------------------------------------------------------------------------------+
+```
+
+#### Functions:
+* **Preset Loader**: Automatically pull final query SQL from Saved Queries into the form with one click.
+* **Scheduler Worker**: Configure intervals (`Every Minute`, `Every 5 Minutes`, `Every 15 Minutes`, `Every Hour`, `Every 12 Hours`, `Daily`) which trigger background tasks to dump results into `/exports/`.
+* **Export Configurations**: Select Parquet, CSV, or JSON formats. Type in a partition column (e.g. `category`) to partition the folder natively using DuckDB's fast `PARTITION_BY` system.
+* **Automation Grid**: Toggle job statuses (Active/Inactive), manually run queries instantly with visual toast notifications, and trace rows/file sizes (e.g., `120.4 KB`) inside the execution logs history grid.
