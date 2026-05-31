@@ -37,6 +37,9 @@ The core IDE of DuckDB Studio. It features a dual-column layout dividing the dat
 #### Active Explorer Screen:
 ![Explorer Workspace Screen](./assets/explorer_tab.png)
 
+#### Live Explorer Feature Traversal Walkthrough:
+![Explorer Workspace Walkthrough](./assets/explorer_traversal.gif)
+
 #### Functions:
 * **Ad-Hoc Editor**: Write standard or complex SQL statements with hot-reloaded autocomplete and execute them using `Ctrl + Enter`.
 * **Database Catalog Tree**: Visually trace attached databases, schemas, tables, views, columns, and data types. Click any table node to automatically preview its data inside the query terminal!
