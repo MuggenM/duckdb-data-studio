@@ -1335,6 +1335,38 @@ def index():
                 return full_table_name, table_name_only
             return None, None
 
+        def split_sql_trailing_clauses(sql):
+            # Parse top-level ORDER BY, LIMIT, or OFFSET to prevent placing WHERE after them
+            sql_upper = sql.upper()
+            keywords = ['ORDER BY', 'LIMIT', 'OFFSET']
+            
+            depth = 0
+            keyword_idx = -1
+            i = 0
+            n = len(sql)
+            while i < n:
+                char = sql[i]
+                if char == '(':
+                    depth += 1
+                elif char == ')':
+                    depth -= 1
+                elif depth == 0:
+                    for kw in keywords:
+                        kw_len = len(kw)
+                        if i + kw_len <= n and sql_upper[i:i+kw_len] == kw:
+                            prev_char_ok = (i == 0 or not sql_upper[i-1].isalnum() and sql_upper[i-1] != '_')
+                            next_char_ok = (i + kw_len == n or not sql_upper[i+kw_len].isalnum() and sql_upper[i+kw_len] != '_')
+                            if prev_char_ok and next_char_ok:
+                                keyword_idx = i
+                                break
+                    if keyword_idx != -1:
+                        break
+                i += 1
+                
+            if keyword_idx != -1:
+                return sql[:keyword_idx].rstrip(), " " + sql[keyword_idx:].strip()
+            return sql, ""
+
         def parse_selected_columns_with_aliases(sql_str):
             import re
             # Use (?is) so that dot (.) matches newlines in multi-line SELECT statements
@@ -1409,6 +1441,9 @@ def index():
                     if has_semicolon:
                         sql = sql[:-1].strip()
                         
+                    # Split trailing clauses (ORDER BY, LIMIT, OFFSET)
+                    sql, trailing = split_sql_trailing_clauses(sql)
+                    
                     # Create type mapping and alias-lookup
                     col_type_map = {c_name.lower(): c_type for c_name, c_type in cols}
                     inv_proj_map = {alias.lower(): orig for orig, alias in proj_map.items()} if proj_map else {}
@@ -1443,6 +1478,10 @@ def index():
                     else:
                         # Add WHERE 1=1 and then clauses
                         sql += "\nWHERE 1=1\n" + "\n".join(clauses)
+                        
+                    # Re-append trailing clauses
+                    if trailing:
+                        sql += "\n" + trailing.strip()
                         
                     if has_semicolon:
                         sql += ";"
@@ -4025,6 +4064,9 @@ def index():
                 if has_semicolon:
                     sql = sql[:-1].strip()
                     
+                # Split trailing clauses (ORDER BY, LIMIT, OFFSET)
+                sql, trailing = split_sql_trailing_clauses(sql)
+                
                 # Create type mapping and alias-lookup
                 col_type_map = {c_name.lower(): c_type for c_name, c_type in cols}
                 inv_proj_map = {alias.lower(): orig for orig, alias in proj_map.items()} if proj_map else {}
@@ -4055,6 +4097,10 @@ def index():
                     sql += "\n" + "\n".join(clauses)
                 else:
                     sql += "\nWHERE 1=1\n" + "\n".join(clauses)
+                    
+                # Re-append trailing clauses
+                if trailing:
+                    sql += "\n" + trailing.strip()
                     
                 if has_semicolon:
                     sql += ";"
