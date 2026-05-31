@@ -1,0 +1,61 @@
+# ==============================================================================
+#                      DuckDB Studio Git Ignore Rules
+# ==============================================================================
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+*.log
+
+# --- Jupyter Notebooks ---
+.ipynb_checkpoints/
+.virtual_documents/
+*/.ipynb_checkpoints/*
+
+# --- DuckDB Databases & Write-Ahead Logs (WAL) ---
+# Local database files can be large and are dynamically generated/seeded
+*.duckdb
+*.duckdb.wal
+databases/*.duckdb
+databases/*.duckdb.wal
+ducklake/metadata.db
+
+# --- Local Configurations & Environments ---
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+!.env.example
+
+# Per-environment attached databases and Jupyter config should remain local
+config/attached_databases.yaml
+config/studio_config.yaml
+
+# --- Generated Data, Backups & Scratchpads ---
+# Local parquet exports, backups, and temporary files
+ducklake/data_parquet/
+shared/db_backup_test/
+shared/db_backup_sql_test/
+shared/*.parquet
+shared/*.txt
+shared/untitled.txt
+
+# --- NiceGUI State ---
+.nicegui/
+
+# --- OS Files ---
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

@@ -1,0 +1,51 @@
+version: "3.9"
+
+networks:
+  studio_jupyter_net:
+    name: studio_jupyter_net
+    driver: bridge
+
+services:
+  duckdb-studio:
+    build: .
+    container_name: duckdb-studio
+    ports:
+      - "8086:8085"
+    volumes:
+      - ./main.py:/app/main.py
+      - ./local_file_picker:/app/local_file_picker
+      - ./config:/config
+      - ./templates:/templates
+      - ./ducklake:/ducklake
+      - ./databases:/databases
+      - ./shared:/shared
+    environment:
+      - STORAGE_SECRET=duckdb_studio_secret_key_1337
+      - JUPYTER_URL=http://localhost:8889
+      - JUPYTER_TOKEN=analytics_secret
+    networks:
+      - studio_jupyter_net
+    restart: unless-stopped
+
+  jupyter:
+    image: arrowflight-jupyter:latest
+    container_name: jupyter_lab
+    user: root
+    entrypoint: ["tini", "-g", "--"]
+    volumes:
+      - ./notebooks:/home/jovyan/work
+      - ./.env:/home/jovyan/.env
+      - ./shared:/home/jovyan/work/shared
+      - ./databases:/home/jovyan/work/databases
+      - ./ducklake:/home/jovyan/work/ducklake
+    working_dir: /home/jovyan/work
+    networks:
+      - studio_jupyter_net
+    ports:
+      - "127.0.0.1:8889:8888"
+    command: ["jupyter", "lab", "--allow-root", "--ServerApp.token=analytics_secret", "--IdentityProvider.token=analytics_secret", "--ServerApp.tornado_settings={'headers': {'Content-Security-Policy': \"frame-ancestors 'self' http://localhost:8085 http://localhost:8086 http://127.0.0.1:8085 http://127.0.0.1:8086\"}}"]
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 16G

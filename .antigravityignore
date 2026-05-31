@@ -1,0 +1,8 @@
+# .antigravityignore
+node_modules/
+dist/
+build/
+.next/
+*.png
+*.log
+package-lock.json

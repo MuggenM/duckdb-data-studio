@@ -1,0 +1,12 @@
+name: "Unnest Sherlock Categories"
+description: "Unnest root data array and nested categories struct array from JSON"
+query_template: |
+  SELECT 
+    base.unnested_data.MainId AS MainId,
+    base.unnested_data.firstName AS firstName,
+    base.unnested_data.lastName AS lastName,
+    UNNEST(base.unnested_data.categories).CategoryID AS CategoryID,
+    UNNEST(base.unnested_data.categories).CategoryName AS CategoryName
+  FROM (
+    SELECT UNNEST(data) AS unnested_data FROM read_json_auto('{file_path}')
+  ) AS base
