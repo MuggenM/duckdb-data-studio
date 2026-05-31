@@ -1397,57 +1397,6 @@ def index():
                 # Parse columns specified in the select projection
                 proj_map = parse_selected_columns_with_aliases(sql)
                 
-                # Show container
-                column_selection_container.clear()
-                column_selection_container.style('display: flex;')
-                
-                # Define nested drawing helper for toggling and alias resolution
-                def draw_columns_grid(show_all):
-                    grid_container.clear()
-                    columns_checkboxes.clear()
-                    
-                    display_cols = []
-                    if show_all:
-                        # Display all columns. If a column has an alias in the query, use the alias!
-                        for c_name, c_type in cols:
-                            display_name = proj_map.get(c_name.lower(), c_name) if proj_map else c_name
-                            display_cols.append((display_name, c_type))
-                    else:
-                        if proj_map:
-                            if '*' in proj_map:
-                                display_cols = [(c_name, c_type) for c_name, c_type in cols]
-                            else:
-                                # Only show columns present in projection mapping
-                                for c_name, c_type in cols:
-                                    if c_name.lower() in proj_map:
-                                        alias_name = proj_map[c_name.lower()]
-                                        display_cols.append((alias_name, c_type))
-                        else:
-                            display_cols = cols
-                            
-                    print(f"DEBUG_PARSER: show_all={show_all} display_cols={display_cols}", flush=True)
-                    with grid_container:
-                        for c_name, c_type in display_cols:
-                            cb = ui.checkbox(f"{c_name} ({c_type})").classes('text-xs')
-                            columns_checkboxes[c_name] = cb
-                
-                with column_selection_container:
-                    with ui.row().classes('w-full justify-between items-center no-wrap'):
-                        ui.label(f"Parsed Table: {full_tbl}").classes('text-xs font-bold text-slate-700 dark:text-slate-300')
-                        # Reactive show all switch
-                        ui.switch('Show all columns', value=False, on_change=lambda e: draw_columns_grid(e.value)).classes('text-xs')
-                        
-                    range_switch = ui.switch('Enable range filters (>=, <=, etc.) for numeric & date columns', value=False).classes('text-xs font-medium text-slate-600 my-0.5')
-                    ui.label("Select columns to add as optional dynamic API parameters:").classes('text-[10px] text-slate-400 -mt-1')
-                    
-                    grid_container = ui.grid(columns=2).classes('w-full gap-1')
-                    
-                    # Initial draw (False = restricted to selected columns)
-                    draw_columns_grid(False)
-                    
-                    ui.button('Inject Dynamic Parameters', icon='auto_fix_high', color='secondary',
-                               on_click=generate_dynamic_where).props('dense unelevated size=sm').classes('mt-2 self-end text-xs')
-                               
                 def generate_dynamic_where():
                     selected_cols = [c_name for c_name, cb in columns_checkboxes.items() if cb.value]
                     if not selected_cols:
@@ -1501,6 +1450,57 @@ def index():
                     api_sql_input.value = sql
                     column_selection_container.style('display: none;')
                     ui.notify('Dynamic WHERE clause injected into your query!', type='success')
+                
+                # Show container
+                column_selection_container.clear()
+                column_selection_container.style('display: flex;')
+                
+                # Define nested drawing helper for toggling and alias resolution
+                def draw_columns_grid(show_all):
+                    grid_container.clear()
+                    columns_checkboxes.clear()
+                    
+                    display_cols = []
+                    if show_all:
+                        # Display all columns. If a column has an alias in the query, use the alias!
+                        for c_name, c_type in cols:
+                            display_name = proj_map.get(c_name.lower(), c_name) if proj_map else c_name
+                            display_cols.append((display_name, c_type))
+                    else:
+                        if proj_map:
+                            if '*' in proj_map:
+                                display_cols = [(c_name, c_type) for c_name, c_type in cols]
+                            else:
+                                # Only show columns present in projection mapping
+                                for c_name, c_type in cols:
+                                    if c_name.lower() in proj_map:
+                                        alias_name = proj_map[c_name.lower()]
+                                        display_cols.append((alias_name, c_type))
+                        else:
+                            display_cols = cols
+                            
+                    print(f"DEBUG_PARSER: show_all={show_all} display_cols={display_cols}", flush=True)
+                    with grid_container:
+                        for c_name, c_type in display_cols:
+                            cb = ui.checkbox(f"{c_name} ({c_type})").classes('text-xs')
+                            columns_checkboxes[c_name] = cb
+                
+                with column_selection_container:
+                    with ui.row().classes('w-full justify-between items-center no-wrap'):
+                        ui.label(f"Parsed Table: {full_tbl}").classes('text-xs font-bold text-slate-700 dark:text-slate-300')
+                        # Reactive show all switch
+                        ui.switch('Show all columns', value=False, on_change=lambda e: draw_columns_grid(e.value)).classes('text-xs')
+                        
+                    range_switch = ui.switch('Enable range filters (>=, <=, etc.) for numeric & date columns', value=False).classes('text-xs font-medium text-slate-600 my-0.5')
+                    ui.label("Select columns to add as optional dynamic API parameters:").classes('text-[10px] text-slate-400 -mt-1')
+                    
+                    grid_container = ui.grid(columns=2).classes('w-full gap-1')
+                    
+                    # Initial draw (False = restricted to selected columns)
+                    draw_columns_grid(False)
+                    
+                    ui.button('Inject Dynamic Parameters', icon='auto_fix_high', color='secondary',
+                               on_click=generate_dynamic_where).props('dense unelevated size=sm').classes('mt-2 self-end text-xs')
 
                 ui.notify(f"Analyzed table '{tbl_only}' successfully!", type='info')
             except Exception as ex:
@@ -4014,47 +4014,6 @@ def index():
             
             proj_map = parse_selected_columns_with_aliases(sql)
             
-            edit_column_selection_container.clear()
-            edit_column_selection_container.style('display: flex;')
-            
-            def draw_edit_columns_grid(show_all):
-                edit_grid_container.clear()
-                edit_columns_checkboxes.clear()
-                
-                display_cols = []
-                if show_all:
-                    for c_name, c_type in cols:
-                        display_name = proj_map.get(c_name.lower(), c_name) if proj_map else c_name
-                        display_cols.append((display_name, c_type))
-                else:
-                    if proj_map:
-                        if '*' in proj_map:
-                            display_cols = [(c_name, c_type) for c_name, c_type in cols]
-                        else:
-                            for c_name, c_type in cols:
-                                if c_name.lower() in proj_map:
-                                    alias_name = proj_map[c_name.lower()]
-                                    display_cols.append((alias_name, c_type))
-                    else:
-                        display_cols = cols
-                        
-                with edit_grid_container:
-                    for c_name, c_type in display_cols:
-                        cb = ui.checkbox(f"{c_name} ({c_type})").classes('text-xs')
-                        edit_columns_checkboxes[c_name] = cb
-            with edit_column_selection_container:
-                with ui.row().classes('w-full justify-between items-center no-wrap'):
-                    ui.label(f"Parsed Table: {full_tbl}").classes('text-xs font-bold text-slate-700 dark:text-slate-300')
-                    ui.switch('Show all columns', value=False, on_change=lambda e: draw_edit_columns_grid(e.value)).classes('text-xs')
-                    
-                edit_range_switch = ui.switch('Enable range filters (>=, <=, etc.) for numeric & date columns', value=False).classes('text-xs font-medium text-slate-600 my-0.5')
-                ui.label("Select columns to add as optional dynamic API parameters:").classes('text-[10px] text-slate-400 -mt-1')
-                edit_grid_container = ui.grid(columns=2).classes('w-full gap-1')
-                draw_edit_columns_grid(False)
-                
-                ui.button('Inject Dynamic Parameters', icon='auto_fix_high', color='secondary',
-                          on_click=generate_edit_dynamic_where).props('dense unelevated size=sm').classes('mt-2 self-end text-xs')
-                          
             def generate_edit_dynamic_where():
                 selected_cols = [c_name for c_name, cb in edit_columns_checkboxes.items() if cb.value]
                 if not selected_cols:
@@ -4103,7 +4062,49 @@ def index():
                 edit_api_sql_input.value = sql
                 edit_column_selection_container.style('display: none;')
                 ui.notify('Dynamic WHERE clause injected into your query!', type='success')
+            
+            edit_column_selection_container.clear()
+            edit_column_selection_container.style('display: flex;')
+            
+            def draw_edit_columns_grid(show_all):
+                edit_grid_container.clear()
+                edit_columns_checkboxes.clear()
                 
+                display_cols = []
+                if show_all:
+                    for c_name, c_type in cols:
+                        display_name = proj_map.get(c_name.lower(), c_name) if proj_map else c_name
+                        display_cols.append((display_name, c_type))
+                else:
+                    if proj_map:
+                        if '*' in proj_map:
+                            display_cols = [(c_name, c_type) for c_name, c_type in cols]
+                        else:
+                            for c_name, c_type in cols:
+                                if c_name.lower() in proj_map:
+                                    alias_name = proj_map[c_name.lower()]
+                                    display_cols.append((alias_name, c_type))
+                    else:
+                        display_cols = cols
+                        
+                with edit_grid_container:
+                    for c_name, c_type in display_cols:
+                        cb = ui.checkbox(f"{c_name} ({c_type})").classes('text-xs')
+                        edit_columns_checkboxes[c_name] = cb
+            
+            with edit_column_selection_container:
+                with ui.row().classes('w-full justify-between items-center no-wrap'):
+                    ui.label(f"Parsed Table: {full_tbl}").classes('text-xs font-bold text-slate-700 dark:text-slate-300')
+                    ui.switch('Show all columns', value=False, on_change=lambda e: draw_edit_columns_grid(e.value)).classes('text-xs')
+                    
+                edit_range_switch = ui.switch('Enable range filters (>=, <=, etc.) for numeric & date columns', value=False).classes('text-xs font-medium text-slate-600 my-0.5')
+                ui.label("Select columns to add as optional dynamic API parameters:").classes('text-[10px] text-slate-400 -mt-1')
+                edit_grid_container = ui.grid(columns=2).classes('w-full gap-1')
+                draw_edit_columns_grid(False)
+                
+                ui.button('Inject Dynamic Parameters', icon='auto_fix_high', color='secondary',
+                          on_click=generate_edit_dynamic_where).props('dense unelevated size=sm').classes('mt-2 self-end text-xs')
+
             ui.notify(f"Analyzed table '{tbl_only}' successfully!", type='info')
         except Exception as ex:
             ui.notify(f"Error analyzing columns: {ex}", type='negative')
