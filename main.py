@@ -858,27 +858,31 @@ def index():
                 else:
                     cat_color = 'teal'
                 
-                with ui.card().classes('w-full p-2.5 border rounded shadow-none hover:bg-slate-50 dark:hover:bg-slate-900 transition gap-1.5').style('border-color: var(--q-slate-200);'):
-                    with ui.row().classes('w-full justify-between items-start no-wrap'):
-                        with ui.column().classes('gap-0.5 flex-grow').style('max-width: 68%;'):
-                            with ui.row().classes('items-center gap-1.5 no-wrap'):
-                                ui.badge(q_cat, color=cat_color).classes('text-[8px] py-0.5 px-1 flex-none')
-                                ui.label(q_name).classes('text-xs font-bold text-slate-800 dark:text-slate-200 truncate')
-                            if q_desc:
-                                ui.label(q_desc).classes('text-[10px] text-slate-400 font-normal truncate')
-                        with ui.row().classes('items-center gap-1 no-wrap flex-none'):
-                            def make_load_handler(code=q_sql):
-                                return lambda _: load_history_query(code)
-                            def make_run_handler(code=q_sql):
-                                return lambda _: run_snippet_immediately(code)
-                            def make_copy_handler(code=q_sql):
-                                return lambda _: copy_snippet_to_clipboard(code)
-                            def make_delete_handler(query_id=q_id, query_name=q_name):
-                                return lambda _: confirm_delete_query(query_id, query_name)
-                            ui.button(icon='play_arrow', on_click=make_run_handler()).props('flat round dense size=sm color=positive').classes('p-0').tooltip('Execute snippet')
-                            ui.button(icon='arrow_forward', on_click=make_load_handler()).props('flat round dense size=sm color=primary').classes('p-0').tooltip('Load to editor')
-                            ui.button(icon='content_copy', on_click=make_copy_handler()).props('flat round dense size=sm color=secondary').classes('p-0').tooltip('Copy SQL')
-                            ui.button(icon='delete', on_click=make_delete_handler()).props('flat round dense size=sm color=negative').classes('p-0').tooltip('Delete snippet')
+                with ui.card().classes('w-full p-2.5 border rounded shadow-none hover:bg-slate-50 dark:hover:bg-slate-900 transition gap-1.5 flex-none').style('border-color: var(--q-slate-200);'):
+                    # Top section: Category Badge, Name and Description (Full width)
+                    with ui.column().classes('w-full gap-0.5'):
+                        with ui.row().classes('w-full items-center gap-1.5 no-wrap'):
+                            ui.badge(q_cat, color=cat_color).classes('text-[8px] py-0.5 px-1 flex-none')
+                            ui.label(q_name).classes('text-xs font-bold text-slate-800 dark:text-slate-200 break-words whitespace-normal')
+                        if q_desc:
+                            ui.label(q_desc).classes('text-[10px] text-slate-400 font-normal break-words whitespace-normal')
+                    
+                    # Handlers and Bottom Action row
+                    def make_load_handler(code=q_sql):
+                        return lambda _: load_history_query(code)
+                    def make_run_handler(code=q_sql):
+                        return lambda _: run_snippet_immediately(code)
+                    def make_copy_handler(code=q_sql):
+                        return lambda _: copy_snippet_to_clipboard(code)
+                    def make_delete_handler(query_id=q_id, query_name=q_name):
+                        return lambda _: confirm_delete_query(query_id, query_name)
+                        
+                    with ui.row().classes('w-full justify-between items-center mt-1 pt-1.5 border-t border-slate-100 dark:border-slate-800/50'):
+                        with ui.row().classes('items-center gap-1'):
+                            ui.button(icon='play_arrow', on_click=make_run_handler()).props('flat dense size=sm color=positive').classes('p-0.5').tooltip('Execute snippet')
+                            ui.button(icon='arrow_forward', on_click=make_load_handler()).props('flat dense size=sm color=primary').classes('p-0.5').tooltip('Load to editor')
+                            ui.button(icon='content_copy', on_click=make_copy_handler()).props('flat dense size=sm color=secondary').classes('p-0.5').tooltip('Copy SQL')
+                        ui.button(icon='delete', on_click=make_delete_handler()).props('flat dense size=sm color=negative').classes('p-0.5').tooltip('Delete snippet')
 
     def confirm_delete_query(query_id, query_name):
         with ui.dialog() as dialog, ui.card():
@@ -1310,7 +1314,7 @@ def index():
                             ui.icon('check_circle', color='positive').classes('text-2xl')
                             ui.label('Exposed HTTP Endpoints').classes('text-lg font-bold text-slate-800 dark:text-white')
                         # Refresh button
-                        ui.button(icon='refresh', on_click=lambda: refresh_api_endpoints_grid()).props('flat round dense size=sm color=primary').classes('p-0')
+                        ui.button(icon='refresh', on_click=lambda: refresh_api_endpoints_grid()).props('flat dense size=sm color=primary').classes('p-1')
                     ui.separator().classes('opacity-50')
                     
                     # Endpoints List Container
@@ -1562,7 +1566,9 @@ def index():
                                 ui.badge('GET', color='positive').classes('text-[10px] font-bold px-2 py-0.5')
                                 ui.label(f"/api/{ep_path}").classes('text-sm font-bold text-slate-800 dark:text-white truncate')
                             
-                            ui.button(icon='delete', on_click=lambda _, i=ep_id, p=ep_path: delete_api_endpoint(i, p)).props('flat round dense size=sm color=negative').classes('p-0').tooltip('Delete Endpoint')
+                            with ui.row().classes('items-center gap-1'):
+                                ui.button(icon='edit', on_click=lambda _, i=ep_id, p=ep_path, d=ep_desc, s=ep_sql: open_edit_api_dialog(i, p, d, s)).props('flat dense size=sm color=primary').classes('p-1').tooltip('Edit Endpoint')
+                                ui.button(icon='delete', on_click=lambda _, i=ep_id, p=ep_path: delete_api_endpoint(i, p)).props('flat dense size=sm color=negative').classes('p-1').tooltip('Delete Endpoint')
                             
                         # Middle Row: Description
                         if ep_desc:
@@ -1684,7 +1690,7 @@ def index():
                                 value='All',
                                 on_change=lambda _: refresh_saved_queries_list()
                             ).props('dense unelevated').classes('w-full text-xs font-normal').style('font-size: 10px;')
-                            saved_queries_container = ui.column().classes('w-full overflow-auto gap-2 text-slate-800 dark:text-slate-100').style('max-height: 180px;')
+                            saved_queries_container = ui.column().classes('w-full overflow-auto gap-2 text-slate-800 dark:text-slate-100').style('max-height: 260px;')
                     
                     # Seeding Actions
                     with ui.row().classes('w-full mt-auto pt-2 justify-between gap-1 no-wrap'):
@@ -3955,6 +3961,172 @@ def index():
         with ui.row().classes('w-full justify-end gap-2 pt-2'):
             ui.button('Cancel', on_click=attach_db_dialog.close).props('flat')
             ui.button('Attach Database', icon='link', color='primary', on_click=handle_attach_db).props('elevated')
+
+    # --- EDIT API ENDPOINT MODAL DIALOG ---
+    edit_columns_checkboxes = {}
+
+    def open_edit_api_dialog(ep_id, ep_path, ep_desc, ep_sql):
+        edit_api_id_holder.text = ep_id
+        edit_api_path_input.value = ep_path
+        edit_api_desc_input.value = ep_desc
+        edit_api_sql_input.value = ep_sql
+        edit_column_selection_container.style('display: none;')
+        edit_api_dialog.open()
+
+    def handle_analyze_edit_columns():
+        sql = edit_api_sql_input.value.strip() if edit_api_sql_input.value else ""
+        if not sql:
+            ui.notify('Please enter a SQL select query first!', type='warning')
+            return
+        
+        full_tbl, tbl_only = parse_table_from_sql(sql)
+        if not tbl_only:
+            ui.notify('Could not parse a valid table name from the query (looking for FROM <table_name>).', type='warning')
+            return
+            
+        try:
+            cols = explorer.list_columns_with_types(tbl_only)
+            if not cols:
+                cols = explorer.list_columns_with_types(full_tbl)
+                
+            if not cols:
+                ui.notify(f"Could not fetch columns for table '{tbl_only}'.", type='warning')
+                return
+            
+            proj_map = parse_selected_columns_with_aliases(sql)
+            
+            edit_column_selection_container.clear()
+            edit_column_selection_container.style('display: flex;')
+            
+            def draw_edit_columns_grid(show_all):
+                edit_grid_container.clear()
+                edit_columns_checkboxes.clear()
+                
+                display_cols = []
+                if show_all:
+                    for c_name, c_type in cols:
+                        display_name = proj_map.get(c_name.lower(), c_name) if proj_map else c_name
+                        display_cols.append((display_name, c_type))
+                else:
+                    if proj_map:
+                        if '*' in proj_map:
+                            display_cols = [(c_name, c_type) for c_name, c_type in cols]
+                        else:
+                            for c_name, c_type in cols:
+                                if c_name.lower() in proj_map:
+                                    alias_name = proj_map[c_name.lower()]
+                                    display_cols.append((alias_name, c_type))
+                    else:
+                        display_cols = cols
+                        
+                with edit_grid_container:
+                    for c_name, c_type in display_cols:
+                        cb = ui.checkbox(f"{c_name} ({c_type})").classes('text-xs')
+                        edit_columns_checkboxes[c_name] = cb
+            
+            with edit_column_selection_container:
+                with ui.row().classes('w-full justify-between items-center no-wrap'):
+                    ui.label(f"Parsed Table: {full_tbl}").classes('text-xs font-bold text-slate-700 dark:text-slate-300')
+                    ui.switch('Show all columns', value=False, on_change=lambda e: draw_edit_columns_grid(e.value)).classes('text-xs')
+                    
+                ui.label("Select columns to add as optional dynamic API parameters:").classes('text-[10px] text-slate-400 -mt-2')
+                edit_grid_container = ui.grid(columns=2).classes('w-full gap-1')
+                draw_edit_columns_grid(False)
+                
+                ui.button('Inject Dynamic Parameters', icon='auto_fix_high', color='secondary',
+                          on_click=generate_edit_dynamic_where).props('dense unelevated size=sm').classes('mt-2 self-end text-xs')
+                          
+            ui.notify(f"Analyzed table '{tbl_only}' successfully!", type='info')
+        except Exception as ex:
+            ui.notify(f"Error analyzing columns: {ex}", type='negative')
+
+    def generate_edit_dynamic_where():
+        selected_cols = [c_name for c_name, cb in edit_columns_checkboxes.items() if cb.value]
+        if not selected_cols:
+            ui.notify('No columns selected!', type='warning')
+            return
+            
+        sql = edit_api_sql_input.value.strip()
+        has_semicolon = sql.endswith(';')
+        if has_semicolon:
+            sql = sql[:-1].strip()
+            
+        clauses = []
+        for col in selected_cols:
+            clauses.append(f"  AND (${col} IS NULL OR \"{col}\" = ${col})")
+            
+        import re
+        has_where = re.search(r'(?i)\bWHERE\b', sql)
+        if has_where:
+            sql += "\n" + "\n".join(clauses)
+        else:
+            sql += "\nWHERE 1=1\n" + "\n".join(clauses)
+            
+        if has_semicolon:
+            sql += ";"
+            
+        edit_api_sql_input.value = sql
+        edit_column_selection_container.style('display: none;')
+        ui.notify('Dynamic WHERE clause injected into your query!', type='success')
+
+    def handle_update_api_endpoint():
+        endpoint_id = edit_api_id_holder.text
+        path = edit_api_path_input.value.strip() if edit_api_path_input.value else ""
+        description = edit_api_desc_input.value.strip() if edit_api_desc_input.value else ""
+        sql = edit_api_sql_input.value.strip() if edit_api_sql_input.value else ""
+        
+        if not path:
+            ui.notify('Please specify a valid endpoint path!', type='warning')
+            return
+        path = path.strip('/')
+        if not sql:
+            ui.notify('Please specify the SQL query source!', type='warning')
+            return
+            
+        import re
+        if not re.match(r'^[a-zA-Z0-9_\-\/]+$', path):
+            ui.notify('Path can only contain alphanumeric characters, hyphens, underscores, and slashes.', type='warning')
+            return
+            
+        try:
+            # Check duplicate path excluding current endpoint
+            dup = explorer.conn.execute("SELECT 1 FROM _duckdb_studio_api_endpoints WHERE path = ? AND id != ?", [path, endpoint_id]).fetchone()
+            if dup:
+                ui.notify(f"Endpoint path '/api/{path}' already exists! Please use a unique path.", type='negative')
+                return
+                
+            explorer.conn.execute("""
+                UPDATE _duckdb_studio_api_endpoints 
+                SET path = ?, description = ?, sql_code = ? 
+                WHERE id = ?;
+            """, [path, description, sql, endpoint_id])
+            
+            ui.notify(f"API Endpoint '/api/{path}' updated successfully!", type='success')
+            edit_api_dialog.close()
+            refresh_api_endpoints_grid()
+        except Exception as ex:
+            ui.notify(f"Failed to update endpoint: {ex}", type='negative')
+
+    with ui.dialog() as edit_api_dialog, ui.card().classes('w-[500px] p-6 gap-4 border border-slate-100 dark:border-slate-800 rounded-xl dark-bg-flat'):
+        ui.label('✏️ Edit API Endpoint').classes('text-lg font-bold text-slate-800 dark:text-white')
+        ui.label('Modify path, description, or the SQL query. You can also re-analyze columns to add new parameters.').classes('text-xs text-slate-500 -mt-2')
+        
+        edit_api_id_holder = ui.label('').classes('hidden') # Hidden holder
+        edit_api_path_input = ui.input('Endpoint Path', placeholder='e.g., recent-sales').props('outlined dense').classes('w-full')
+        edit_api_desc_input = ui.input('Description', placeholder='e.g., Returns active inventory list').props('outlined dense').classes('w-full')
+        
+        with ui.column().classes('w-full gap-1'):
+            ui.label('SQL Query Source').classes('text-xs font-semibold text-slate-400')
+            edit_api_sql_input = ui.textarea(placeholder='SELECT * FROM product_inventory;').props('dense outlined autogrow').classes('w-full font-mono text-xs').style('min-height: 120px;')
+            with ui.row().classes('w-full justify-between items-center gap-2 no-wrap'):
+                ui.label('Support parameters via $parameter_name.').classes('text-[10px] text-slate-400 max-w-[60%]')
+                ui.button('Analyze Columns', icon='analytics', on_click=handle_analyze_edit_columns).props('dense outline size=sm color=secondary').classes('text-xs')
+                
+        edit_column_selection_container = ui.column().classes('w-full gap-2 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg p-3 my-1').style('display: none;')
+        
+        with ui.row().classes('w-full justify-end gap-2 pt-2'):
+            ui.button('Cancel', on_click=edit_api_dialog.close).props('flat')
+            ui.button('Save Changes', icon='save', color='positive', on_click=handle_update_api_endpoint).props('elevated')
 
     # --- KEYBOARD SHORTCUTS ---
     def handle_keyboard(e):
