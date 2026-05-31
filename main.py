@@ -1448,63 +1448,63 @@ def index():
                     ui.button('Inject Dynamic Parameters', icon='auto_fix_high', color='secondary',
                                on_click=generate_dynamic_where).props('dense unelevated size=sm').classes('mt-2 self-end text-xs')
                                
+                def generate_dynamic_where():
+                    selected_cols = [c_name for c_name, cb in columns_checkboxes.items() if cb.value]
+                    if not selected_cols:
+                        ui.notify('No columns selected!', type='warning')
+                        return
+                        
+                    sql = api_sql_input.value.strip()
+                    # Strip trailing semicolon
+                    has_semicolon = sql.endswith(';')
+                    if has_semicolon:
+                        sql = sql[:-1].strip()
+                        
+                    # Create type mapping and alias-lookup
+                    col_type_map = {c_name.lower(): c_type for c_name, c_type in cols}
+                    inv_proj_map = {alias.lower(): orig for orig, alias in proj_map.items()} if proj_map else {}
+                    
+                    # Build parameter clauses
+                    clauses = []
+                    generate_ranges = range_switch.value
+                    
+                    for col in selected_cols:
+                        # Find original column name to look up its data type
+                        orig_col = inv_proj_map.get(col.lower(), col)
+                        c_type = col_type_map.get(orig_col.lower(), "")
+                        c_type_upper = c_type.upper()
+                        is_numeric_or_date = any(t in c_type_upper for t in ['INT', 'DOUBLE', 'FLOAT', 'DECIMAL', 'REAL', 'NUMERIC', 'DATE', 'TIME', 'TIMESTAMP'])
+                        
+                        if generate_ranges and is_numeric_or_date:
+                            clauses.append(f"  AND (${col}_eq IS NULL  OR \"{col}\" = ${col}_eq)")
+                            clauses.append(f"  AND (${col}_gt IS NULL  OR \"{col}\" > ${col}_gt)")
+                            clauses.append(f"  AND (${col}_gte IS NULL OR \"{col}\" >= ${col}_gte)")
+                            clauses.append(f"  AND (${col}_lt IS NULL  OR \"{col}\" < ${col}_lt)")
+                            clauses.append(f"  AND (${col}_lte IS NULL OR \"{col}\" <= ${col}_lte)")
+                        else:
+                            clauses.append(f"  AND (${col} IS NULL OR \"{col}\" = ${col})")
+                        
+                    # Check if WHERE exists (case-insensitive search)
+                    import re
+                    has_where = re.search(r'(?i)\bWHERE\b', sql)
+                    
+                    if has_where:
+                        # Append clauses to the existing WHERE block
+                        sql += "\n" + "\n".join(clauses)
+                    else:
+                        # Add WHERE 1=1 and then clauses
+                        sql += "\nWHERE 1=1\n" + "\n".join(clauses)
+                        
+                    if has_semicolon:
+                        sql += ";"
+                        
+                    api_sql_input.value = sql
+                    column_selection_container.style('display: none;')
+                    ui.notify('Dynamic WHERE clause injected into your query!', type='success')
+
                 ui.notify(f"Analyzed table '{tbl_only}' successfully!", type='info')
             except Exception as ex:
                 ui.notify(f"Error analyzing columns: {ex}", type='negative')
-
-        def generate_dynamic_where():
-            selected_cols = [c_name for c_name, cb in columns_checkboxes.items() if cb.value]
-            if not selected_cols:
-                ui.notify('No columns selected!', type='warning')
-                return
-                
-            sql = api_sql_input.value.strip()
-            # Strip trailing semicolon
-            has_semicolon = sql.endswith(';')
-            if has_semicolon:
-                sql = sql[:-1].strip()
-                
-            # Create type mapping and alias-lookup
-            col_type_map = {c_name.lower(): c_type for c_name, c_type in cols}
-            inv_proj_map = {alias.lower(): orig for orig, alias in proj_map.items()} if proj_map else {}
-            
-            # Build parameter clauses
-            clauses = []
-            generate_ranges = range_switch.value
-            
-            for col in selected_cols:
-                # Find original column name to look up its data type
-                orig_col = inv_proj_map.get(col.lower(), col)
-                c_type = col_type_map.get(orig_col.lower(), "")
-                c_type_upper = c_type.upper()
-                is_numeric_or_date = any(t in c_type_upper for t in ['INT', 'DOUBLE', 'FLOAT', 'DECIMAL', 'REAL', 'NUMERIC', 'DATE', 'TIME', 'TIMESTAMP'])
-                
-                if generate_ranges and is_numeric_or_date:
-                    clauses.append(f"  AND (${col}_eq IS NULL  OR \"{col}\" = ${col}_eq)")
-                    clauses.append(f"  AND (${col}_gt IS NULL  OR \"{col}\" > ${col}_gt)")
-                    clauses.append(f"  AND (${col}_gte IS NULL OR \"{col}\" >= ${col}_gte)")
-                    clauses.append(f"  AND (${col}_lt IS NULL  OR \"{col}\" < ${col}_lt)")
-                    clauses.append(f"  AND (${col}_lte IS NULL OR \"{col}\" <= ${col}_lte)")
-                else:
-                    clauses.append(f"  AND (${col} IS NULL OR \"{col}\" = ${col})")
-                
-            # Check if WHERE exists (case-insensitive search)
-            import re
-            has_where = re.search(r'(?i)\bWHERE\b', sql)
-            
-            if has_where:
-                # Append clauses to the existing WHERE block
-                sql += "\n" + "\n".join(clauses)
-            else:
-                # Add WHERE 1=1 and then clauses
-                sql += "\nWHERE 1=1\n" + "\n".join(clauses)
-                
-            if has_semicolon:
-                sql += ";"
-                
-            api_sql_input.value = sql
-            column_selection_container.style('display: none;')
-            ui.notify('Dynamic WHERE clause injected into your query!', type='success')
 
         def handle_create_api_endpoint(endpoint_path, description, sql_code):
             if not endpoint_path or not endpoint_path.strip():
