@@ -1688,9 +1688,9 @@ def index():
                                 
                             ui.separator().classes('opacity-50')
                             
-                            # Extract placeholders starting with $ (e.g. $min_qty)
                             import re
                             placeholders = re.findall(r'\$([a-zA-Z0-9_]+)', ep_sql)
+                            placeholders = list(dict.fromkeys(placeholders))
                             # Remove limit and offset if present in placeholders to avoid duplicates
                             placeholders = [p for p in placeholders if p.lower() not in ['limit', 'offset']]
                             
@@ -4450,6 +4450,7 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
         # Extract placeholders starting with $ (e.g. $min_stock)
         import re
         placeholders = re.findall(r'\$([a-zA-Z0-9_]+)', sql_code)
+        placeholders = list(dict.fromkeys(placeholders))
         
         # Build parameter dictionary from request query params
         bind_params = {}
