@@ -27,7 +27,7 @@ DuckDB Studio organizes its toolset into specialized workspace tabs:
 The core IDE of DuckDB Studio. It features a dual-column layout dividing the database metadata tree and active SQL editor workspace.
 
 #### Active Explorer Screen:
-![Explorer Workspace Screen](assets/explorer_tab.png)
+![Explorer Workspace Screen](./assets/explorer_tab.png)
 
 #### Functions:
 * **Ad-Hoc Editor**: Write standard or complex SQL statements with hot-reloaded autocomplete and execute them using `Ctrl + Enter`.
@@ -42,7 +42,7 @@ The core IDE of DuckDB Studio. It features a dual-column layout dividing the dat
 An integrated interactive data science console.
 
 #### Active JupyterLab Screen:
-![JupyterLab Workspace Screen](assets/jupyterlab_tab.png)
+![JupyterLab Workspace Screen](./assets/jupyterlab_tab.png)
 
 #### Functions:
 * **Python Notebooks**: Launch Jupyter notebook kernels to write advanced Python code alongside your DuckDB instance.
@@ -59,7 +59,7 @@ An integrated interactive data science console.
 A visual manager for DuckDB's unique runtime plugins.
 
 #### Active Extensions Manager Screen:
-![Extensions Manager Screen](assets/extensions_tab.png)
+![Extensions Manager Screen](./assets/extensions_tab.png)
 
 #### Functions:
 * **Extension Grid**: Visual status cards for extensions (`httpfs`, `postgres_scanner`, `sqlite_scanner`, `spatial`, `icu`, `json`).
@@ -73,7 +73,7 @@ A visual manager for DuckDB's unique runtime plugins.
 A backup, restore, and scalability benchmarker for DuckDB local databases.
 
 #### Active Database Tools Screen:
-![Database Seeder & Utilities Screen](assets/database_tools_tab.png)
+![Database Seeder & Utilities Screen](./assets/database_tools_tab.png)
 
 #### Functions:
 * **Backup Utilities**: Export the structural database catalog into clean SQL recovery files.
@@ -87,7 +87,7 @@ A backup, restore, and scalability benchmarker for DuckDB local databases.
 Turn any SQL select query into an active REST API microservice and monitor live metrics.
 
 #### Active API Endpoints Workspace:
-![API Endpoints & Telemetry Screen](assets/api_endpoints_tab.png)
+![API Endpoints & Telemetry Screen](./assets/api_endpoints_tab.png)
 
 #### Functions:
 * **Form Compiler**: Specify an endpoint slug (e.g. `recent-sales`) and write a query.
@@ -103,7 +103,7 @@ Turn any SQL select query into an active REST API microservice and monitor live 
 An embedded Swagger-style sandbox to document and run loops against dynamic APIs.
 
 #### Active Interactive Docs Sandbox:
-![API Docs & Explorer Screen](assets/api_docs_tab.png)
+![API Docs & Explorer Screen](./assets/api_docs_tab.png)
 
 #### Functions:
 * **Interactive Sandbox**: Auto-detects endpoint parameters and generates input forms inside the UI.
@@ -117,7 +117,7 @@ An embedded Swagger-style sandbox to document and run loops against dynamic APIs
 Automate your query reporting and data extraction pipelines.
 
 #### Active Query Scheduler Screen:
-![Query Scheduler & Logs Screen](assets/scheduler_tab.png)
+![Query Scheduler & Logs Screen](./assets/scheduler_tab.png)
 
 #### Functions:
 * **Preset Loader**: Automatically pull final query SQL from Saved Queries into the form with one click.
