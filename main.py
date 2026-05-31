@@ -1244,7 +1244,7 @@ def index():
             
             # Retrieve last selected tab or default to 'Explorer'
             try:
-                last_tab = app.storage.client.get('active_tab', 'Explorer')
+                last_tab = app.storage.user.get('active_tab', 'Explorer')
             except Exception:
                 last_tab = 'Explorer'
             if last_tab not in ['Explorer', 'JupyterLab', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer', 'Scheduler']:
@@ -3428,7 +3428,7 @@ def index():
     def handle_tab_change_global(value):
         """Callback to store the selected tab globally in user session storage and trigger tab change logic."""
         try:
-            app.storage.client['active_tab'] = value
+            app.storage.user['active_tab'] = value
         except Exception:
             pass
         handle_tab_change(value)
