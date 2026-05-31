@@ -4267,6 +4267,17 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
             
         sql_code = res[0]
         
+        # Get pagination parameters from query params (defaults: limit=100, offset=0, max safety limit=10000)
+        try:
+            limit = min(int(request.query_params.get('limit', 100)), 10000)
+        except ValueError:
+            limit = 100
+            
+        try:
+            offset = max(int(request.query_params.get('offset', 0)), 0)
+        except ValueError:
+            offset = 0
+
         # Extract placeholders starting with $ (e.g. $min_stock)
         import re
         placeholders = re.findall(r'\$([a-zA-Z0-9_]+)', sql_code)
@@ -4274,6 +4285,15 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
         # Build parameter dictionary from request query params
         bind_params = {}
         for param in placeholders:
+            # Bind paging parameters explicitly if the query expects them
+            if param.lower() == 'limit':
+                # Request limit + 1 internally to see if there is more data without doing an extra COUNT query
+                bind_params[param] = limit + 1
+                continue
+            if param.lower() == 'offset':
+                bind_params[param] = offset
+                continue
+                
             val = request.query_params.get(param)
             # Convert values to correct types if possible
             if val is not None:
@@ -4291,10 +4311,51 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
                         bind_params[param] = val
             else:
                 bind_params[param] = None
-                
+
+        # Ensure limit/offset parameters are set in the dictionary if they were detected as placeholders
+        lower_placeholders = [p.lower() for p in placeholders]
+        if 'limit' in lower_placeholders:
+            bind_params['limit'] = limit + 1
+        if 'offset' in lower_placeholders:
+            bind_params['offset'] = offset
+
+        # Safeguard: Wrap query with database-level pagination if $limit/$offset were NOT explicitly used in the SQL
+        # This guarantees the server will NEVER load millions of records into memory!
+        has_limit_placeholder = 'limit' in lower_placeholders
+        has_offset_placeholder = 'offset' in lower_placeholders
+        
+        if not has_limit_placeholder and not has_offset_placeholder:
+            # Clean up query
+            sql_to_run = sql_code.strip()
+            if sql_to_run.endswith(';'):
+                sql_to_run = sql_to_run[:-1].strip()
+            # Wrap query in subquery with pagination: Limit + 1 to check for has_more
+            sql_to_run = f"SELECT * FROM ({sql_to_run}) LIMIT {limit + 1} OFFSET {offset};"
+        else:
+            sql_to_run = sql_code
+            
         # Execute query
-        df = conn.execute(sql_code, bind_params).df()
-        return df.to_dict(orient="records")
+        df = conn.execute(sql_to_run, bind_params).df()
+        
+        # High-performance paging calculation: check if there's more data using the limit + 1 row
+        if len(df) > limit:
+            has_more = True
+            df = df.iloc[:limit]  # Slice to actual requested limit
+        else:
+            has_more = False
+            
+        records = df.to_dict(orient="records")
+        
+        # Return a beautifully structured metered response
+        return {
+            "meta": {
+                "limit": limit,
+                "offset": offset,
+                "count": len(records),
+                "has_more": has_more
+            },
+            "results": records
+        }
     except Exception as e:
         from fastapi import HTTPException
         if isinstance(e, HTTPException):
