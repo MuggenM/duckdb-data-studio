@@ -8,6 +8,13 @@ import random
 from datetime import datetime, timedelta
 from collections import defaultdict
 from nicegui import ui, app
+
+# Monkeypatch NiceGUI ui.element to support text() method chaining
+def element_text_patch(self, text_val):
+    self._text = str(text_val)
+    return self
+ui.element.text = element_text_patch
+
 from fastapi import Query, Request
 import duckdb
 from local_file_picker.local_file_picker import local_file_picker
@@ -5338,4 +5345,4 @@ scheduler_thread.start()
 
 
 # Start application server
-ui.run(title='DuckDB Studio Explorer', port=8085, show=False, storage_secret='duckdb_studio_secret_key_1337', reload=True)
+ui.run(title='DuckDB Studio Explorer', port=8085, show=False, storage_secret='duckdb_studio_secret_key_1337', reload=False)
