@@ -4,6 +4,14 @@ Welcome to the official, complete user manual for **DuckDB Studio & API Explorer
 
 ---
 
+## 🚀 Live Studio Feature Traversal Walkthrough
+
+Below is a live, automated walk-through demonstrating rapid traversal across all 7 workspace tabs inside **DuckDB Studio** in real-time:
+
+![DuckDB Studio Live Walkthrough](./assets/feature_traversal.gif)
+
+---
+
 ## 🧭 Navigating the Workspace Tabs
 
 DuckDB Studio organizes its toolset into specialized workspace tabs:
