@@ -4267,11 +4267,11 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
             
         sql_code = res[0]
         
-        # Get pagination parameters from query params (defaults: limit=10000, offset=0, max safety limit=10000)
+        # Get pagination parameters from query params (defaults: limit=100, offset=0, max safety limit=10000)
         try:
-            limit = min(int(request.query_params.get('limit', 10000)), 10000)
+            limit = min(int(request.query_params.get('limit', 100)), 10000)
         except ValueError:
-            limit = 10000
+            limit = 100
             
         try:
             offset = max(int(request.query_params.get('offset', 0)), 0)
