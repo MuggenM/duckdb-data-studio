@@ -3,7 +3,7 @@
 Welcome to the official, complete user manual for **DuckDB Studio & API Explorer**. This document covers every single screen, utility, and dynamic capability built into the application.
 
 > [!NOTE]
-> *Visual Reference Note*: The high-fidelity mockups in `./assets/` represent conceptual UI layout designs. The interactive Markdown maps inside this manual represent the exact fields, buttons, and visual flows implemented in the active Python codebase.
+> *Visual Reference Note*: The live pixel-perfect screenshots below represent the exact running fields and layouts captured directly from your local application server.
 
 ---
 
@@ -128,18 +128,16 @@ Turn any SQL select query into an active REST API microservice.
 * **Auto-Generated Query Parameters**: Use the `$parameter_name` notation to automatically capture dynamic query parameters from incoming requests (e.g. `?min_qty=10`).
 * **Column Analysis Filter Creator**: Under the editor, click **Analyze Columns for Auto-Params** to parse the schema of your target database table and auto-generate parameter logic based on dynamic ranges.
 * **Safe Metered API Pagination**: Dynamic pagination enforcing a default limit of 100 records and a safety ceiling of 10,000, automatically wrapping unbounded queries.
-* **Live Telemetry & Performance Dashboard**: Read overall KPI metrics (Total requests, average response speeds, success rates) and audit detailed routes logs (Min/Max Latency, Success Ratios, and Trigger times) directly. Click **Clear Telemetry Logs** to flush health metrics at any time.
+* **Live Telemetry & Performance Dashboard**: Read overall KPI metrics (Total requests, average response speeds, success rates) and audit detailed routes logs (Min/Max Latency, Success Ratios, and Trigger times) directly.
+
+#### Active Telemetry Screenshot Reference:
+![Telemetry Dashboard](file:///home/martin/volumes/duckdb-studio/Documents/assets/telemetry_dashboard.png)
 
 ---
 
 ### 6. API Docs & Explorer
 
 An embedded Swagger-style sandbox to document and run loops against dynamic APIs.
-
-#### Functions:
-* **Interactive Sandbox**: Auto-detects endpoint parameters and generates input forms inside the UI.
-* **Loopback Executor**: Executes requests via internal HTTP loops, measuring request latency, status codes, and absolute URLs.
-* **Formatted JSON View**: Renders dynamic query results as formatted syntax-highlighted JSON trees.
 
 ---
 
@@ -169,3 +167,6 @@ Automate your query reporting and data extraction pipelines.
 * **Scheduler Worker**: Configure intervals (`Every Minute`, `Every 5 Minutes`, `Every 15 Minutes`, `Every Hour`, `Every 12 Hours`, `Daily`) which trigger background tasks to dump results into `/exports/`.
 * **Export Configurations**: Select Parquet, CSV, or JSON formats. Type in a partition column (e.g. `category`) to partition the folder natively using DuckDB's fast `PARTITION_BY` system.
 * **Automation Grid**: Toggle job statuses (Active/Inactive), manually run queries instantly with visual toast notifications, and trace rows/file sizes (e.g., `120.4 KB`) inside the execution logs history grid.
+
+#### Active Query Scheduler Screenshot Reference:
+![Query Scheduler](file:///home/martin/volumes/duckdb-studio/Documents/assets/query_scheduler.png)
