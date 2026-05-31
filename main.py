@@ -4267,11 +4267,11 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
             
         sql_code = res[0]
         
-        # Get pagination parameters from query params (defaults: limit=100, offset=0, max safety limit=10000)
+        # Get pagination parameters from query params (defaults: limit=10000, offset=0, max safety limit=10000)
         try:
-            limit = min(int(request.query_params.get('limit', 100)), 10000)
+            limit = min(int(request.query_params.get('limit', 10000)), 10000)
         except ValueError:
-            limit = 100
+            limit = 10000
             
         try:
             offset = max(int(request.query_params.get('offset', 0)), 0)
@@ -4319,20 +4319,36 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
         if 'offset' in lower_placeholders:
             bind_params['offset'] = offset
 
-        # Safeguard: Wrap query with database-level pagination if $limit/$offset were NOT explicitly used in the SQL
-        # This guarantees the server will NEVER load millions of records into memory!
-        has_limit_placeholder = 'limit' in lower_placeholders
-        has_offset_placeholder = 'offset' in lower_placeholders
+        # Parse potential hard-coded trailing LIMIT clauses using split_sql_trailing_clauses
+        sql_clean = sql_code.strip()
+        if sql_clean.endswith(';'):
+            sql_clean = sql_clean[:-1].strip()
+            
+        sql_clean, trailing = split_sql_trailing_clauses(sql_clean)
         
-        if not has_limit_placeholder and not has_offset_placeholder:
-            # Clean up query
-            sql_to_run = sql_code.strip()
-            if sql_to_run.endswith(';'):
-                sql_to_run = sql_to_run[:-1].strip()
-            # Wrap query in subquery with pagination: Limit + 1 to check for has_more
-            sql_to_run = f"SELECT * FROM ({sql_to_run}) LIMIT {limit + 1} OFFSET {offset};"
+        has_hard_limit = False
+        if trailing:
+            import re
+            limit_match = re.search(r'(?i)\bLIMIT\s+(\d+)\b', trailing)
+            if limit_match:
+                has_hard_limit = True
+                hard_limit = int(limit_match.group(1))
+                if hard_limit > 10000:
+                    # Cap the hard-coded limit in the query at 10000
+                    trailing = re.sub(r'(?i)\bLIMIT\s+\d+\b', 'LIMIT 10000', trailing)
+
+        has_limit_placeholder = 'limit' in lower_placeholders
+        
+        # If the base query does not have a limit (neither placeholder nor hard-coded limit), add one of 10000 (using request limit)
+        if not has_limit_placeholder and not has_hard_limit:
+            # Wrap query to enforce pagination safely: Limit + 1 for has_more check
+            sql_to_run = f"SELECT * FROM ({sql_clean}) LIMIT {limit + 1} OFFSET {offset};"
         else:
-            sql_to_run = sql_code
+            # If the query had a limit, run it with the capped hardcoded limit or bound limit
+            if trailing:
+                sql_to_run = sql_clean + "\n" + trailing.strip()
+            else:
+                sql_to_run = sql_code
             
         # Execute query
         df = conn.execute(sql_to_run, bind_params).df()
