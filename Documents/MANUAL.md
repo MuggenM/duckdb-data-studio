@@ -1,9 +1,6 @@
 # 📖 DuckDB Studio & API Explorer Manual
 
-Welcome to the official, complete user manual for **DuckDB Studio & API Explorer**. This document covers every single screen, utility, and dynamic capability built into the application.
-
-> [!NOTE]
-> *Visual Reference Note*: The live pixel-perfect screenshots below represent the exact running fields and layouts captured directly from your local application server.
+Welcome to the official, complete user manual for **DuckDB Studio & API Explorer**. This document covers every single screen, utility, and dynamic capability built into the application, complete with live pixel-perfect screenshots captured directly from the local running server environment.
 
 ---
 
@@ -29,24 +26,8 @@ DuckDB Studio organizes its toolset into specialized workspace tabs:
 
 The core IDE of DuckDB Studio. It features a dual-column layout dividing the database metadata tree and active SQL editor workspace.
 
-#### Interface Layout Map:
-```text
-+------------------------------------+---------------------------------------------------+
-|  [DATABASE EXPLORER]               |  [SQL QUERY WORKSPACE]                            |
-|                                    |  [ SQL Editor Area ]                              |
-|  [Select Active DB Dropdown] [Rec] |  SELECT name, category, stock FROM...             |
-|                                    |                                                   |
-|  v main (schema)                   |  [ Run Query (Ctrl+Enter) ]         [ Save Snippet ] |
-|    v tables                        |                                                   |
-|      v product_inventory           |  [QUERY RESULTS GRID]                             |
-|        - name (VARCHAR)            |  [Columns: name | category | stock]               |
-|        - category (VARCHAR)        |  - Laptop   | Computing| 42                       |
-|        - stock (INTEGER)           |  - Keyboard | Periphs  | 108                      |
-|                                    |                                                   |
-|  [QUERY HISTORY LOGS]              |  [VISUAL QUERY BUILDER]                           |
-|  - SELECT * FROM product... (12ms) |  [Select Table Dropdown] [Sort By] [Filter Col]   |
-+------------------------------------+---------------------------------------------------+
-```
+#### Active Explorer Screen:
+![Explorer Workspace Screen](assets/explorer_tab.png)
 
 #### Functions:
 * **Ad-Hoc Editor**: Write standard or complex SQL statements with hot-reloaded autocomplete and execute them using `Ctrl + Enter`.
@@ -58,7 +39,12 @@ The core IDE of DuckDB Studio. It features a dual-column layout dividing the dat
 
 ### 2. JupyterLab
 
-An integrated interactive data science console:
+An integrated interactive data science console.
+
+#### Active JupyterLab Screen:
+![JupyterLab Workspace Screen](assets/jupyterlab_tab.png)
+
+#### Functions:
 * **Python Notebooks**: Launch Jupyter notebook kernels to write advanced Python code alongside your DuckDB instance.
 * **Pandas Scans**: Direct loopbacks inside notebooks to read from the DuckDB local catalogs:
   ```python
@@ -72,6 +58,9 @@ An integrated interactive data science console:
 
 A visual manager for DuckDB's unique runtime plugins.
 
+#### Active Extensions Manager Screen:
+![Extensions Manager Screen](assets/extensions_tab.png)
+
 #### Functions:
 * **Extension Grid**: Visual status cards for extensions (`httpfs`, `postgres_scanner`, `sqlite_scanner`, `spatial`, `icu`, `json`).
 * **Interactive Badges**: Beautiful color indicators showing whether an extension is **Installed** (Grey) or **Loaded** (Green).
@@ -83,16 +72,8 @@ A visual manager for DuckDB's unique runtime plugins.
 
 A backup, restore, and scalability benchmarker for DuckDB local databases.
 
-#### Interface Layout Map:
-```text
-+----------------------------------------------------------------------------------------+
-|  [DATABASE BACKUP & CATALOG RESTORE]      |  [HIGH-PERFORMANCE DATA SEEDING]           |
-|  [Create Backup File]                     |  [Select Seed Target Table]                |
-|  - product_catalog_backup.sql             |  [Seeding Record Density (Slider): 10,000] |
-|                                           |                                            |
-|  [ Restore Catalog ] [ Delete Backup ]    |  [ Trigger Seed Generation ]               |
-+----------------------------------------------------------------------------------------+
-```
+#### Active Database Tools Screen:
+![Database Seeder & Utilities Screen](assets/database_tools_tab.png)
 
 #### Functions:
 * **Backup Utilities**: Export the structural database catalog into clean SQL recovery files.
@@ -103,25 +84,10 @@ A backup, restore, and scalability benchmarker for DuckDB local databases.
 
 ### 5. API Endpoints
 
-Turn any SQL select query into an active REST API microservice.
+Turn any SQL select query into an active REST API microservice and monitor live metrics.
 
-#### Interface Layout Map:
-```text
-+------------------------------------------+---------------------------------------------+
-|  [CREATE API ENDPOINT FORM]              |  [EXPOSED HTTP ENDPOINTS LIST]              |
-|  Path: [ recent-sales ]                  |  v GET /api/recent-sales                    |
-|  Desc: [ Sales with qty >= $min_qty ]    |    Telemetry: [Calls: 42 | 12ms avg | 0% err] |
-|                                          |    [Source Query SQL] (Expandable)          |
-|  SQL Source:                             |    - [Test Endpoint] [Copy Path]            |
-|  SELECT * FROM sales WHERE qty >= $qty;  |                                             |
-|                                          |  v GET /api/top-products                    |
-|  [Analyze Columns] [Create Endpoint]     |    Telemetry: [Calls: 108 | 5ms avg | 0% err] |
-+------------------------------------------+---------------------------------------------+
-|  [LIVE API TELEMETRY & LATENCY DASHBOARD]                                              |
-|  [KPIs: Active Routes: 2 | Total Calls: 150 | Avg Latency: 8.5ms | Success: 100.0%]    |
-|  [Table Logs: Path | Invocations | Avg Latency | Min/Max Bounds | Success Rate | Last] |
-+----------------------------------------------------------------------------------------+
-```
+#### Active API Endpoints Workspace:
+![API Endpoints & Telemetry Screen](assets/api_endpoints_tab.png)
 
 #### Functions:
 * **Form Compiler**: Specify an endpoint slug (e.g. `recent-sales`) and write a query.
@@ -130,14 +96,19 @@ Turn any SQL select query into an active REST API microservice.
 * **Safe Metered API Pagination**: Dynamic pagination enforcing a default limit of 100 records and a safety ceiling of 10,000, automatically wrapping unbounded queries.
 * **Live Telemetry & Performance Dashboard**: Read overall KPI metrics (Total requests, average response speeds, success rates) and audit detailed routes logs (Min/Max Latency, Success Ratios, and Trigger times) directly.
 
-#### Active Telemetry Screenshot Reference:
-![Telemetry Dashboard](file:///home/martin/volumes/duckdb-studio/Documents/assets/telemetry_dashboard.png)
-
 ---
 
 ### 6. API Docs & Explorer
 
 An embedded Swagger-style sandbox to document and run loops against dynamic APIs.
+
+#### Active Interactive Docs Sandbox:
+![API Docs & Explorer Screen](assets/api_docs_tab.png)
+
+#### Functions:
+* **Interactive Sandbox**: Auto-detects endpoint parameters and generates input forms inside the UI.
+* **Loopback Executor**: Executes requests via internal HTTP loops, measuring request latency, status codes, and absolute URLs.
+* **Formatted JSON View**: Renders dynamic query results as formatted syntax-highlighted JSON trees.
 
 ---
 
@@ -145,28 +116,11 @@ An embedded Swagger-style sandbox to document and run loops against dynamic APIs
 
 Automate your query reporting and data extraction pipelines.
 
-#### Interface Layout Map:
-```text
-+------------------------------------------+---------------------------------------------+
-|  [SCHEDULE NEW EXPORT JOB]               |  [ACTIVE SCHEDULED JOBS GRID]               |
-|  [Preset: Load from Saved Query]         |  v Active: Hourly Sales Report              |
-|  Job Name: [ Hourly Sales Report ]       |    [Schedule: Every Hour] [Format: Parquet] |
-|  Interval: [ Every Hour ]                |    - [Pause] [Trigger Now] [Delete]         |
-|  Format:   [ Parquet ]                   |    Next Target: 2026-05-31 13:00:00         |
-|  Partition Column: [ category ]          |                                             |
-|  Filename: [ hourly_sales ]              |  v Active: Daily Summary                    |
-|  [ Create Export Job ]                   |    Next Target: 2026-06-01 00:00:00         |
-+------------------------------------------+---------------------------------------------+
-|  [JOB EXECUTION LOGS]                                                                  |
-|  - Hourly Sales Report | 2026-05-31 12:00:00 | 124.5ms | 4,200 rows | 120.4 KB | Success|
-+----------------------------------------------------------------------------------------+
-```
+#### Active Query Scheduler Screen:
+![Query Scheduler & Logs Screen](assets/scheduler_tab.png)
 
 #### Functions:
 * **Preset Loader**: Automatically pull final query SQL from Saved Queries into the form with one click.
 * **Scheduler Worker**: Configure intervals (`Every Minute`, `Every 5 Minutes`, `Every 15 Minutes`, `Every Hour`, `Every 12 Hours`, `Daily`) which trigger background tasks to dump results into `/exports/`.
 * **Export Configurations**: Select Parquet, CSV, or JSON formats. Type in a partition column (e.g. `category`) to partition the folder natively using DuckDB's fast `PARTITION_BY` system.
 * **Automation Grid**: Toggle job statuses (Active/Inactive), manually run queries instantly with visual toast notifications, and trace rows/file sizes (e.g., `120.4 KB`) inside the execution logs history grid.
-
-#### Active Query Scheduler Screenshot Reference:
-![Query Scheduler](file:///home/martin/volumes/duckdb-studio/Documents/assets/query_scheduler.png)
