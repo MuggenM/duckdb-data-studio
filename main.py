@@ -51,6 +51,28 @@ def split_sql_trailing_clauses(sql):
         return sql[:keyword_idx].rstrip(), " " + sql[keyword_idx:].strip()
     return sql, ""
 
+def verify_jwt_token(auth_header: str):
+    """Verify standard Bearer JWT token optionally requiring pyjwt."""
+    import os
+    from fastapi import HTTPException
+    
+    if not auth_header:
+        raise HTTPException(status_code=401, detail="Missing Authorization Header")
+        
+    try:
+        if " " not in auth_header:
+            raise ValueError("Invalid auth header format")
+        token_type, token = auth_header.split(" ", 1)
+        if token_type.lower() != "bearer":
+            raise ValueError("Token must be a Bearer token")
+            
+        import jwt
+        secret = os.environ.get("STUDIO_JWT_SECRET", "duckdb_studio_secret_key_1337")
+        payload = jwt.decode(token, secret, algorithms=["HS256"])
+        return payload
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Unauthorized: {str(e)}")
+
 
 # --- DATABASE ENGINE & SEEDER ---
 
