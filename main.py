@@ -5211,7 +5211,7 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
         
         # Load the endpoint query from database
         res = conn.execute(
-            "SELECT sql_code FROM _duckdb_studio_api_endpoints WHERE path = ?;",
+            "SELECT sql_code, COALESCE(security_enabled, FALSE) FROM _duckdb_studio_api_endpoints WHERE path = ?;",
             [endpoint_path]
         ).fetchone()
         
@@ -5221,7 +5221,12 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
             error_message = f"API Endpoint '/api/{endpoint_path}' not found"
             raise HTTPException(status_code=404, detail=error_message)
             
-        sql_code = res[0]
+        sql_code, security_enabled = res
+        
+        # Enforce JWT Authorization if enabled for this endpoint
+        if security_enabled:
+            auth_header = request.headers.get("Authorization")
+            verify_jwt_token(auth_header)
         
         # Get pagination parameters from query params (defaults: limit=100, offset=0, max safety limit=10000)
         try:
