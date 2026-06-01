@@ -2065,7 +2065,7 @@ def index():
                     ui.label('Inspect all active REST API microservices, dynamically test request payloads, and explore formatted metered responses in real-time.').classes('text-sm text-slate-500 dark:text-slate-400')
                 
                 try:
-                    rows = explorer.conn.execute("SELECT id, path, description, sql_code FROM _duckdb_studio_api_endpoints ORDER BY created_at DESC;").fetchall()
+                    rows = explorer.conn.execute("SELECT id, path, description, sql_code, COALESCE(security_enabled, FALSE) FROM _duckdb_studio_api_endpoints ORDER BY created_at DESC;").fetchall()
                 except Exception as e:
                     ui.label(f"Failed to load endpoints: {e}").classes('text-xs text-negative')
                     return
@@ -2079,13 +2079,17 @@ def index():
                     
                 # Sub Cards List
                 with ui.column().classes('w-full gap-4'):
-                    for ep_id, ep_path, ep_desc, ep_sql in rows:
+                    for ep_id, ep_path, ep_desc, ep_sql, ep_secured in rows:
                         with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
                             # Header Row: HTTP Method + Path
                             with ui.row().classes('w-full items-center justify-between no-wrap'):
                                 with ui.row().classes('items-center gap-2 no-wrap'):
                                     ui.badge('GET', color='positive').classes('text-xs font-bold px-2 py-1')
+                                    if ep_secured:
+                                        ui.icon('lock', color='amber').classes('text-sm').tooltip('Requires JWT Authorization')
                                     ui.label(f"/api/{ep_path}").classes('text-base font-bold text-slate-800 dark:text-white')
+                                    if ep_secured:
+                                        ui.badge('JWT SECURED', color='amber').classes('text-[9px] font-bold px-1.5 py-0.5')
                                 ui.label(ep_desc if ep_desc else 'No description provided').classes('text-xs text-slate-400 font-normal italic')
                                 
                             ui.separator().classes('opacity-50')
@@ -2100,6 +2104,13 @@ def index():
                             input_fields = {}
                             
                             with ui.row().classes('w-full gap-4 items-start flex-wrap'):
+                                # Authorization Token for Secured APIs
+                                if ep_secured:
+                                    with ui.column().classes('gap-2').style('width: 250px;'):
+                                        ui.label('Authorization Token').classes('text-xs font-bold text-amber-500 dark:text-amber-400')
+                                        input_fields['__jwt__'] = ui.input(placeholder='Bearer <token>').props('outlined dense').classes('w-full font-mono text-xs')
+                                        ui.label('HTTP Bearer Header').classes('text-[10px] text-slate-400 -mt-1')
+                                        
                                 # Standard Paging parameters
                                 with ui.column().classes('gap-2').style('width: 140px;'):
                                     ui.label('limit').classes('text-xs font-bold text-slate-700 dark:text-slate-300')
@@ -2158,9 +2169,16 @@ def index():
                                     
                                     # Fetch values
                                     params = {}
+                                    headers = {}
                                     for k, inp in inputs.items():
                                         if inp.value and inp.value.strip():
-                                            params[k] = inp.value.strip()
+                                            if k == '__jwt__':
+                                                val = inp.value.strip()
+                                                if not val.lower().startswith('bearer '):
+                                                    val = f"Bearer {val}"
+                                                headers['Authorization'] = val
+                                            else:
+                                                params[k] = inp.value.strip()
                                             
                                     import time, httpx, json
                                     start_time = time.perf_counter()
@@ -2173,7 +2191,7 @@ def index():
                                     try:
                                         # Execute dynamic endpoint internally on local interface asynchronously
                                         async with httpx.AsyncClient() as client:
-                                            response = await client.get(f"http://127.0.0.1:8085/api/{path}", params=params, timeout=5.0)
+                                            response = await client.get(f"http://127.0.0.1:8085/api/{path}", params=params, headers=headers, timeout=5.0)
                                         latency = int((time.perf_counter() - start_time) * 1000)
                                         status = response.status_code
                                         
