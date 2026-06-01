@@ -8,7 +8,7 @@ Welcome to the official, complete user manual for **DuckDB Studio & API Explorer
 
 Below is a live, automated walk-through demonstrating rapid traversal across all 7 workspace tabs inside **DuckDB Studio** in real-time:
 
-![DuckDB Studio Live Walkthrough](./assets/feature_traversal.gif)
+<img src="./assets/feature_traversal.gif" width="650" />
 
 ---
 
@@ -35,35 +35,35 @@ DuckDB Studio organizes its toolset into specialized workspace tabs:
 The core IDE of DuckDB Studio. It features a dual-column layout dividing the database metadata tree and active SQL editor workspace.
 
 #### Active Explorer Screen:
-![Explorer Workspace Screen](./assets/explorer_tab.png)
+<img src="./assets/explorer_tab.png" width="650" />
 
 #### Live Explorer Feature Traversal Walkthrough:
-![Explorer Workspace Walkthrough](./assets/explorer_traversal.gif)
+<img src="./assets/explorer_traversal.gif" width="650" />
 
 #### Advanced Explorer Visual Assets:
 
 ##### Schema Catalog Browser
 Easily browse through your databases, schemas, tables, views, and columns recursively:
-![Schema Browser Walkthrough](./assets/schema_browser.gif)
+<img src="./assets/schema_browser.gif" width="650" />
 
 ##### Interactive Visual Query Builder
 Build database projection queries dynamically on-the-fly without typing single line of SQL:
-![Interactive Visual Query Builder](./assets/interactive_visual_query_builder.gif)
+<img src="./assets/interactive_visual_query_builder.gif" width="650" />
 
 ##### Save Query Presets
 Save your frequently used SQL scripts directly to internal DuckDB storage for quick loading later:
-![Save Query](./assets/save_query.gif)
+<img src="./assets/save_query.gif" width="650" />
 
 ##### Session History Trace
 Trace and review recently run query metrics, timing, and latencies:
-![Session History](./assets/session_history.gif)
+<img src="./assets/session_history.gif" width="650" />
 
 ##### Explain & Explain Analyze Plans
 Visually analyze the execution query optimization plan (logical, physical, and execution profile statistics):
 * **Explain Plan**:
-![Explain Plan](./assets/explain.gif)
+<img src="./assets/explain.gif" width="650" />
 * **Explain Analyze Plan**:
-![Explain Analyze](./assets/explain_analyse.gif)
+<img src="./assets/explain_analyse.gif" width="650" />
 
 #### Functions:
 * **Ad-Hoc Editor**: Write standard or complex SQL statements with hot-reloaded autocomplete and execute them using `Ctrl + Enter`.
@@ -77,8 +77,11 @@ Visually analyze the execution query optimization plan (logical, physical, and e
 
 An integrated interactive data science console.
 
+#### Active JupyterLab Screen:
+<img src="./assets/jupyterlab_tab.png" width="650" />
+
 #### Active JupyterLab Walkthrough:
-![JupyterLab Workspace Walkthrough](./assets/jupyterlab.gif)
+<img src="./assets/jupyterlab.gif" width="650" />
 
 #### Functions:
 * **Python Notebooks**: Launch Jupyter notebook kernels to write advanced Python code alongside your DuckDB instance.
@@ -95,7 +98,7 @@ An integrated interactive data science console.
 A visual manager for DuckDB's unique runtime plugins.
 
 #### Active Extensions Manager Walkthrough:
-![Extensions Manager Walkthrough](./assets/extensions.gif)
+<img src="./assets/extensions.gif" width="650" />
 
 #### Functions:
 * **Extension Grid**: Visual status cards for extensions (`httpfs`, `postgres_scanner`, `sqlite_scanner`, `spatial`, `icu`, `json`).
@@ -109,11 +112,11 @@ A visual manager for DuckDB's unique runtime plugins.
 A backup, restore, and scalability benchmarker for DuckDB local databases.
 
 #### Active Database Tools Walkthrough:
-![Database Seeder & Utilities Walkthrough](./assets/database_tools.gif)
+<img src="./assets/database_tools.gif" width="650" />
 
 #### Direct File Importing Walkthrough:
 Easily import CSV/Parquet files directly into your active catalog using the file selector interface:
-![Import File](./assets/import_file.gif)
+<img src="./assets/import_file.gif" width="650" />
 
 #### Functions:
 * **Backup Utilities**: Export the structural database catalog into clean SQL recovery files.
@@ -126,8 +129,11 @@ Easily import CSV/Parquet files directly into your active catalog using the file
 
 Turn any SQL select query into an active REST API microservice and monitor live metrics.
 
+#### Active API Endpoints Workspace:
+<img src="./assets/api_endpoints_tab.png" width="650" />
+
 #### Active API Endpoints Workspace Walkthrough:
-![API Endpoints & Telemetry Walkthrough](./assets/api_endpoints.gif)
+<img src="./assets/api_endpoints.gif" width="650" />
 
 #### Optional JWT Authentication:
 Dynamic API endpoints can optionally require secure JWT (JSON Web Token) Authorization.
@@ -152,7 +158,10 @@ Dynamic API endpoints can optionally require secure JWT (JSON Web Token) Authori
 An embedded Swagger-style sandbox to document and run loops against dynamic APIs.
 
 #### Active Interactive Docs Sandbox:
-![API Docs & Explorer Walkthrough](./assets/api_docs_explorer.gif)
+<img src="./assets/api_docs_tab.png" width="650" />
+
+#### Active API Docs & Explorer Walkthrough:
+<img src="./assets/api_docs_explorer.gif" width="650" />
 
 #### Functions:
 * **Interactive Sandbox**: Auto-detects endpoint parameters and generates input forms inside the UI.
@@ -166,8 +175,11 @@ An embedded Swagger-style sandbox to document and run loops against dynamic APIs
 
 Automate your query reporting and data extraction pipelines.
 
+#### Active Query Scheduler Screen:
+<img src="./assets/scheduler_tab.png" width="650" />
+
 #### Active Query Scheduler Walkthrough:
-![Query Scheduler & Logs Walkthrough](./assets/scheduler.gif)
+<img src="./assets/scheduler.gif" width="650" />
 
 #### Functions:
 * **Preset Loader**: Automatically pull final query SQL from Saved Queries into the form with one click.
