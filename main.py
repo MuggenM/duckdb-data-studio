@@ -1824,7 +1824,7 @@ def index():
                 print(f"DEBUG: Failed to query API metrics: {e}", flush=True)
             
             try:
-                rows = explorer.conn.execute("SELECT id, path, description, sql_code FROM _duckdb_studio_api_endpoints ORDER BY created_at DESC;").fetchall()
+                rows = explorer.conn.execute("SELECT id, path, description, sql_code, COALESCE(security_enabled, FALSE) FROM _duckdb_studio_api_endpoints ORDER BY created_at DESC;").fetchall()
             except Exception as e:
                 with api_endpoints_list_container:
                     ui.label(f"Failed to load endpoints: {e}").classes('text-xs text-negative')
@@ -1839,16 +1839,18 @@ def index():
                 return
                 
             with api_endpoints_list_container:
-                for ep_id, ep_path, ep_desc, ep_sql in rows:
+                for ep_id, ep_path, ep_desc, ep_sql, ep_secured in rows:
                     with ui.card().classes('w-full p-4 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-3'):
                         # Top Row: GET Badge + Path
                         with ui.row().classes('w-full items-center justify-between no-wrap'):
                             with ui.row().classes('items-center gap-2 no-wrap'):
                                 ui.badge('GET', color='positive').classes('text-[10px] font-bold px-2 py-0.5')
+                                if ep_secured:
+                                    ui.icon('lock', color='amber').classes('text-xs').tooltip('Requires JWT Authorization')
                                 ui.label(f"/api/{ep_path}").classes('text-sm font-bold text-slate-800 dark:text-white truncate')
                             
                             with ui.row().classes('items-center gap-1'):
-                                ui.button(icon='edit', on_click=lambda _, i=ep_id, p=ep_path, d=ep_desc, s=ep_sql: open_edit_api_dialog(i, p, d, s)).props('flat dense size=sm color=primary').classes('p-1').tooltip('Edit Endpoint')
+                                ui.button(icon='edit', on_click=lambda _, i=ep_id, p=ep_path, d=ep_desc, s=ep_sql, sec=ep_secured: open_edit_api_dialog(i, p, d, s, sec)).props('flat dense size=sm color=primary').classes('p-1').tooltip('Edit Endpoint')
                                 ui.button(icon='delete', on_click=lambda _, i=ep_id, p=ep_path: delete_api_endpoint(i, p)).props('flat dense size=sm color=negative').classes('p-1').tooltip('Delete Endpoint')
                             
                         # Middle Row: Description
