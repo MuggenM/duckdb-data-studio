@@ -19,6 +19,39 @@ from fastapi import Query, Request
 import duckdb
 from local_file_picker.local_file_picker import local_file_picker
 
+def split_sql_trailing_clauses(sql):
+    # Parse top-level ORDER BY, LIMIT, or OFFSET to prevent placing WHERE after them
+    sql_upper = sql.upper()
+    keywords = ['ORDER BY', 'LIMIT', 'OFFSET']
+    
+    depth = 0
+    keyword_idx = -1
+    i = 0
+    n = len(sql)
+    while i < n:
+        char = sql[i]
+        if char == '(':
+            depth += 1
+        elif char == ')':
+            depth -= 1
+        elif depth == 0:
+            for kw in keywords:
+                kw_len = len(kw)
+                if i + kw_len <= n and sql_upper[i:i+kw_len] == kw:
+                    prev_char_ok = (i == 0 or not sql_upper[i-1].isalnum() and sql_upper[i-1] != '_')
+                    next_char_ok = (i + kw_len == n or not sql_upper[i+kw_len].isalnum() and sql_upper[i+kw_len] != '_')
+                    if prev_char_ok and next_char_ok:
+                        keyword_idx = i
+                        break
+            if keyword_idx != -1:
+                break
+        i += 1
+        
+    if keyword_idx != -1:
+        return sql[:keyword_idx].rstrip(), " " + sql[keyword_idx:].strip()
+    return sql, ""
+
+
 # --- DATABASE ENGINE & SEEDER ---
 
 class DuckDBExplorer:
@@ -1492,38 +1525,6 @@ def index():
                 table_name_only = full_table_name.split('.')[-1]
                 return full_table_name, table_name_only
             return None, None
-
-        def split_sql_trailing_clauses(sql):
-            # Parse top-level ORDER BY, LIMIT, or OFFSET to prevent placing WHERE after them
-            sql_upper = sql.upper()
-            keywords = ['ORDER BY', 'LIMIT', 'OFFSET']
-            
-            depth = 0
-            keyword_idx = -1
-            i = 0
-            n = len(sql)
-            while i < n:
-                char = sql[i]
-                if char == '(':
-                    depth += 1
-                elif char == ')':
-                    depth -= 1
-                elif depth == 0:
-                    for kw in keywords:
-                        kw_len = len(kw)
-                        if i + kw_len <= n and sql_upper[i:i+kw_len] == kw:
-                            prev_char_ok = (i == 0 or not sql_upper[i-1].isalnum() and sql_upper[i-1] != '_')
-                            next_char_ok = (i + kw_len == n or not sql_upper[i+kw_len].isalnum() and sql_upper[i+kw_len] != '_')
-                            if prev_char_ok and next_char_ok:
-                                keyword_idx = i
-                                break
-                    if keyword_idx != -1:
-                        break
-                i += 1
-                
-            if keyword_idx != -1:
-                return sql[:keyword_idx].rstrip(), " " + sql[keyword_idx:].strip()
-            return sql, ""
 
         def parse_selected_columns_with_aliases(sql_str):
             import re
