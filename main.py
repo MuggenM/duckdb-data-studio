@@ -1514,8 +1514,10 @@ def index():
                             
                     column_selection_container = ui.column().classes('w-full gap-2 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg p-3 my-1').style('display: none;')
                     
+                    api_security_toggle = ui.switch('Require JWT Token Authorization').classes('text-xs font-semibold text-slate-700 dark:text-slate-300 mt-2')
+                    
                     ui.button('Create Endpoint', icon='bolt', color='primary',
-                              on_click=lambda: handle_create_api_endpoint(api_path_input.value, api_desc_input.value, api_sql_input.value)).props('elevated dense').classes('px-4 self-end mt-2')
+                              on_click=lambda: handle_create_api_endpoint(api_path_input.value, api_desc_input.value, api_sql_input.value, api_security_toggle.value)).props('elevated dense').classes('px-4 self-end mt-2')
 
                 # CARD 2: ACTIVE API ENDPOINTS
                 with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
@@ -1726,7 +1728,7 @@ def index():
             except Exception as ex:
                 ui.notify(f"Error analyzing columns: {ex}", type='negative')
 
-        def handle_create_api_endpoint(endpoint_path, description, sql_code):
+        def handle_create_api_endpoint(endpoint_path, description, sql_code, security_enabled=False):
             if not endpoint_path or not endpoint_path.strip():
                 ui.notify("Please specify a valid API endpoint path.", type='warning')
                 return
@@ -1750,14 +1752,15 @@ def index():
                     return
                     
                 explorer.conn.execute("""
-                    INSERT INTO _duckdb_studio_api_endpoints (id, path, description, sql_code, created_at)
-                    VALUES (?, ?, ?, ?, ?);
+                    INSERT INTO _duckdb_studio_api_endpoints (id, path, description, sql_code, created_at, security_enabled)
+                    VALUES (?, ?, ?, ?, ?, ?);
                 """, [
                     str(uuid.uuid4()),
                     endpoint_path,
                     description.strip() if description else '',
                     sql_code.strip(),
-                    datetime.datetime.now()
+                    datetime.datetime.now(),
+                    security_enabled
                 ])
                 ui.notify(f"API Endpoint '/api/{endpoint_path}' created successfully!", type='success')
                 
@@ -1765,6 +1768,10 @@ def index():
                 api_path_input.value = ''
                 api_desc_input.value = ''
                 api_sql_input.value = ''
+                try:
+                    api_security_toggle.value = False
+                except Exception:
+                    pass
                 
                 refresh_api_endpoints_grid()
             except Exception as err:
