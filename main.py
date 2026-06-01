@@ -5187,8 +5187,8 @@ def list_endpoints():
         table_exists = conn.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = '_duckdb_studio_api_endpoints';").fetchone()[0]
         if not table_exists:
             return {"message": "Table _duckdb_studio_api_endpoints does not exist yet. Please load the main web interface once to initialize it."}
-        rows = conn.execute("SELECT path, description, sql_code FROM _duckdb_studio_api_endpoints;").fetchall()
-        return [{"path": r[0], "description": r[1], "sql_code": r[2]} for r in rows]
+        rows = conn.execute("SELECT path, description, sql_code, COALESCE(security_enabled, FALSE) FROM _duckdb_studio_api_endpoints;").fetchall()
+        return [{"path": r[0], "description": r[1], "sql_code": r[2], "security_enabled": r[3]} for r in rows]
     except Exception as e:
         return {"error": str(e)}
     finally:
