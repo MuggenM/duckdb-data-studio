@@ -2195,9 +2195,15 @@ def index():
                         path VARCHAR UNIQUE,
                         description VARCHAR,
                         sql_code VARCHAR,
-                        created_at TIMESTAMP
+                        created_at TIMESTAMP,
+                        security_enabled BOOLEAN DEFAULT FALSE
                     );
                 """)
+                # Ensure the column exists for existing databases
+                try:
+                    explorer.conn.execute("ALTER TABLE _duckdb_studio_api_endpoints ADD COLUMN security_enabled BOOLEAN DEFAULT FALSE;")
+                except Exception:
+                    pass
                 explorer.conn.execute("""
                     CREATE TABLE IF NOT EXISTS _duckdb_studio_api_metrics (
                         endpoint_path VARCHAR,
