@@ -1,6 +1,6 @@
 # 📖 DuckDB Studio & API Explorer Manual
 
-Welcome to the official, complete user manual for **DuckDB Studio & API Explorer**. This document covers every single screen, utility, and dynamic capability built into the application, complete with live pixel-perfect screenshots captured directly from the local running server environment.
+Welcome to the official, complete user manual for **DuckDB Studio & API Explorer**. This document covers every single screen, utility, and dynamic capability built into the application, complete with live pixel-perfect screenshots and high-fidelity animated walkthroughs captured directly from the local running server environment.
 
 ---
 
@@ -22,8 +22,8 @@ DuckDB Studio organizes its toolset into specialized workspace tabs:
 | [2. JupyterLab](#2-jupyterlab) | `terminal` | Embedded Jupyter console terminal for writing integrated Python and pandas data science notebooks. |
 | [3. Extensions](#3-extensions) | `extension` | Graphical DuckDB extension repository enabling one-click library installation and loading. |
 | [4. Database Tools](#4-database-tools) | `construction` | Utility workshop containing database schema backups, schema restores, and test data seeding routines. |
-| [5. API Endpoints](#5-api-endpoints) | `api` | Dynamic REST API creator, custom parameter binders, and live endpoints manager. |
-| [6. API Docs & Explorer](#6-api-docs--explorer) | `menu_book` | OpenAPI interactive Swagger playground and Loopback testing sandbox. |
+| [5. API Endpoints](#5-api-endpoints) | `api` | Dynamic REST API creator, custom parameter binders, and live endpoints manager with optional JWT protection. |
+| [6. API Docs & Explorer](#6-api-docs--explorer) | `menu_book` | OpenAPI interactive Swagger playground and Loopback testing sandbox supporting Bearer Auth. |
 | [7. Scheduler](#7-scheduler) | `schedule` | Background automation query scheduler, Parquet/CSV exporter, and telemetry logs. |
 
 ---
@@ -39,6 +39,31 @@ The core IDE of DuckDB Studio. It features a dual-column layout dividing the dat
 
 #### Live Explorer Feature Traversal Walkthrough:
 ![Explorer Workspace Walkthrough](./assets/explorer_traversal.gif)
+
+#### Advanced Explorer Visual Assets:
+
+##### Schema Catalog Browser
+Easily browse through your databases, schemas, tables, views, and columns recursively:
+![Schema Browser Walkthrough](./assets/schema_browser.gif)
+
+##### Interactive Visual Query Builder
+Build database projection queries dynamically on-the-fly without typing single line of SQL:
+![Interactive Visual Query Builder](./assets/interactive_visual_query_builder.gif)
+
+##### Save Query Presets
+Save your frequently used SQL scripts directly to internal DuckDB storage for quick loading later:
+![Save Query](./assets/save_query.gif)
+
+##### Session History Trace
+Trace and review recently run query metrics, timing, and latencies:
+![Session History](./assets/session_history.gif)
+
+##### Explain & Explain Analyze Plans
+Visually analyze the execution query optimization plan (logical, physical, and execution profile statistics):
+* **Explain Plan**:
+![Explain Plan](./assets/explain.gif)
+* **Explain Analyze Plan**:
+![Explain Analyze](./assets/explain_analyse.gif)
 
 #### Functions:
 * **Ad-Hoc Editor**: Write standard or complex SQL statements with hot-reloaded autocomplete and execute them using `Ctrl + Enter`.
@@ -69,8 +94,8 @@ An integrated interactive data science console.
 
 A visual manager for DuckDB's unique runtime plugins.
 
-#### Active Extensions Manager Screen:
-![Extensions Manager Screen](./assets/extensions_tab.png)
+#### Active Extensions Manager Walkthrough:
+![Extensions Manager Walkthrough](./assets/extensions.gif)
 
 #### Functions:
 * **Extension Grid**: Visual status cards for extensions (`httpfs`, `postgres_scanner`, `sqlite_scanner`, `spatial`, `icu`, `json`).
@@ -83,8 +108,12 @@ A visual manager for DuckDB's unique runtime plugins.
 
 A backup, restore, and scalability benchmarker for DuckDB local databases.
 
-#### Active Database Tools Screen:
-![Database Seeder & Utilities Screen](./assets/database_tools_tab.png)
+#### Active Database Tools Walkthrough:
+![Database Seeder & Utilities Walkthrough](./assets/database_tools.gif)
+
+#### Direct File Importing Walkthrough:
+Easily import CSV/Parquet files directly into your active catalog using the file selector interface:
+![Import File](./assets/import_file.gif)
 
 #### Functions:
 * **Backup Utilities**: Export the structural database catalog into clean SQL recovery files.
@@ -99,6 +128,15 @@ Turn any SQL select query into an active REST API microservice and monitor live 
 
 #### Active API Endpoints Workspace:
 ![API Endpoints & Telemetry Screen](./assets/api_endpoints_tab.png)
+
+#### Optional JWT Authentication:
+Dynamic API endpoints can optionally require secure JWT (JSON Web Token) Authorization.
+* **Toggle Security**: Enable or disable authentication on-the-fly using the **Require JWT Token Authorization** toggle switch during endpoint creation or editing.
+* **Header Enforced**: When protected, the endpoint rejects unauthorized requests with a `401 Unauthorized` response. Accessing the endpoint requires passing the Authorization header:
+  ```http
+  Authorization: Bearer <your_jwt_token>
+  ```
+* **Signature Verification**: Signature verification is performed on the server using `HS256` symmetric signing with the global `STORAGE_SECRET`.
 
 #### Functions:
 * **Form Compiler**: Specify an endpoint slug (e.g. `recent-sales`) and write a query.
@@ -118,6 +156,7 @@ An embedded Swagger-style sandbox to document and run loops against dynamic APIs
 
 #### Functions:
 * **Interactive Sandbox**: Auto-detects endpoint parameters and generates input forms inside the UI.
+* **JWT Testing Sandbox**: If an API requires JWT Authorization, a dedicated **Authorization Token** field is automatically rendered, allowing you to paste a Bearer token and test secured endpoints directly.
 * **Loopback Executor**: Executes requests via internal HTTP loops, measuring request latency, status codes, and absolute URLs.
 * **Formatted JSON View**: Renders dynamic query results as formatted syntax-highlighted JSON trees.
 
