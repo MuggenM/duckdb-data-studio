@@ -2117,7 +2117,7 @@ def index():
                                 return handle_clear
                                 
                             def make_execute_handler(path=ep_path, inputs=input_fields, panel=response_panel, s_badge=status_badge, lat_lbl=latency_label, u_lbl=url_label, code_wrapper=response_code_block_wrapper):
-                                def handle_execute():
+                                async def handle_execute():
                                     panel.style('display: flex;')
                                     s_badge.text = "Loading..."
                                     s_badge.color = "amber"
@@ -2131,7 +2131,7 @@ def index():
                                         if inp.value and inp.value.strip():
                                             params[k] = inp.value.strip()
                                             
-                                    import time, requests, json
+                                    import time, httpx, json
                                     start_time = time.perf_counter()
                                     
                                     # Form target url
@@ -2140,8 +2140,9 @@ def index():
                                     full_url_display = f"{target_url}?{query_str}" if query_str else target_url
                                     
                                     try:
-                                        # Execute dynamic endpoint internally on local interface
-                                        response = requests.get(f"http://127.0.0.1:8085/api/{path}", params=params, timeout=5)
+                                        # Execute dynamic endpoint internally on local interface asynchronously
+                                        async with httpx.AsyncClient() as client:
+                                            response = await client.get(f"http://127.0.0.1:8085/api/{path}", params=params, timeout=5.0)
                                         latency = int((time.perf_counter() - start_time) * 1000)
                                         status = response.status_code
                                         
