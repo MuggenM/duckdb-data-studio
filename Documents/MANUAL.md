@@ -77,8 +77,8 @@ Visually analyze the execution query optimization plan (logical, physical, and e
 
 An integrated interactive data science console.
 
-#### Active JupyterLab Screen:
-![JupyterLab Workspace Screen](./assets/jupyterlab_tab.png)
+#### Active JupyterLab Walkthrough:
+![JupyterLab Workspace Walkthrough](./assets/jupyterlab.gif)
 
 #### Functions:
 * **Python Notebooks**: Launch Jupyter notebook kernels to write advanced Python code alongside your DuckDB instance.
@@ -126,8 +126,8 @@ Easily import CSV/Parquet files directly into your active catalog using the file
 
 Turn any SQL select query into an active REST API microservice and monitor live metrics.
 
-#### Active API Endpoints Workspace:
-![API Endpoints & Telemetry Screen](./assets/api_endpoints_tab.png)
+#### Active API Endpoints Workspace Walkthrough:
+![API Endpoints & Telemetry Walkthrough](./assets/api_endpoints.gif)
 
 #### Optional JWT Authentication:
 Dynamic API endpoints can optionally require secure JWT (JSON Web Token) Authorization.
@@ -152,7 +152,7 @@ Dynamic API endpoints can optionally require secure JWT (JSON Web Token) Authori
 An embedded Swagger-style sandbox to document and run loops against dynamic APIs.
 
 #### Active Interactive Docs Sandbox:
-![API Docs & Explorer Screen](./assets/api_docs_tab.png)
+![API Docs & Explorer Walkthrough](./assets/api_docs_explorer.gif)
 
 #### Functions:
 * **Interactive Sandbox**: Auto-detects endpoint parameters and generates input forms inside the UI.
@@ -166,8 +166,8 @@ An embedded Swagger-style sandbox to document and run loops against dynamic APIs
 
 Automate your query reporting and data extraction pipelines.
 
-#### Active Query Scheduler Screen:
-![Query Scheduler & Logs Screen](./assets/scheduler_tab.png)
+#### Active Query Scheduler Walkthrough:
+![Query Scheduler & Logs Walkthrough](./assets/scheduler.gif)
 
 #### Functions:
 * **Preset Loader**: Automatically pull final query SQL from Saved Queries into the form with one click.
