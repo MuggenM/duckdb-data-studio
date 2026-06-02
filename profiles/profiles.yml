@@ -1,0 +1,43 @@
+test_project:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: '/app/data/test_project.duckdb'
+      threads: 1
+    postgres:
+      type: postgres
+      host: dbt-workbench-db
+      port: 5432
+      user: user
+      password: password
+      dbname: dbt_workbench
+      schema: public
+      threads: 1
+
+dbt_production_blueprint_duckdb:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: dev.duckdb
+      schema: main
+      threads: 4
+
+    ci:
+      type: duckdb
+      path: ci.duckdb
+      schema: main
+      threads: 4
+
+    snowflake:
+      type: snowflake
+      account: <your_account_identifier>
+      user: <your_username>
+      password: <your_password>
+      role: <your_role>
+      database: <your_database>
+      warehouse: <your_warehouse>
+      schema: dbt_dev
+      threads: 4
+      query_tag: dbt_production_blueprint

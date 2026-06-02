@@ -87,11 +87,11 @@ services:
       - AI_ALLOW_SESSION_PROVIDER_OVERRIDE=true
       - AI_MCP_LOCAL_ALLOWLIST_JSON={}
     volumes:
-      - /home/martin/volumes/datastack/dbt-Workbench/data:/app/data
-      - /home/martin/volumes/datastack/dbt-Workbench/data/artifacts:/app/data/artifacts
-      - /home/martin/volumes/datastack/dbt-Workbench/data/repos:/app/data/repos
+      - ./dbt_data:/app/data
+      - ./dbt_data/artifacts:/app/data/artifacts
+      - ./dbt_data/repos:/app/data/repos
       - ./dbt_project:/app/data/repos/default
-      - /home/martin/volumes/datastack/dbt-Workbench/profiles:/app/data/profiles
+      - ./profiles:/app/data/profiles
     networks:
       - studio_jupyter_net
     restart: unless-stopped
