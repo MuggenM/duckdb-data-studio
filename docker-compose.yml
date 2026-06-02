@@ -49,3 +49,65 @@ services:
       resources:
         limits:
           memory: 16G
+
+  dbt-workbench-db:
+    image: postgres:13
+    container_name: dbt-workbench-db
+    ports:
+      - "5435:5432"
+    environment:
+      - POSTGRES_DB=dbt_workbench
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+    volumes:
+      - dbt_postgres_data:/var/lib/postgresql/data
+    networks:
+      - studio_jupyter_net
+    restart: unless-stopped
+
+  dbt-workbench-backend:
+    image: dbt-workbench-backend:latest
+    container_name: dbt-workbench-backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - dbt-workbench-db
+    environment:
+      - POSTGRES_HOST=dbt-workbench-db
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=dbt_workbench
+      - DBT_ARTIFACTS_PATH=/app/data/artifacts
+      - DBT_PROJECT_PATH=/app/data/repos/default
+      - BACKEND_PORT=8000
+      - SQL_WORKSPACE_DEFAULT_CONNECTION_URL=postgresql://user:password@dbt-workbench-db:5432/dbt_workbench
+      - AI_ENABLED=true
+      - AI_DEFAULT_MODE=direct
+      - AI_DEFAULT_DIRECT_PROVIDER=openai
+      - AI_ALLOW_SESSION_PROVIDER_OVERRIDE=true
+      - AI_MCP_LOCAL_ALLOWLIST_JSON={}
+    volumes:
+      - /home/martin/volumes/datastack/dbt-Workbench/data:/app/data
+      - /home/martin/volumes/datastack/dbt-Workbench/data/artifacts:/app/data/artifacts
+      - /home/martin/volumes/datastack/dbt-Workbench/data/repos:/app/data/repos
+      - /home/martin/volumes/datastack/dbt-Workbench/dbt_project:/app/data/repos/default
+      - /home/martin/volumes/datastack/dbt-Workbench/profiles:/app/data/profiles
+    networks:
+      - studio_jupyter_net
+    restart: unless-stopped
+
+  dbt-workbench-frontend:
+    image: dbt-workbench-frontend:latest
+    container_name: dbt-workbench-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - VITE_API_BASE_URL=http://dbt-workbench-backend:8000
+    depends_on:
+      - dbt-workbench-backend
+    networks:
+      - studio_jupyter_net
+    restart: unless-stopped
+
+volumes:
+  dbt_postgres_data:
