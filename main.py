@@ -1905,7 +1905,7 @@ def index():
                 print(f"DEBUG: Failed to query API metrics: {e}", flush=True)
             
             try:
-                rows = explorer.conn.execute("SELECT id, path, description, sql_code, COALESCE(security_enabled, FALSE) FROM _duckdb_studio_api_endpoints ORDER BY created_at DESC;").fetchall()
+                rows = explorer.conn.execute("SELECT id, path, description, sql_code, COALESCE(security_enabled, FALSE), rate_limit FROM _duckdb_studio_api_endpoints ORDER BY created_at DESC;").fetchall()
             except Exception as e:
                 with api_endpoints_list_container:
                     ui.label(f"Failed to load endpoints: {e}").classes('text-xs text-negative')
@@ -1920,7 +1920,7 @@ def index():
                 return
                 
             with api_endpoints_list_container:
-                for ep_id, ep_path, ep_desc, ep_sql, ep_secured in rows:
+                for ep_id, ep_path, ep_desc, ep_sql, ep_secured, ep_rate_limit in rows:
                     with ui.card().classes('w-full p-4 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-3'):
                         # Top Row: GET Badge + Path
                         with ui.row().classes('w-full items-center justify-between no-wrap'):
@@ -1929,9 +1929,11 @@ def index():
                                 if ep_secured:
                                     ui.icon('lock', color='amber').classes('text-xs').tooltip('Requires JWT Authorization')
                                 ui.label(f"/api/{ep_path}").classes('text-sm font-bold text-slate-800 dark:text-white truncate')
+                                limit_str = ep_rate_limit if ep_rate_limit else f"{APP_SETTINGS.get('default_rate_limit', '5/minute')} (default)"
+                                ui.badge(limit_str, color='info').classes('text-[10px] px-2 py-0.5').tooltip('Rate Limit')
                             
                             with ui.row().classes('items-center gap-1'):
-                                ui.button(icon='edit', on_click=lambda _, i=ep_id, p=ep_path, d=ep_desc, s=ep_sql, sec=ep_secured: open_edit_api_dialog(i, p, d, s, sec)).props('flat dense size=sm color=primary').classes('p-1').tooltip('Edit Endpoint')
+                                ui.button(icon='edit', on_click=lambda _, i=ep_id, p=ep_path, d=ep_desc, s=ep_sql, sec=ep_secured, rl=ep_rate_limit: open_edit_api_dialog(i, p, d, s, sec, rl)).props('flat dense size=sm color=primary').classes('p-1').tooltip('Edit Endpoint')
                                 ui.button(icon='delete', on_click=lambda _, i=ep_id, p=ep_path: delete_api_endpoint(i, p)).props('flat dense size=sm color=negative').classes('p-1').tooltip('Delete Endpoint')
                             
                         # Middle Row: Description
@@ -5084,11 +5086,12 @@ def index():
     # --- EDIT API ENDPOINT MODAL DIALOG ---
     edit_columns_checkboxes = {}
 
-    def open_edit_api_dialog(ep_id, ep_path, ep_desc, ep_sql, ep_secured=False):
+    def open_edit_api_dialog(ep_id, ep_path, ep_desc, ep_sql, ep_secured=False, ep_rate_limit=None):
         edit_api_id_holder.text = ep_id
         edit_api_path_input.value = ep_path
         edit_api_desc_input.value = ep_desc
         edit_api_sql_input.value = ep_sql
+        edit_api_rate_limit_input.value = ep_rate_limit if ep_rate_limit else ''
         try:
             edit_api_security_toggle.value = ep_secured
         except Exception:
@@ -5225,6 +5228,7 @@ def index():
         path = edit_api_path_input.value.strip() if edit_api_path_input.value else ""
         description = edit_api_desc_input.value.strip() if edit_api_desc_input.value else ""
         sql = edit_api_sql_input.value.strip() if edit_api_sql_input.value else ""
+        rate_limit = edit_api_rate_limit_input.value.strip() if edit_api_rate_limit_input.value else None
         try:
             security_enabled = edit_api_security_toggle.value
         except Exception:
@@ -5250,11 +5254,12 @@ def index():
                 ui.notify(f"Endpoint path '/api/{path}' already exists! Please use a unique path.", type='negative')
                 return
                 
+            rl_value = rate_limit.strip() if rate_limit and rate_limit.strip() else None
             explorer.conn.execute("""
                 UPDATE _duckdb_studio_api_endpoints 
-                SET path = ?, description = ?, sql_code = ?, security_enabled = ? 
+                SET path = ?, description = ?, sql_code = ?, security_enabled = ?, rate_limit = ? 
                 WHERE id = ?;
-            """, [path, description, sql, security_enabled, endpoint_id])
+            """, [path, description, sql, security_enabled, rl_value, endpoint_id])
             
             ui.notify(f"API Endpoint '/api/{path}' updated successfully!", type='success')
             edit_api_dialog.close()
@@ -5264,13 +5269,16 @@ def index():
 
     with ui.dialog() as edit_api_dialog, ui.card().classes('w-[500px] p-6 gap-4 border border-slate-100 dark:border-slate-800 rounded-xl dark-bg-flat'):
         ui.label('✏️ Edit API Endpoint').classes('text-lg font-bold text-slate-800 dark:text-white')
-        ui.label('Modify path, description, or the SQL query. You can also re-analyze columns to add new parameters.').classes('text-xs text-slate-500 -mt-2')
+        ui.label('Modify path, description, rate limit, or the SQL query. You can also re-analyze columns to add new parameters.').classes('text-xs text-slate-500 -mt-2')
         
         edit_api_id_holder = ui.label('').classes('hidden') # Hidden holder
         edit_api_path_input = ui.input('Endpoint Path', placeholder='e.g., recent-sales').props('outlined dense').classes('w-full')
         edit_api_desc_input = ui.input('Description', placeholder='e.g., Returns active inventory list').props('outlined dense').classes('w-full')
-        edit_api_security_toggle = ui.switch('Require JWT Token Authorization').classes('text-xs font-semibold text-slate-700 dark:text-slate-300')
         
+        with ui.row().classes('w-full items-center justify-between no-wrap gap-4'):
+            edit_api_security_toggle = ui.switch('Require JWT Token Authorization').classes('text-xs font-semibold text-slate-700 dark:text-slate-300')
+            edit_api_rate_limit_input = ui.input(placeholder='Rate Limit (e.g., 10/minute)').props('outlined dense size=sm').classes('w-48 text-xs font-mono').tooltip('Optional custom limit per IP. Leave empty to use default limit.')
+
         with ui.column().classes('w-full gap-1'):
             ui.label('SQL Query Source').classes('text-xs font-semibold text-slate-400')
             edit_api_sql_input = ui.textarea(placeholder='SELECT * FROM product_inventory;').props('dense outlined autogrow').classes('w-full font-mono text-xs').style('min-height: 120px;')
