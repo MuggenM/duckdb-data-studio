@@ -1575,7 +1575,7 @@ def index():
                 <script>
                     document.getElementById("dbt-workbench-frame").src = "http://" + window.location.hostname + ":3000";
                 </script>
-            ''').classes('w-full h-full')
+            ''', sanitize=False).classes('w-full h-full')
 
         # Build API Creator Container Content
         with api_creator_container:
