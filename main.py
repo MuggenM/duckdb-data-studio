@@ -1383,7 +1383,7 @@ def index():
                 last_tab = app.storage.user.get('active_tab', 'Explorer')
             except Exception:
                 last_tab = 'Explorer'
-            if last_tab not in ['Explorer', 'JupyterLab', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer', 'Scheduler']:
+            if last_tab not in ['Explorer', 'JupyterLab', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer', 'Scheduler', 'Settings']:
                 last_tab = 'Explorer'
                 
             with ui.tabs(value=last_tab, on_change=lambda e: handle_tab_change_global(e.value)).classes('text-white') as tabs:
@@ -1394,6 +1394,7 @@ def index():
                 api_creator_tab = ui.tab('API Endpoints', icon='api').classes('text-sm uppercase font-semibold')
                 api_docs_tab = ui.tab('API Docs & Explorer', icon='menu_book').classes('text-sm uppercase font-semibold')
                 scheduler_tab = ui.tab('Scheduler', icon='schedule').classes('text-sm uppercase font-semibold')
+                settings_tab = ui.tab('Settings', icon='settings').classes('text-sm uppercase font-semibold')
                 
             ui.row().classes('w-32 justify-end') # balancer/actions placeholder
             
@@ -1404,6 +1405,7 @@ def index():
         api_creator_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         api_docs_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         scheduler_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
+        settings_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         
         # Build Database Tools Container Content
         with db_tools_container:
@@ -2756,6 +2758,85 @@ def index():
         refresh_scheduler_jobs_list()
         refresh_scheduler_logs_table()
 
+        # Build Settings Container Content
+        with settings_container:
+            # Header Card
+            with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-none'):
+                with ui.row().classes('items-center gap-3'):
+                    ui.icon('settings', color='primary').classes('text-3xl')
+                    ui.label('Application & Studio Settings').classes('text-2xl font-black text-slate-800 dark:text-white')
+                ui.label('Configure global rate limits, security tokens, telemetry settings, query safety constraints, and JupyterLab integrations.').classes('text-sm text-slate-500 dark:text-slate-400')
+
+            # Fetch existing jupyter configuration
+            j_url, j_token = get_jupyter_config()
+
+            # Create inputs bound to APP_SETTINGS and Jupyter
+            with ui.grid(columns=(1, 2)).classes('w-full gap-6 flex-none'):
+                # Card 1: Rate Limiting & Query Limits
+                with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.icon('speed', color='primary').classes('text-2xl')
+                        ui.label('Rate Limiting & Safety Limits').classes('text-lg font-bold text-slate-800 dark:text-white')
+                    ui.separator().classes('opacity-50')
+                    
+                    settings_default_rate_limit = ui.input('Default Endpoint Rate Limit', value=APP_SETTINGS.get('default_rate_limit', '5/minute')).props('outlined dense').classes('w-full').tooltip('The default rate limit per dynamic API route (e.g. 5/minute, 60/hour).')
+                    settings_max_safety_limit = ui.number('Maximum Safety Limit (Rows)', value=APP_SETTINGS.get('max_safety_limit', 10000), format='%d').props('outlined dense').classes('w-full').tooltip('Maximum rows that can be returned in a standard API request or preview.')
+                    settings_default_page_size = ui.number('Default Page Size', value=APP_SETTINGS.get('default_page_size', 100), format='%d').props('outlined dense').classes('w-full').tooltip('Default pagination page size for dynamic API query execution.')
+
+                # Card 2: Security & JWT
+                with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.icon('security', color='primary').classes('text-2xl')
+                        ui.label('Security & JWT tokens').classes('text-lg font-bold text-slate-800 dark:text-white')
+                    ui.separator().classes('opacity-50')
+                    
+                    settings_jwt_secret = ui.input('JWT Signature Secret', value=APP_SETTINGS.get('jwt_secret', 'duckdb_studio_secret_key_1337')).props('outlined dense password').classes('w-full').tooltip('HMAC HS256 secret key used for signing/verifying security tokens.')
+                    settings_jwt_issuer = ui.input('JWT Issuer Name', value=APP_SETTINGS.get('jwt_issuer', 'duckdb_studio')).props('outlined dense').classes('w-full')
+                    settings_jwt_audience = ui.input('JWT Audience Name', value=APP_SETTINGS.get('jwt_audience', 'duckdb_studio_clients')).props('outlined dense').classes('w-full')
+
+                # Card 3: Telemetry Configuration
+                with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.icon('analytics', color='primary').classes('text-2xl')
+                        ui.label('Telemetry & Performance Retention').classes('text-lg font-bold text-slate-800 dark:text-white')
+                    ui.separator().classes('opacity-50')
+                    
+                    settings_telemetry_retention = ui.number('Telemetry Retention (Days)', value=APP_SETTINGS.get('telemetry_retention_days', 30), format='%d').props('outlined dense').classes('w-full').tooltip('Number of days to store REST API execution telemetry before cleanup.')
+
+                # Card 4: JupyterLab Integration
+                with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.icon('terminal', color='primary').classes('text-2xl')
+                        ui.label('JupyterLab Credentials').classes('text-lg font-bold text-slate-800 dark:text-white')
+                    ui.separator().classes('opacity-50')
+                    
+                    settings_jupyter_url = ui.input('Jupyter Server URL', value=j_url).props('outlined dense').classes('w-full').tooltip('Base URL of the JupyterLab interface container.')
+                    settings_jupyter_token = ui.input('Jupyter Security Token', value=j_token).props('outlined dense password').classes('w-full').tooltip('Token query parameter required to authenticate JupyterLab session.')
+
+            # Actions row
+            with ui.row().classes('w-full justify-end gap-3 p-4'):
+                def handle_save_settings():
+                    new_settings = {
+                        "default_rate_limit": settings_default_rate_limit.value.strip() if settings_default_rate_limit.value else "5/minute",
+                        "max_safety_limit": int(settings_max_safety_limit.value) if settings_max_safety_limit.value is not None else 10000,
+                        "default_page_size": int(settings_default_page_size.value) if settings_default_page_size.value is not None else 100,
+                        "telemetry_retention_days": int(settings_telemetry_retention.value) if settings_telemetry_retention.value is not None else 30,
+                        "jwt_secret": settings_jwt_secret.value.strip() if settings_jwt_secret.value else "duckdb_studio_secret_key_1337",
+                        "jwt_issuer": settings_jwt_issuer.value.strip() if settings_jwt_issuer.value else "duckdb_studio",
+                        "jwt_audience": settings_jwt_audience.value.strip() if settings_jwt_audience.value else "duckdb_studio_clients"
+                    }
+                    new_jupyter = {
+                        "url": settings_jupyter_url.value.strip() if settings_jupyter_url.value else "http://localhost:8889",
+                        "token": settings_jupyter_token.value.strip() if settings_jupyter_token.value else "analytics_secret"
+                    }
+                    
+                    if save_app_settings(new_settings, new_jupyter):
+                        ui.notify('Settings successfully saved and reloaded!', type='success')
+                    else:
+                        ui.notify('Failed to save settings. Check logs for details.', type='negative')
+
+                ui.button('Save Studio Configuration', icon='save', on_click=handle_save_settings).props('elevated color=primary').classes('px-6 py-2 text-sm font-bold rounded-lg')
+
         # Bind visibility based on active tab
         studio_container.bind_visibility_from(tabs, 'value', value='Explorer')
         jupyter_container.bind_visibility_from(tabs, 'value', value='JupyterLab')
@@ -2764,6 +2845,7 @@ def index():
         api_creator_container.bind_visibility_from(tabs, 'value', value='API Endpoints')
         api_docs_container.bind_visibility_from(tabs, 'value', value='API Docs & Explorer')
         scheduler_container.bind_visibility_from(tabs, 'value', value='Scheduler')
+        settings_container.bind_visibility_from(tabs, 'value', value='Settings')
         
     # Main split layout container
     with studio_container:
