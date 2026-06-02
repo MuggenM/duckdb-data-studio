@@ -1570,12 +1570,8 @@ def index():
 
         # Build dbt Workbench container content
         with dbt_workbench_container:
-            ui.html('''
-                <iframe id="dbt-workbench-frame" src="" class="w-full h-full" style="border: none;"></iframe>
-                <script>
-                    document.getElementById("dbt-workbench-frame").src = "http://" + window.location.hostname + ":3000";
-                </script>
-            ''', sanitize=False).classes('w-full h-full')
+            ui.element('iframe').props('id="dbt-workbench-frame"').classes('w-full h-full border-none')
+            ui.run_javascript('document.getElementById("dbt-workbench-frame").src = "http://" + window.location.hostname + ":3000";')
 
         # Build API Creator Container Content
         with api_creator_container:
