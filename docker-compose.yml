@@ -109,5 +109,18 @@ services:
       - studio_jupyter_net
     restart: unless-stopped
 
+  dbt-code-server:
+    image: codercom/code-server:latest
+    container_name: dbt-code-server
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./dbt_project:/home/coder/project
+      - ./profiles:/home/coder/.dbt
+    command: ["--auth", "none", "/home/coder/project"]
+    networks:
+      - studio_jupyter_net
+    restart: unless-stopped
+
 volumes:
   dbt_postgres_data:
