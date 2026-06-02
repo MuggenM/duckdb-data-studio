@@ -113,7 +113,7 @@ services:
     image: codercom/code-server:latest
     container_name: dbt-code-server
     ports:
-      - "8443:8443"
+      - "8443:8080"
     volumes:
       - ./dbt_project:/home/coder/project
       - ./profiles:/home/coder/.dbt
