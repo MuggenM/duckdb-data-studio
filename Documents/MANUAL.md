@@ -25,6 +25,7 @@ DuckDB Studio organizes its toolset into specialized workspace tabs:
 | [5. API Endpoints](#5-api-endpoints) | `api` | Dynamic REST API creator, custom parameter binders, and live endpoints manager with optional JWT protection. |
 | [6. API Docs & Explorer](#6-api-docs--explorer) | `menu_book` | OpenAPI interactive Swagger playground and Loopback testing sandbox supporting Bearer Auth. |
 | [7. Scheduler](#7-scheduler) | `schedule` | Background automation query scheduler, Parquet/CSV exporter, and telemetry logs. |
+| [8. Settings](#8-settings) | `settings` | Global system configurations page for rate limits, pagination, security credentials, and JupyterLab tokens. |
 
 ---
 
@@ -158,8 +159,9 @@ To safely retrieve massive datasets (up to 1,000,000+ records) without memory ba
 * **Format**: Streams data row-by-row in Newline Delimited JSON (`application/x-ndjson`) using HTTP chunked transfer encoding, maintaining a constant flat memory footprint.
 
 #### API Request Metering (Rate Limiting):
-To protect endpoints against spam or Denial-of-Service, global request throttling is enforced using `slowapi`:
-* **Rate Limits**: By default, dynamic routes are throttled to a maximum of **100 requests per minute** per client IP.
+To protect endpoints against spam or Denial-of-Service, dynamic request throttling is enforced using `slowapi`:
+* **Configurable Rate Limits**: Each endpoint can define its own rate limit (e.g. `10/minute`, `100/hour`).
+* **Default Fallback**: If no specific rate limit is defined on an endpoint, the system defaults to a default limit (e.g. `5/minute`). This default is globally configurable.
 * **Over-Limit Response**: Exceeding rate limits instantly halts request processing and returns an `HTTP 429 Too Many Requests` code with a structured error payload.
 
 #### Functions:
@@ -204,3 +206,22 @@ Automate your query reporting and data extraction pipelines.
 * **Scheduler Worker**: Configure intervals (`Every Minute`, `Every 5 Minutes`, `Every 15 Minutes`, `Every Hour`, `Every 12 Hours`, `Daily`) which trigger background tasks to dump results into `/exports/`.
 * **Export Configurations**: Select Parquet, CSV, or JSON formats. Type in a partition column (e.g. `category`) to partition the folder natively using DuckDB's fast `PARTITION_BY` system.
 * **Automation Grid**: Toggle job statuses (Active/Inactive), manually run queries instantly with visual toast notifications, and trace rows/file sizes (e.g., `120.4 KB`) inside the execution logs history grid.
+
+---
+
+### 8. Settings
+
+A centralized control panel to manage global application parameters, safety overrides, telemetry settings, security keys, and external notebook credentials. All changes are stored back to the YAML configuration file (`config/studio_config.yaml`) and take effect immediately.
+
+#### Functions & Configurable Items:
+* **Rate Limiting & Safety Limits**:
+  * **Default Endpoint Rate Limit**: Configures the fallback limit applied to dynamic endpoints when no per-endpoint override is defined (defaults to `5/minute`).
+  * **Maximum Safety Limit (Rows)**: Restricts the absolute maximum number of rows returned in standard API JSON requests to prevent memory inflation.
+  * **Default Page Size**: Controls default pagination bounds for dynamic endpoints.
+* **Security & JWT tokens**:
+  * **JWT Signature Secret**: Customizes the key used for HMAC HS256 validation.
+  * **JWT Issuer Name & Audience**: Standardized properties to strictly parse client identity.
+* **Telemetry Configuration**:
+  * **Telemetry Retention (Days)**: Specifies the duration for maintaining API access counts and latencies before automatic cleanup.
+* **JupyterLab Credentials**:
+  * **Jupyter Server URL & Security Token**: Credentials used to render the embedded notebook console tab safely.
