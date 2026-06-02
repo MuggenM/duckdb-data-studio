@@ -18,6 +18,13 @@ ui.element.text = element_text_patch
 from fastapi import Query, Request
 import duckdb
 from local_file_picker.local_file_picker import local_file_picker
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 def split_sql_trailing_clauses(sql):
     # Parse top-level ORDER BY, LIMIT, or OFFSET to prevent placing WHERE after them
@@ -5232,6 +5239,7 @@ def list_endpoints():
 
 
 @app.get("/api/{endpoint_path:path}")
+@limiter.limit("100/minute")
 def handle_dynamic_endpoint(endpoint_path: str, request: Request):
     import time, datetime
     start_time = time.time()
