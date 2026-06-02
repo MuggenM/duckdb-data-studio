@@ -80,6 +80,26 @@ def verify_jwt_token(auth_header: str):
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Unauthorized: {str(e)}")
 
+def get_dynamic_rate_limit(request: Request) -> str:
+    """Resolve dynamic rate-limit string per endpoint from DB, falling back to dynamic settings default."""
+    path = request.url.path
+    import re
+    match = re.match(r'^/api/(.+?)(?:/stream)?$', path)
+    if match:
+        endpoint_path = match.group(1)
+        if endpoint_path != "list-endpoints":
+            try:
+                db_conn = duckdb.connect(DB_NAME)
+                res = db_conn.execute("SELECT rate_limit FROM _duckdb_studio_api_endpoints WHERE path = ?;", [endpoint_path]).fetchone()
+                db_conn.close()
+                if res and res[0] and res[0].strip():
+                    return res[0].strip()
+            except Exception as e:
+                print(f"WARNING: Dynamic rate limit lookup failed for {endpoint_path}: {e}", flush=True)
+            
+    return APP_SETTINGS.get("default_rate_limit", "5/minute")
+
+
 
 # --- DATABASE ENGINE & SEEDER ---
 
@@ -5293,7 +5313,7 @@ def list_endpoints():
 
 
 @app.get("/api/{endpoint_path:path}/stream")
-@limiter.limit("100/minute")
+@limiter.limit(get_dynamic_rate_limit)
 def handle_streaming_endpoint(endpoint_path: str, request: Request):
     from fastapi.responses import StreamingResponse
     import time, datetime, json
@@ -5412,7 +5432,7 @@ def handle_streaming_endpoint(endpoint_path: str, request: Request):
 
 
 @app.get("/api/{endpoint_path:path}")
-@limiter.limit("100/minute")
+@limiter.limit(get_dynamic_rate_limit)
 def handle_dynamic_endpoint(endpoint_path: str, request: Request):
     import time, datetime
     start_time = time.time()
