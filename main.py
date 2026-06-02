@@ -2252,12 +2252,17 @@ def index():
                         description VARCHAR,
                         sql_code VARCHAR,
                         created_at TIMESTAMP,
-                        security_enabled BOOLEAN DEFAULT FALSE
+                        security_enabled BOOLEAN DEFAULT FALSE,
+                        rate_limit VARCHAR DEFAULT NULL
                     );
                 """)
-                # Ensure the column exists for existing databases
+                # Ensure the columns exist for existing databases
                 try:
                     explorer.conn.execute("ALTER TABLE _duckdb_studio_api_endpoints ADD COLUMN security_enabled BOOLEAN DEFAULT FALSE;")
+                except Exception:
+                    pass
+                try:
+                    explorer.conn.execute("ALTER TABLE _duckdb_studio_api_endpoints ADD COLUMN rate_limit VARCHAR DEFAULT NULL;")
                 except Exception:
                     pass
                 explorer.conn.execute("""
