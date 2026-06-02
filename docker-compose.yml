@@ -90,7 +90,7 @@ services:
       - /home/martin/volumes/datastack/dbt-Workbench/data:/app/data
       - /home/martin/volumes/datastack/dbt-Workbench/data/artifacts:/app/data/artifacts
       - /home/martin/volumes/datastack/dbt-Workbench/data/repos:/app/data/repos
-      - /home/martin/volumes/datastack/dbt-Workbench/dbt_project:/app/data/repos/default
+      - ./dbt_project:/app/data/repos/default
       - /home/martin/volumes/datastack/dbt-Workbench/profiles:/app/data/profiles
     networks:
       - studio_jupyter_net

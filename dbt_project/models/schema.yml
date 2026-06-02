@@ -1,0 +1,26 @@
+version: 2
+
+models:
+  - name: stg_users
+    description: "Raw staging users data"
+    columns:
+      - name: id
+        tests:
+          - unique
+          - not_null
+
+  - name: stg_orders
+    description: "Raw staging orders data"
+    columns:
+      - name: order_id
+        tests:
+          - unique
+          - not_null
+
+  - name: customers
+    description: "Customer aggregated orders metric"
+    columns:
+      - name: user_id
+        tests:
+          - unique
+          - not_null
