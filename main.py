@@ -2790,7 +2790,7 @@ def index():
                         ui.label('Security & JWT tokens').classes('text-lg font-bold text-slate-800 dark:text-white')
                     ui.separator().classes('opacity-50')
                     
-                    settings_jwt_secret = ui.input('JWT Signature Secret', value=APP_SETTINGS.get('jwt_secret', 'duckdb_studio_secret_key_1337')).props('outlined dense password').classes('w-full').tooltip('HMAC HS256 secret key used for signing/verifying security tokens.')
+                    settings_jwt_secret = ui.input('JWT Signature Secret', value=APP_SETTINGS.get('jwt_secret', 'duckdb_studio_secret_key_1337'), password=True, password_toggle_button=True).props('outlined dense').classes('w-full').tooltip('HMAC HS256 secret key used for signing/verifying security tokens.')
                     settings_jwt_issuer = ui.input('JWT Issuer Name', value=APP_SETTINGS.get('jwt_issuer', 'duckdb_studio')).props('outlined dense').classes('w-full')
                     settings_jwt_audience = ui.input('JWT Audience Name', value=APP_SETTINGS.get('jwt_audience', 'duckdb_studio_clients')).props('outlined dense').classes('w-full')
 
@@ -2811,7 +2811,7 @@ def index():
                     ui.separator().classes('opacity-50')
                     
                     settings_jupyter_url = ui.input('Jupyter Server URL', value=j_url).props('outlined dense').classes('w-full').tooltip('Base URL of the JupyterLab interface container.')
-                    settings_jupyter_token = ui.input('Jupyter Security Token', value=j_token).props('outlined dense password').classes('w-full').tooltip('Token query parameter required to authenticate JupyterLab session.')
+                    settings_jupyter_token = ui.input('Jupyter Security Token', value=j_token, password=True, password_toggle_button=True).props('outlined dense').classes('w-full').tooltip('Token query parameter required to authenticate JupyterLab session.')
 
             # Actions row
             with ui.row().classes('w-full justify-end gap-3 p-4'):
