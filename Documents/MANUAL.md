@@ -152,6 +152,16 @@ Dynamic API endpoints can optionally require secure JWT (JSON Web Token) Authori
   ```
 * **Signature Verification**: Signature verification is performed on the server using `HS256` symmetric signing with the global `STORAGE_SECRET`.
 
+#### High-Performance NDJSON Streaming:
+To safely retrieve massive datasets (up to 1,000,000+ records) without memory ballooning or timeouts, you can stream queries:
+* **Route Path**: Simply append `/stream` to any endpoint URL (e.g. `/api/books/stream`).
+* **Format**: Streams data row-by-row in Newline Delimited JSON (`application/x-ndjson`) using HTTP chunked transfer encoding, maintaining a constant flat memory footprint.
+
+#### API Request Metering (Rate Limiting):
+To protect endpoints against spam or Denial-of-Service, global request throttling is enforced using `slowapi`:
+* **Rate Limits**: By default, dynamic routes are throttled to a maximum of **100 requests per minute** per client IP.
+* **Over-Limit Response**: Exceeding rate limits instantly halts request processing and returns an `HTTP 429 Too Many Requests` code with a structured error payload.
+
 #### Functions:
 * **Form Compiler**: Specify an endpoint slug (e.g. `recent-sales`) and write a query.
 * **Auto-Generated Query Parameters**: Use the `$parameter_name` notation to automatically capture dynamic query parameters from incoming requests (e.g. `?min_qty=10`).
