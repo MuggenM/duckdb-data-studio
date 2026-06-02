@@ -42,27 +42,28 @@ The core IDE of DuckDB Studio. It features a dual-column layout dividing the dat
 
 #### Advanced Explorer Visual Assets:
 
-##### Schema Catalog Browser
+#### Schema Catalog Browser
 Easily browse through your databases, schemas, tables, views, and columns recursively:
 <img src="./assets/schema_browser.gif" width="650" />
 
-##### Interactive Visual Query Builder
+#### Interactive Visual Query Builder
 Build database projection queries dynamically on-the-fly without typing single line of SQL:
 <img src="./assets/interactive_visual_query_builder.gif" width="650" />
 
-##### Save Query Presets
+#### Save Query Presets
 Save your frequently used SQL scripts directly to internal DuckDB storage for quick loading later:
 <img src="./assets/save_query.gif" width="650" />
 
-##### Session History Trace
+#### Session History Trace
 Trace and review recently run query metrics, timing, and latencies:
 <img src="./assets/session_history.gif" width="650" />
 
-##### Explain & Explain Analyze Plans
+#### Explain Plan
 Visually analyze the execution query optimization plan (logical, physical, and execution profile statistics):
-* **Explain Plan**:
 <img src="./assets/explain.gif" width="650" />
-* **Explain Analyze Plan**:
+
+#### Explain Analyze Plan
+Visually trace dynamic execution timing and profile statistics inside the catalog:
 <img src="./assets/explain_analyse.gif" width="650" />
 
 #### Functions:
