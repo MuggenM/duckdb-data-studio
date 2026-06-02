@@ -44,26 +44,32 @@ The core IDE of DuckDB Studio. It features a dual-column layout dividing the dat
 
 #### Schema Catalog Browser
 Easily browse through your databases, schemas, tables, views, and columns recursively:
+
 <img src="./assets/schema_browser.gif" width="650" />
 
 #### Interactive Visual Query Builder
 Build database projection queries dynamically on-the-fly without typing single line of SQL:
+
 <img src="./assets/interactive_visual_query_builder.gif" width="650" />
 
 #### Save Query Presets
 Save your frequently used SQL scripts directly to internal DuckDB storage for quick loading later:
+
 <img src="./assets/save_query.gif" width="650" />
 
 #### Session History Trace
 Trace and review recently run query metrics, timing, and latencies:
+
 <img src="./assets/session_history.gif" width="650" />
 
 #### Explain Plan
 Visually analyze the execution query optimization plan (logical, physical, and execution profile statistics):
+
 <img src="./assets/explain.gif" width="650" />
 
 #### Explain Analyze Plan
 Visually trace dynamic execution timing and profile statistics inside the catalog:
+
 <img src="./assets/explain_analyse.gif" width="650" />
 
 #### Functions:
@@ -117,6 +123,7 @@ A backup, restore, and scalability benchmarker for DuckDB local databases.
 
 #### Direct File Importing Walkthrough:
 Easily import CSV/Parquet files directly into your active catalog using the file selector interface:
+
 <img src="./assets/import_file.gif" width="650" />
 
 #### Functions:
