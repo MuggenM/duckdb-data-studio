@@ -74,7 +74,7 @@ def verify_jwt_token(auth_header: str):
             raise ValueError("Token must be a Bearer token")
             
         import jwt
-        secret = os.environ.get("STUDIO_JWT_SECRET", "duckdb_studio_secret_key_1337")
+        secret = APP_SETTINGS.get("jwt_secret", os.environ.get("STUDIO_JWT_SECRET", "duckdb_studio_secret_key_1337"))
         payload = jwt.decode(token, secret, algorithms=["HS256"])
         return payload
     except Exception as e:
@@ -592,6 +592,7 @@ def load_app_settings():
         "max_safety_limit": 10000,
         "default_page_size": 100,
         "telemetry_retention_days": 30,
+        "jwt_secret": "duckdb_studio_secret_key_1337",
         "jwt_issuer": "duckdb_studio",
         "jwt_audience": "duckdb_studio_clients"
     }
@@ -609,8 +610,8 @@ def load_app_settings():
             print(f"WARNING: Failed to load settings from {config_path}: {e}")
     return defaults
 
-def save_app_settings(settings_dict):
-    """Save studio settings back to yaml configuration file."""
+def save_app_settings(settings_dict, jupyter_dict=None):
+    """Save studio settings and optionally jupyter config back to yaml configuration file."""
     config_path = get_studio_config_path()
     try:
         import yaml
@@ -620,9 +621,14 @@ def save_app_settings(settings_dict):
                 config = yaml.safe_load(f) or {}
         
         config['settings'] = settings_dict
+        if jupyter_dict is not None:
+            config['jupyter'] = jupyter_dict
         
         with open(config_path, 'w') as f:
             yaml.safe_dump(config, f)
+            
+        global APP_SETTINGS
+        APP_SETTINGS = load_app_settings()
         return True
     except Exception as e:
         print(f"ERROR: Failed to save settings to {config_path}: {e}")
