@@ -1383,12 +1383,13 @@ def index():
                 last_tab = app.storage.user.get('active_tab', 'Explorer')
             except Exception:
                 last_tab = 'Explorer'
-            if last_tab not in ['Explorer', 'JupyterLab', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer', 'Scheduler', 'Settings']:
+            if last_tab not in ['Explorer', 'JupyterLab', 'dbt Workbench', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer', 'Scheduler', 'Settings']:
                 last_tab = 'Explorer'
                 
             with ui.tabs(value=last_tab, on_change=lambda e: handle_tab_change_global(e.value)).classes('text-white') as tabs:
                 studio_tab = ui.tab('Explorer', icon='query_stats').classes('text-sm uppercase font-semibold')
                 jupyter_tab = ui.tab('JupyterLab', icon='terminal').classes('text-sm uppercase font-semibold')
+                dbt_tab = ui.tab('dbt Workbench', icon='device_hub').classes('text-sm uppercase font-semibold')
                 extensions_tab = ui.tab('Extensions', icon='extension').classes('text-sm uppercase font-semibold')
                 db_tools_tab = ui.tab('Database Tools', icon='construction').classes('text-sm uppercase font-semibold')
                 api_creator_tab = ui.tab('API Endpoints', icon='api').classes('text-sm uppercase font-semibold')
@@ -1400,6 +1401,7 @@ def index():
             
         studio_container = ui.row().classes('w-full no-wrap min-h-0 flex-grow').style('margin: 0; padding: 0;')
         jupyter_container = ui.column().classes('w-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
+        dbt_workbench_container = ui.column().classes('w-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
         extensions_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-4 flex-nowrap').style('margin: 0; padding: 0;')
         db_tools_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         api_creator_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
@@ -1565,6 +1567,15 @@ def index():
             clean_url = jupyter_url.rstrip('/')
             iframe_src = f"{clean_url}/lab?token={jupyter_token}"
             ui.element('iframe').props(f'src="{iframe_src}"').classes('w-full h-full border-none')
+
+        # Build dbt Workbench container content
+        with dbt_workbench_container:
+            ui.html('''
+                <iframe id="dbt-workbench-frame" src="" class="w-full h-full" style="border: none;"></iframe>
+                <script>
+                    document.getElementById("dbt-workbench-frame").src = "http://" + window.location.hostname + ":3000";
+                </script>
+            ''').classes('w-full h-full')
 
         # Build API Creator Container Content
         with api_creator_container:
@@ -2840,6 +2851,7 @@ def index():
         # Bind visibility based on active tab
         studio_container.bind_visibility_from(tabs, 'value', value='Explorer')
         jupyter_container.bind_visibility_from(tabs, 'value', value='JupyterLab')
+        dbt_workbench_container.bind_visibility_from(tabs, 'value', value='dbt Workbench')
         extensions_container.bind_visibility_from(tabs, 'value', value='Extensions')
         db_tools_container.bind_visibility_from(tabs, 'value', value='Database Tools')
         api_creator_container.bind_visibility_from(tabs, 'value', value='API Endpoints')
