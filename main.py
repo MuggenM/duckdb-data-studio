@@ -564,6 +564,54 @@ def get_jupyter_config():
     final_token = env_token or config_token or default_token
     return final_url, final_token
 
+def load_app_settings():
+    """Load studio settings from yaml configuration file, providing defaults."""
+    config_path = get_studio_config_path()
+    defaults = {
+        "default_rate_limit": "5/minute",
+        "max_safety_limit": 10000,
+        "default_page_size": 100,
+        "telemetry_retention_days": 30,
+        "jwt_issuer": "duckdb_studio",
+        "jwt_audience": "duckdb_studio_clients"
+    }
+    if os.path.exists(config_path):
+        try:
+            import yaml
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f)
+            if config and isinstance(config, dict):
+                settings = config.get('settings', {})
+                if isinstance(settings, dict):
+                    for k, v in settings.items():
+                        defaults[k] = v
+        except Exception as e:
+            print(f"WARNING: Failed to load settings from {config_path}: {e}")
+    return defaults
+
+def save_app_settings(settings_dict):
+    """Save studio settings back to yaml configuration file."""
+    config_path = get_studio_config_path()
+    try:
+        import yaml
+        config = {}
+        if os.path.exists(config_path):
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f) or {}
+        
+        config['settings'] = settings_dict
+        
+        with open(config_path, 'w') as f:
+            yaml.safe_dump(config, f)
+        return True
+    except Exception as e:
+        print(f"ERROR: Failed to save settings to {config_path}: {e}")
+        return False
+
+# Load global settings dictionary
+APP_SETTINGS = load_app_settings()
+
+
 # --- ATTACHED DATABASES CONFIGURATION LOAD/SAVE HELPERS ---
 
 def get_config_path():
