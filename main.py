@@ -5238,6 +5238,126 @@ def list_endpoints():
         conn.close()
 
 
+
+@app.get("/api/{endpoint_path:path}/stream")
+@limiter.limit("100/minute")
+def handle_streaming_endpoint(endpoint_path: str, request: Request):
+    from fastapi.responses import StreamingResponse
+    import time, datetime, json
+    start_time = time.time()
+    status_code = 200
+    error_message = None
+    
+    db_path = DB_NAME
+    conn = None
+    try:
+        conn = duckdb.connect(db_path)
+        load_attached_databases_for_connection(conn)
+        
+        # Load the endpoint query from database, including the security flag
+        res = conn.execute(
+            "SELECT sql_code, COALESCE(security_enabled, FALSE) FROM _duckdb_studio_api_endpoints WHERE path = ?;",
+            [endpoint_path]
+        ).fetchone()
+        
+        if not res:
+            from fastapi import HTTPException
+            status_code = 404
+            error_message = f"API Endpoint '/api/{endpoint_path}' not found"
+            raise HTTPException(status_code=404, detail=error_message)
+            
+        sql_code, security_enabled = res
+        
+        # Enforce JWT Authorization if enabled for this endpoint
+        if security_enabled:
+            auth_header = request.headers.get("Authorization")
+            verify_jwt_token(auth_header)
+            
+        # Parse query parameters from request query params to bind them if the query has placeholders
+        import re
+        placeholders = re.findall(r'\$([a-zA-Z0-9_]+)', sql_code)
+        placeholders = list(dict.fromkeys(placeholders))
+        
+        bind_params = {}
+        for param in placeholders:
+            val = request.query_params.get(param)
+            if val is not None:
+                if val.lower() == 'true':
+                    bind_params[param] = True
+                elif val.lower() == 'false':
+                    bind_params[param] = False
+                else:
+                    try:
+                        if '.' in val:
+                            bind_params[param] = float(val)
+                        else:
+                            bind_params[param] = int(val)
+                    except ValueError:
+                        bind_params[param] = val
+            else:
+                bind_params[param] = None
+
+        # Clean trailing semicolon
+        sql_clean = sql_code.strip()
+        if sql_clean.endswith(';'):
+            sql_clean = sql_clean[:-1].strip()
+
+        # Define row generator
+        def row_generator():
+            # Open direct cursor stream
+            cursor = conn.execute(sql_clean, bind_params)
+            columns = [desc[0] for desc in cursor.description]
+            
+            while True:
+                row = cursor.fetchone()
+                if not row:
+                    break
+                # Yield single row as serialized JSON line
+                record = dict(zip(columns, row))
+                yield json.dumps(record, default=str) + "\n"
+                
+            conn.close()
+
+        # Return streaming response in Newline Delimited JSON format
+        return StreamingResponse(row_generator(), media_type="application/x-ndjson")
+
+    except Exception as e:
+        from fastapi import HTTPException
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+        if isinstance(e, HTTPException):
+            status_code = e.status_code
+            error_message = e.detail
+            raise e
+        status_code = 500
+        error_message = str(e)
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        # Log telemetry metrics
+        try:
+            conn_metric = duckdb.connect(db_path)
+            latency_ms = (time.time() - start_time) * 1000.0
+            conn_metric.execute("""
+                CREATE TABLE IF NOT EXISTS _duckdb_studio_api_metrics (
+                    endpoint_path VARCHAR,
+                    timestamp TIMESTAMP,
+                    latency_ms DOUBLE,
+                    status_code INTEGER,
+                    error_message VARCHAR
+                );
+            """)
+            conn_metric.execute("""
+                INSERT INTO _duckdb_studio_api_metrics (endpoint_path, timestamp, latency_ms, status_code, error_message)
+                VALUES (?, ?, ?, ?, ?);
+            """, [endpoint_path + "/stream", datetime.datetime.now(), latency_ms, status_code, error_message])
+            conn_metric.close()
+        except Exception as log_err:
+            print(f"ERROR logging API streaming telemetry metrics: {log_err}", flush=True)
+
+
 @app.get("/api/{endpoint_path:path}")
 @limiter.limit("100/minute")
 def handle_dynamic_endpoint(endpoint_path: str, request: Request):
