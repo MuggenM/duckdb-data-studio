@@ -7,7 +7,7 @@ networks:
 
 services:
   traefik:
-    image: traefik:v2.10
+    image: traefik:latest
     container_name: traefik
     command:
       - "--providers.docker=true"
@@ -15,6 +15,8 @@ services:
       - "--entrypoints.web.address=:80"
     ports:
       - "8880:80"
+    environment:
+      - DOCKER_API_VERSION=1.40
     volumes:
       - "/run/user/1000/docker.sock:/var/run/docker.sock:ro"
     networks:
