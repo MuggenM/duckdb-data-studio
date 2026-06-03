@@ -1375,7 +1375,7 @@ def index():
     with ui.column().classes('w-full h-screen gap-0 flex-nowrap overflow-hidden').style('margin: 0; padding: 0;'):
         # Global Premium Tab Bar
         with ui.row().classes('w-full items-center justify-between no-wrap bg-slate-900 dark:bg-slate-950 text-white px-4 border-b border-slate-700 dark:border-slate-800').style('height: 48px;'):
-            with ui.row().classes('items-center gap-2'):
+            with ui.row().classes('items-center gap-2 no-wrap flex-none'):
                 ui.icon('database', color='primary').classes('text-2xl')
                 ui.label('DuckDB Studio').classes('text-lg font-bold text-white')
             
