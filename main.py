@@ -2875,8 +2875,8 @@ def index():
                     # Branding Header
                     with ui.row().classes('items-center w-full justify-between no-wrap'):
                         with ui.row().classes('items-center gap-2'):
-                            ui.icon('database', color='primary').classes('text-2xl')
-                            ui.label('DuckDB Studio').classes('text-lg font-bold text-slate-800 dark:text-slate-100')
+                            ui.icon('schema', color='primary').classes('text-xl')
+                            ui.label('Schema Explorer').classes('text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400')
                         
                         # Refresh schema button
                         ui.button(icon='refresh', on_click=lambda: refresh_schema_tree()).props('flat fab-mini').classes('text-slate-600')
