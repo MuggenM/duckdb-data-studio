@@ -6,6 +6,21 @@ networks:
     driver: bridge
 
 services:
+  traefik:
+    image: traefik:v2.10
+    container_name: traefik
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - studio_jupyter_net
+    restart: unless-stopped
+
   duckdb-studio:
     build: .
     container_name: duckdb-studio
@@ -21,11 +36,16 @@ services:
       - ./shared:/shared
     environment:
       - STORAGE_SECRET=duckdb_studio_secret_key_1337
-      - JUPYTER_URL=http://localhost:8889
+      - JUPYTER_URL=http://jupyter.localhost
       - JUPYTER_TOKEN=analytics_secret
     networks:
       - studio_jupyter_net
     restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.studio.rule=Host(`studio.localhost`)"
+      - "traefik.http.routers.studio.entrypoints=web"
+      - "traefik.http.services.studio.loadbalancer.server.port=8085"
 
   jupyter:
     image: arrowflight-jupyter:latest
@@ -43,12 +63,17 @@ services:
       - studio_jupyter_net
     ports:
       - "127.0.0.1:8889:8888"
-    command: ["jupyter", "lab", "--allow-root", "--ServerApp.token=analytics_secret", "--IdentityProvider.token=analytics_secret", "--ServerApp.tornado_settings={'headers': {'Content-Security-Policy': \"frame-ancestors 'self' http://localhost:8085 http://localhost:8086 http://127.0.0.1:8085 http://127.0.0.1:8086\"}}"]
+    command: ["jupyter", "lab", "--allow-root", "--ServerApp.token=analytics_secret", "--IdentityProvider.token=analytics_secret", "--ServerApp.tornado_settings={'headers': {'Content-Security-Policy': \"frame-ancestors 'self' http://studio.localhost http://localhost:8085 http://localhost:8086 http://127.0.0.1:8085 http://127.0.0.1:8086\"}}"]
     restart: unless-stopped
     deploy:
       resources:
         limits:
           memory: 16G
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.jupyter.rule=Host(`jupyter.localhost`)"
+      - "traefik.http.routers.jupyter.entrypoints=web"
+      - "traefik.http.services.jupyter.loadbalancer.server.port=8888"
 
   dbt-workbench-db:
     image: postgres:13
@@ -108,6 +133,11 @@ services:
     networks:
       - studio_jupyter_net
     restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.workbench.rule=Host(`workbench.localhost`)"
+      - "traefik.http.routers.workbench.entrypoints=web"
+      - "traefik.http.services.workbench.loadbalancer.server.port=3000"
 
   dbt-code-server:
     image: codercom/code-server:latest
@@ -121,6 +151,11 @@ services:
     networks:
       - studio_jupyter_net
     restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.editor.rule=Host(`editor.localhost`)"
+      - "traefik.http.routers.editor.entrypoints=web"
+      - "traefik.http.services.editor.loadbalancer.server.port=8080"
 
 volumes:
   dbt_postgres_data:
