@@ -5521,6 +5521,17 @@ def db_tools_colored_svg():
     return Response(content=svg_content, media_type="image/svg+xml")
 
 
+@app.get("/api_endpoint_icon.png")
+def api_endpoint_icon():
+    import os
+    from fastapi.responses import FileResponse
+    icon_path = os.path.join(os.path.dirname(__file__), 'api_icon_transparent.png')
+    if os.path.exists(icon_path):
+        return FileResponse(icon_path)
+    from fastapi import Response
+    return Response(status_code=404)
+
+
 # --- DYNAMIC API ENDPOINTS ROUTER ---
 @app.get("/api/list-endpoints")
 def list_endpoints():
