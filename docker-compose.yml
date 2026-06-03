@@ -14,7 +14,7 @@ services:
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
     ports:
-      - "80:80"
+      - "8880:80"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
     networks:
@@ -36,7 +36,7 @@ services:
       - ./shared:/shared
     environment:
       - STORAGE_SECRET=duckdb_studio_secret_key_1337
-      - JUPYTER_URL=http://jupyter.localhost
+      - JUPYTER_URL=http://jupyter.localhost:8880
       - JUPYTER_TOKEN=analytics_secret
     networks:
       - studio_jupyter_net
@@ -63,7 +63,7 @@ services:
       - studio_jupyter_net
     ports:
       - "127.0.0.1:8889:8888"
-    command: ["jupyter", "lab", "--allow-root", "--ServerApp.token=analytics_secret", "--IdentityProvider.token=analytics_secret", "--ServerApp.tornado_settings={'headers': {'Content-Security-Policy': \"frame-ancestors 'self' http://studio.localhost http://localhost:8085 http://localhost:8086 http://127.0.0.1:8085 http://127.0.0.1:8086\"}}"]
+    command: ["jupyter", "lab", "--allow-root", "--ServerApp.token=analytics_secret", "--IdentityProvider.token=analytics_secret", "--ServerApp.tornado_settings={'headers': {'Content-Security-Policy': \"frame-ancestors 'self' http://studio.localhost:8880 http://localhost:8085 http://localhost:8086 http://127.0.0.1:8085 http://127.0.0.1:8086\"}}"]
     restart: unless-stopped
     deploy:
       resources:
