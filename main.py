@@ -1387,7 +1387,7 @@ def index():
             if last_tab not in ['Explorer', 'JupyterLab', 'dbt Workbench', 'Code Editor', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer', 'Scheduler', 'Settings']:
                 last_tab = 'Explorer'
                 
-            with ui.tabs(value=last_tab, on_change=lambda e: handle_tab_change_global(e.value)).props('inline-label dense shrink').classes('text-white') as tabs:
+            with ui.tabs(value=last_tab, on_change=lambda e: handle_tab_change_global(e.value)).props('inline-label dense align=right').classes('text-white flex-grow') as tabs:
                 studio_tab = ui.tab('Explorer', icon='query_stats').classes('text-sm uppercase font-semibold')
                 jupyter_tab = ui.tab('JupyterLab', icon='terminal').classes('text-sm uppercase font-semibold')
                 dbt_tab = ui.tab('dbt Workbench', icon='device_hub').classes('text-sm uppercase font-semibold')
@@ -1398,8 +1398,6 @@ def index():
                 api_docs_tab = ui.tab('API Docs & Explorer', icon='menu_book').classes('text-sm uppercase font-semibold')
                 scheduler_tab = ui.tab('Scheduler', icon='schedule').classes('text-sm uppercase font-semibold')
                 settings_tab = ui.tab('Settings', icon='settings').classes('text-sm uppercase font-semibold')
-                
-            ui.row().classes('w-32 justify-end') # balancer/actions placeholder
             
         studio_container = ui.row().classes('w-full no-wrap min-h-0 flex-grow').style('margin: 0; padding: 0;')
         jupyter_container = ui.column().classes('w-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
