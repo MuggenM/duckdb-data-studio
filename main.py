@@ -1564,20 +1564,61 @@ def index():
         
         # Build JupyterLab container content
         with jupyter_container:
-            jupyter_url, jupyter_token = get_jupyter_config()
-            clean_url = jupyter_url.rstrip('/')
-            iframe_src = f"{clean_url}/lab?token={jupyter_token}"
-            ui.element('iframe').props(f'src="{iframe_src}"').classes('w-full h-full border-none')
+            ui.element('iframe').props('id="jupyter-frame"').classes('w-full h-full border-none')
+            ui.run_javascript('''
+                (function() {
+                    var host = window.location.hostname;
+                    var port = window.location.port;
+                    var proto = window.location.protocol;
+                    var token = "analytics_secret";
+                    var targetUrl;
+                    if (host.endsWith('.localhost')) {
+                        var baseDomain = host.substring(host.indexOf('.'));
+                        targetUrl = proto + '//jupyter' + baseDomain + (port ? ':' + port : '') + '/lab?token=' + token;
+                    } else {
+                        targetUrl = proto + '//' + host + ':8889/lab?token=' + token;
+                    }
+                    document.getElementById("jupyter-frame").src = targetUrl;
+                })();
+            ''')
 
         # Build dbt Workbench container content
         with dbt_workbench_container:
             ui.element('iframe').props('id="dbt-workbench-frame"').classes('w-full h-full border-none')
-            ui.run_javascript('document.getElementById("dbt-workbench-frame").src = "http://workbench.localhost:8880";')
+            ui.run_javascript('''
+                (function() {
+                    var host = window.location.hostname;
+                    var port = window.location.port;
+                    var proto = window.location.protocol;
+                    var targetUrl;
+                    if (host.endsWith('.localhost')) {
+                        var baseDomain = host.substring(host.indexOf('.'));
+                        targetUrl = proto + '//workbench' + baseDomain + (port ? ':' + port : '');
+                    } else {
+                        targetUrl = proto + '//' + host + ':3000';
+                    }
+                    document.getElementById("dbt-workbench-frame").src = targetUrl;
+                })();
+            ''')
 
         # Build Code Editor container content
         with code_editor_container:
             ui.element('iframe').props('id="dbt-code-server-frame"').classes('w-full h-full border-none')
-            ui.run_javascript('document.getElementById("dbt-code-server-frame").src = "http://editor.localhost:8880";')
+            ui.run_javascript('''
+                (function() {
+                    var host = window.location.hostname;
+                    var port = window.location.port;
+                    var proto = window.location.protocol;
+                    var targetUrl;
+                    if (host.endsWith('.localhost')) {
+                        var baseDomain = host.substring(host.indexOf('.'));
+                        targetUrl = proto + '//editor' + baseDomain + (port ? ':' + port : '');
+                    } else {
+                        targetUrl = proto + '//' + host + ':8443';
+                    }
+                    document.getElementById("dbt-code-server-frame").src = targetUrl;
+                })();
+            ''')
 
         # Build API Creator Container Content
         with api_creator_container:
