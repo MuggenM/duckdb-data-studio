@@ -1573,12 +1573,12 @@ def index():
         # Build dbt Workbench container content
         with dbt_workbench_container:
             ui.element('iframe').props('id="dbt-workbench-frame"').classes('w-full h-full border-none')
-            ui.run_javascript('document.getElementById("dbt-workbench-frame").src = "http://" + window.location.hostname + ":3000";')
+            ui.run_javascript('document.getElementById("dbt-workbench-frame").src = "http://workbench.localhost";')
 
         # Build Code Editor container content
         with code_editor_container:
             ui.element('iframe').props('id="dbt-code-server-frame"').classes('w-full h-full border-none')
-            ui.run_javascript('document.getElementById("dbt-code-server-frame").src = "http://" + window.location.hostname + ":8443";')
+            ui.run_javascript('document.getElementById("dbt-code-server-frame").src = "http://editor.localhost";')
 
         # Build API Creator Container Content
         with api_creator_container:
