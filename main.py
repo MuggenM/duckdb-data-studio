@@ -1396,7 +1396,7 @@ def index():
                 db_tools_tab = ui.tab(name='Database Tools', label='', icon='construction').tooltip('Database Tools & Seeding')
                 api_creator_tab = ui.tab(name='API Endpoints', label='', icon='api').tooltip('API Endpoints Creator')
                 api_docs_tab = ui.tab(name='API Docs & Explorer', label='', icon='img:/swagger_green.svg').tooltip('API Docs & Swagger UI')
-                scheduler_tab = ui.tab(name='Scheduler', label='', icon='schedule').tooltip('Background Query Scheduler')
+                scheduler_tab = ui.tab(name='Scheduler', label='', icon='img:/scheduler_colored.svg').tooltip('Background Query Scheduler')
                 settings_tab = ui.tab(name='Settings', label='', icon='img:/settings_colored.svg').tooltip('Studio Settings')
             
         studio_container = ui.row().classes('w-full no-wrap min-h-0 flex-grow').style('margin: 0; padding: 0;')
@@ -5456,6 +5456,13 @@ def extensions_teal_svg():
 def settings_colored_svg():
     from fastapi import Response
     svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="#818CF8" d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>'''
+    return Response(content=svg_content, media_type="image/svg+xml")
+
+
+@app.get("/scheduler_colored.svg")
+def scheduler_colored_svg():
+    from fastapi import Response
+    svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="#F43F5E" d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>'''
     return Response(content=svg_content, media_type="image/svg+xml")
 
 
