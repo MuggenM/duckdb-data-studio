@@ -1564,7 +1564,7 @@ def index():
         
         # Build JupyterLab container content
         with jupyter_container:
-            ui.element('iframe').props('id="jupyter-frame"').classes('w-full h-full border-none')
+            ui.element('iframe').props('id="jupyter-frame" sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads allow-modals"').classes('w-full h-full border-none')
             ui.run_javascript('''
                 (function() {
                     var host = window.location.hostname;
@@ -1584,7 +1584,7 @@ def index():
 
         # Build dbt Workbench container content
         with dbt_workbench_container:
-            ui.element('iframe').props('id="dbt-workbench-frame"').classes('w-full h-full border-none')
+            ui.element('iframe').props('id="dbt-workbench-frame" sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads allow-modals"').classes('w-full h-full border-none')
             ui.run_javascript('''
                 (function() {
                     var host = window.location.hostname;
@@ -1603,7 +1603,7 @@ def index():
 
         # Build Code Editor container content
         with code_editor_container:
-            ui.element('iframe').props('id="dbt-code-server-frame"').classes('w-full h-full border-none')
+            ui.element('iframe').props('id="dbt-code-server-frame" sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads allow-modals"').classes('w-full h-full border-none')
             ui.run_javascript('''
                 (function() {
                     var host = window.location.hostname;
