@@ -838,6 +838,7 @@ DB_NAME = get_main_db_path()
 @ui.page('/')
 def index():
     global DB_NAME
+    ui.query('.nicegui-content').classes('p-0 gap-0')
     # Scoping variables for sidebar explorers
     schema_filter_input = None
     snippet_category_toggle = None
