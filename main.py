@@ -1394,7 +1394,7 @@ def index():
                 editor_tab = ui.tab(name='Code Editor', label='', icon='img:/vscode_blue.svg').tooltip('Code Editor (VS Code)')
                 extensions_tab = ui.tab(name='Extensions', label='', icon='img:/extensions_teal.svg').tooltip('Extensions Manager')
                 db_tools_tab = ui.tab(name='Database Tools', label='', icon='construction').tooltip('Database Tools & Seeding')
-                api_creator_tab = ui.tab(name='API Endpoints', label='', icon='img:https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Ftse1.mm.bing.net%2Fth%2Fid%2FOIP.9RH4j9q6oFE9FiqJUvIFDQHaHa%3Fpid%3DApi&f=1&ipt=cdb38a72b68d1b627a3ba1485c07a6d31e2cba0aae6e008faedcd84cc8f2da81&ipo=images').tooltip('API Endpoints Creator')
+                api_creator_tab = ui.tab(name='API Endpoints', label='', icon='img:/api_endpoint_icon.png').tooltip('API Endpoints Creator')
                 api_docs_tab = ui.tab(name='API Docs & Explorer', label='', icon='img:/swagger_green.svg').tooltip('API Docs & Swagger UI')
                 scheduler_tab = ui.tab(name='Scheduler', label='', icon='img:/scheduler_colored.svg').tooltip('Background Query Scheduler')
                 settings_tab = ui.tab(name='Settings', label='', icon='img:/settings_colored.svg').tooltip('Studio Settings')
@@ -5464,6 +5464,14 @@ def scheduler_colored_svg():
     from fastapi import Response
     svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="#F43F5E" d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm.5-13H11v6l5.25 3.15.75-1.23-4.5-2.67z"/></svg>'''
     return Response(content=svg_content, media_type="image/svg+xml")
+
+
+@app.get("/api_endpoint_icon.png")
+def api_endpoint_icon():
+    import os
+    from fastapi.responses import FileResponse
+    icon_path = os.path.join(os.path.dirname(__file__), 'api_icon_transparent.png')
+    return FileResponse(icon_path)
 
 
 # --- DYNAMIC API ENDPOINTS ROUTER ---
