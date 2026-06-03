@@ -1392,7 +1392,7 @@ def index():
                 jupyter_tab = ui.tab(name='JupyterLab', label='', icon='img:/jupyter_orange.svg').tooltip('JupyterLab Notebooks')
                 dbt_tab = ui.tab(name='dbt Workbench', label='', icon='img:/dbt_orange.svg').tooltip('dbt Workbench')
                 editor_tab = ui.tab(name='Code Editor', label='', icon='img:/vscode_blue.svg').tooltip('Code Editor (VS Code)')
-                extensions_tab = ui.tab(name='Extensions', label='', icon='extension').tooltip('Extensions Manager')
+                extensions_tab = ui.tab(name='Extensions', label='', icon='img:/extensions_purple.svg').tooltip('Extensions Manager')
                 db_tools_tab = ui.tab(name='Database Tools', label='', icon='construction').tooltip('Database Tools & Seeding')
                 api_creator_tab = ui.tab(name='API Endpoints', label='', icon='api').tooltip('API Endpoints Creator')
                 api_docs_tab = ui.tab(name='API Docs & Explorer', label='', icon='img:/swagger_green.svg').tooltip('API Docs & Swagger UI')
@@ -5442,6 +5442,13 @@ def swagger_green_svg():
 def explorer_colored_svg():
     from fastapi import Response
     svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><rect x="2" y="3" width="20" height="18" rx="2" fill="none" stroke="#38BDF8" stroke-width="2" /><path d="M2 8 h20" stroke="#38BDF8" stroke-width="2" /><line x1="2" y1="13" x2="22" y2="13" stroke="#38BDF8" stroke-width="1.2" opacity="0.6" /><line x1="2" y1="17" x2="22" y2="17" stroke="#38BDF8" stroke-width="1.2" opacity="0.6" /><line x1="8" y1="3" x2="8" y2="21" stroke="#38BDF8" stroke-width="1.2" opacity="0.6" /><line x1="15" y1="3" x2="15" y2="21" stroke="#38BDF8" stroke-width="1.2" opacity="0.6" /><path d="M4 17 l5 -6 l5 4 l6 -9" fill="none" stroke="#F59E0B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" /><circle cx="4" cy="17" r="2.2" fill="#F59E0B" /><circle cx="9" cy="11" r="2.2" fill="#F59E0B" /><circle cx="14" cy="15" r="2.2" fill="#F59E0B" /><circle cx="20" cy="6" r="2.5" fill="#F59E0B" /></svg>'''
+    return Response(content=svg_content, media_type="image/svg+xml")
+
+
+@app.get("/extensions_purple.svg")
+def extensions_purple_svg():
+    from fastapi import Response
+    svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="#A855F7" d="M20.5 11H19V7c0-1.1-.9-2-2-2h-4V3.5a2.5 2.5 0 0 0-5 0V5H4c-1.1 0-1.99.9-1.99 2v3.8h1.5c1.49 0 2.7 1.21 2.7 2.7s-1.21 2.7-2.7 2.7H2V20c0 1.1.9 2 2 2h3.8v-1.5c0-1.49 1.21-2.7 2.7-2.7s2.7 1.21 2.7 2.7V22H17c1.1 0 2-.9 2-2v-4h1.5c1.49 0 2.7-1.21 2.7-2.7s-1.21-2.7-2.7-2.7z"/></svg>'''
     return Response(content=svg_content, media_type="image/svg+xml")
 
 
