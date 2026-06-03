@@ -1394,7 +1394,7 @@ def index():
                 editor_tab = ui.tab(name='Code Editor', label='', icon='img:/vscode_blue.svg').tooltip('Code Editor (VS Code)')
                 extensions_tab = ui.tab(name='Extensions', label='', icon='img:/extensions_teal.svg').tooltip('Extensions Manager')
                 db_tools_tab = ui.tab(name='Database Tools', label='', icon='construction').tooltip('Database Tools & Seeding')
-                api_creator_tab = ui.tab(name='API Endpoints', label='', icon='img:https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Fthf.bing.com%2Fth%2Fid%2FOIP.uMWXjAM6NuRkaUzI7czA-wHaHa%3Fcb%3Dthfc1falcon%26pid%3DApi&f=1&ipt=2ddd6e2b83184bbd618afd4cbe9dff16e9194fb6e995bd98cedfe84158200cbd&ipo=images').tooltip('API Endpoints Creator')
+                api_creator_tab = ui.tab(name='API Endpoints', label='', icon='img:https://external-content.duckduckgo.com/iu/?u=https%3A%2F%2Fthf.bing.com%2Fth%2Fid%2FOIP.XQICqquCU-kHoeHHSubkrwHaEZ%3Fcb%3Dthfc1falcon%26pid%3DApi&f=1&ipt=5eeaed7b34b840ebbb4777491bb806cb3f007bbaf88bd8967abafe5c9ff69a6d&ipo=images').tooltip('API Endpoints Creator')
                 api_docs_tab = ui.tab(name='API Docs & Explorer', label='', icon='img:/swagger_green.svg').tooltip('API Docs & Swagger UI')
                 scheduler_tab = ui.tab(name='Scheduler', label='', icon='img:/scheduler_colored.svg').tooltip('Background Query Scheduler')
                 settings_tab = ui.tab(name='Settings', label='', icon='img:/settings_colored.svg').tooltip('Studio Settings')
