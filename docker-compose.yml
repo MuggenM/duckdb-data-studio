@@ -16,7 +16,7 @@ services:
     ports:
       - "8880:80"
     volumes:
-      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "/run/user/1000/docker.sock:/var/run/docker.sock:ro"
     networks:
       - studio_jupyter_net
     restart: unless-stopped
