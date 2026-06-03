@@ -1394,7 +1394,7 @@ def index():
                 editor_tab = ui.tab(name='Code Editor', label='', icon='img:/vscode_blue.svg').tooltip('Code Editor (VS Code)')
                 extensions_tab = ui.tab(name='Extensions', label='', icon='img:/extensions_teal.svg').tooltip('Extensions Manager')
                 db_tools_tab = ui.tab(name='Database Tools', label='', icon='construction').tooltip('Database Tools & Seeding')
-                api_creator_tab = ui.tab(name='API Endpoints', label='', icon='img:/api_endpoint_icon.png').tooltip('API Endpoints Creator')
+                api_creator_tab = ui.tab(name='API Endpoints', label='', icon='img:/api_endpoint_colored.svg').tooltip('API Endpoints Creator')
                 api_docs_tab = ui.tab(name='API Docs & Explorer', label='', icon='img:/swagger_green.svg').tooltip('API Docs & Swagger UI')
                 scheduler_tab = ui.tab(name='Scheduler', label='', icon='img:/scheduler_colored.svg').tooltip('Background Query Scheduler')
                 settings_tab = ui.tab(name='Settings', label='', icon='img:/settings_colored.svg').tooltip('Studio Settings')
@@ -5466,12 +5466,11 @@ def scheduler_colored_svg():
     return Response(content=svg_content, media_type="image/svg+xml")
 
 
-@app.get("/api_endpoint_icon.png")
-def api_endpoint_icon():
-    import os
-    from fastapi.responses import FileResponse
-    icon_path = os.path.join(os.path.dirname(__file__), 'api_icon_transparent.png')
-    return FileResponse(icon_path)
+@app.get("/api_endpoint_colored.svg")
+def api_endpoint_colored_svg():
+    from fastapi import Response
+    svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24"><path fill="#06B6D4" d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4zm0 2a2 2 0 0 1 2 2 2 2 0 0 1-2 2 2 2 0 0 1-2-2 2 2 0 0 1 2-2z"/><path fill="#06B6D4" d="M19.4 13c0-.3.1-.6.1-.9s0-.6-.1-.9l2.1-1.6c.2-.2.2-.5.1-.7l-2-3.5c-.1-.2-.4-.3-.6-.2l-2.5 1c-.5-.4-1.1-.7-1.7-.9L14 3.7c0-.3-.3-.5-.5-.5h-4c-.3 0-.5.2-.5.5L8.7 6.2c-.6.2-1.2.6-1.7.9l-2.5-1c-.2-.1-.5 0-.6.2l-2 3.5c-.1.2-.1.5.1.7L4.1 11c0 .3-.1.6-.1.9s0 .6.1.9l-2.1 1.6c-.2.2-.2.5-.1.7l2 3.5c.1.2.4.3.6.2l2.5-1c.5.4 1.1.7 1.7.9l.3 2.5c0 .3.3.5.5.5h4c.3 0 .5-.2.5-.5l.3-2.5c.6-.2 1.2-.6 1.7-.9l2.5 1c.2.1.5 0 .6-.2l2-3.5c.1-.2.1-.5-.1-.7L19.4 13zm-7.4 3c-2.2 0-4-1.8-4-4s1.8-4 4-4 4 1.8 4 4-1.8 4-4 4z"/><path fill="#10B981" d="M2 12h5m-5-3v6M4 9h2"/><path fill="#6366F1" d="M22 12h-5m5-3v6m-2-6h-2"/></svg>'''
+    return Response(content=svg_content, media_type="image/svg+xml")
 
 
 # --- DYNAMIC API ENDPOINTS ROUTER ---
