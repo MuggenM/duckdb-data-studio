@@ -1387,7 +1387,7 @@ def index():
             if last_tab not in ['Explorer', 'JupyterLab', 'dbt Workbench', 'Code Editor', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer', 'Scheduler', 'Settings']:
                 last_tab = 'Explorer'
                 
-            with ui.tabs(value=last_tab, on_change=lambda e: handle_tab_change_global(e.value)).props('inline-label dense align=right arrows outside-arrows').classes('text-white flex-grow') as tabs:
+            with ui.tabs(value=last_tab, on_change=lambda e: handle_tab_change_global(e.value)).props('inline-label dense align=right arrows outside-arrows').classes('text-white flex-grow min-w-0') as tabs:
                 studio_tab = ui.tab('Explorer', icon='query_stats').classes('text-xs uppercase font-semibold')
                 jupyter_tab = ui.tab('JupyterLab', icon='terminal').classes('text-xs uppercase font-semibold')
                 dbt_tab = ui.tab('dbt Workbench', icon='device_hub').classes('text-xs uppercase font-semibold')
