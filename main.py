@@ -1050,7 +1050,7 @@ def index():
             
             try:
                 col_rows = explorer.conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
-                cols = [r[1] for r in col_rows]
+                cols = [(r[1],) for r in col_rows]
                 sql_editor.value = format_column_projection_query(cols, table_name)
             except Exception:
                 sql_editor.value = f"SELECT * FROM {table_name} LIMIT 100;"
@@ -1091,7 +1091,7 @@ def index():
             
             try:
                 col_rows = explorer.conn.execute(f"PRAGMA table_info('{tbl_name}')").fetchall()
-                cols = [r[1] for r in col_rows]
+                cols = [(r[1],) for r in col_rows]
                 sql_editor.value = format_column_projection_query(cols, tbl_name)
             except Exception:
                 sql_editor.value = f"SELECT * FROM {tbl_name} LIMIT 100;"
@@ -1142,7 +1142,7 @@ def index():
             
             try:
                 col_rows = explorer.conn.execute(f"PRAGMA table_info('{tbl_name}')").fetchall()
-                cols = [r[1] for r in col_rows]
+                cols = [(r[1],) for r in col_rows]
                 sql_editor.value = format_column_projection_query(cols, tbl_name)
             except Exception:
                 sql_editor.value = f"SELECT * FROM {tbl_name} LIMIT 100;"
