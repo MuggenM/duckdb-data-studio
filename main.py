@@ -1056,6 +1056,7 @@ def index():
                 sql_editor.value = f"SELECT * FROM {table_name} LIMIT 100;"
             refresh_schema_tree()
             tabs.value = 'Explorer'
+            run_editor_query()
         except Exception as ex:
             ui.notify(f"Failed to import local file: {ex}", type='negative', duration=7)
 
@@ -1097,6 +1098,7 @@ def index():
                 sql_editor.value = f"SELECT * FROM {tbl_name} LIMIT 100;"
             refresh_schema_tree()
             tabs.value = 'Explorer'
+            run_editor_query()
         except Exception as ex:
             ui.notify(f"Failed to import remote dataset: {ex}", type='negative', duration=7)
 
@@ -1148,6 +1150,7 @@ def index():
                 sql_editor.value = f"SELECT * FROM {tbl_name} LIMIT 100;"
             refresh_schema_tree()
             tabs.value = 'Explorer'
+            run_editor_query()
         except Exception as ex:
             ui.notify(f"Failed to import S3 dataset: {ex}", type='negative', duration=7)
 
