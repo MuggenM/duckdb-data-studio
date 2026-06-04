@@ -3688,9 +3688,9 @@ def index():
                             ui.label('No performance data logged yet.').classes('text-xs text-slate-400 font-medium mt-1')
                             ui.label('Hit your exposed API endpoints to see live stats populate here in real-time.').classes('text-[10px] text-slate-500')
                     else:
-                        with ui.element('div').classes('w-full overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-950'):
+                        with ui.element('div').classes('w-full max-h-80 overflow-auto border border-slate-100 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-950'):
                             with ui.element('table').classes('w-full text-left border-collapse text-xs'):
-                                with ui.element('thead').classes('bg-slate-100 dark:bg-slate-900 text-slate-500 font-bold uppercase tracking-wider text-[10px]'):
+                                with ui.element('thead').classes('sticky top-0 bg-slate-100 dark:bg-slate-900 text-slate-500 font-bold uppercase tracking-wider text-[10px] z-10'):
                                     with ui.element('tr'):
                                         ui.element('th').classes('p-3').text('Endpoint Route')
                                         ui.element('th').classes('p-3 text-center').text('Invocations')
