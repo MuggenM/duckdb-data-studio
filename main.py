@@ -4582,6 +4582,97 @@ def index():
         ui.run_javascript(f"navigator.clipboard.writeText({repr(text)})")
         ui.notify('Plan copied to clipboard!', type='success')
 
+    def json_plan_to_mermaid(json_str: str) -> str:
+        """Parse DuckDB's FORMAT JSON explain structure into a styled Mermaid TD flowchart."""
+        import json
+        try:
+            plan = json.loads(json_str)
+            nodes = []
+            connections = []
+            node_counter = [0]
+            
+            def traverse(node, parent_id=None):
+                node_counter[0] += 1
+                node_id = f"node{node_counter[0]}"
+                
+                name = node.get("name", node.get("operator_name", "Unknown"))
+                extra = node.get("extra_info", {})
+                
+                cardinality = extra.get("Estimated Cardinality", extra.get("cardinality", ""))
+                timing = node.get("operator_timing", None)
+                
+                label_parts = [f"<b>{name}</b>"]
+                if timing is not None:
+                    if timing >= 1.0:
+                        label_parts.append(f"Time: {timing:.2f}s")
+                    elif timing >= 0.001:
+                        label_parts.append(f"Time: {timing*1000:.2f}ms")
+                    else:
+                        label_parts.append(f"Time: {timing*1000000:.1f}µs")
+                
+                if cardinality:
+                    label_parts.append(f"Est: {cardinality} rows")
+                
+                if name == "FILTER" and "Filter" in extra:
+                    label_parts.append(f"<small>Cond: {extra['Filter']}</small>")
+                elif name == "HASH_JOIN" and "Join Condition" in extra:
+                    label_parts.append(f"<small>On: {extra['Join Condition']}</small>")
+                elif "Scan" in name or "SCAN" in name:
+                    table = extra.get("Table", extra.get("table", ""))
+                    if table:
+                        label_parts.append(f"<small>Table: {table}</small>")
+                        
+                label = "<br/>".join(label_parts)
+                label = label.replace('"', "'").replace('[', '(').replace(']', ')')
+                
+                cls = "otherClass"
+                name_lower = name.lower()
+                if "scan" in name_lower:
+                    cls = "scanClass"
+                elif "join" in name_lower:
+                    cls = "joinClass"
+                elif "filter" in name_lower:
+                    cls = "filterClass"
+                elif "sort" in name_lower or "order" in name_lower:
+                    cls = "sortClass"
+                elif "projection" in name_lower:
+                    cls = "projClass"
+                    
+                nodes.append(f'{node_id}["{label}"]::: {cls}')
+                
+                if parent_id:
+                    connections.append(f"{parent_id} --> {node_id}")
+                    
+                for child in node.get("children", []):
+                    traverse(child, node_id)
+                    
+            if isinstance(plan, list):
+                traverse(plan[0])
+            elif isinstance(plan, dict):
+                children = plan.get("children", [])
+                if children:
+                    traverse(children[0])
+                else:
+                    traverse(plan)
+                    
+            mermaid_code = "graph TD\n"
+            mermaid_code += "  classDef scanClass fill:#0284c7,stroke:#bae6fd,stroke-width:1.5px,color:#fff;\n"
+            mermaid_code += "  classDef joinClass fill:#ea580c,stroke:#ffedd5,stroke-width:1.5px,color:#fff;\n"
+            mermaid_code += "  classDef filterClass fill:#dc2626,stroke:#fee2e2,stroke-width:1.5px,color:#fff;\n"
+            mermaid_code += "  classDef sortClass fill:#7c3aed,stroke:#f3e8ff,stroke-width:1.5px,color:#fff;\n"
+            mermaid_code += "  classDef projClass fill:#16a34a,stroke:#dcfce7,stroke-width:1.5px,color:#fff;\n"
+            mermaid_code += "  classDef otherClass fill:#4b5563,stroke:#e5e7eb,stroke-width:1.5px,color:#fff;\n"
+            
+            for n in nodes:
+                mermaid_code += f"  {n}\n"
+            for c in connections:
+                mermaid_code += f"  {c}\n"
+                
+            return mermaid_code
+        except Exception as ex:
+            print(f"Error parsing JSON explain: {ex}", flush=True)
+            return ""
+
     def run_profiler_query():
         """Execute the EXPLAIN or EXPLAIN ANALYZE statement in DuckDB and parse/render the ASCII visual plan tree."""
         sql = sql_editor.value.strip()
@@ -4606,6 +4697,17 @@ def index():
                 
         status_label.text = "Profiling query..."
         
+        # 1. First attempt to capture dynamic JSON explain schema for structural flowchart rendering
+        json_plan = None
+        if not sql_lower.startswith('explain'):
+            try:
+                json_sql = f"EXPLAIN (ANALYZE, FORMAT JSON) {sql_clean};" if is_analyze else f"EXPLAIN (FORMAT JSON) {sql_clean};"
+                json_res = explorer.conn.execute(json_sql).fetchall()
+                if json_res and len(json_res) > 0:
+                    json_plan = json_res[0][1]
+            except Exception as json_err:
+                print(f"DEBUG: JSON explain execution failed (falling back to standard text plan): {json_err}", flush=True)
+
         try:
             res = explorer.conn.execute(explain_sql).fetchall()
         except Exception as e:
@@ -4693,9 +4795,21 @@ def index():
                 ui.button('Copy Plan', icon='content_copy', color='primary',
                           on_click=lambda: copy_plan_to_clipboard(explain_value)).props('flat dense').classes('text-xs')
                           
-            # Monospace visual tree plan using a bulletproof preformatted ui.label to avoid Prism.js theme conflicts
-            # Rendered at full height with flex-none to prevent Quasar flex squishing, allowing clean single-scrollbar scrolling in the parent panel
-            ui.label(explain_value).classes('w-full font-mono text-xs bg-slate-900 text-emerald-400 p-4 rounded-lg border border-slate-800 shadow-inner whitespace-pre overflow-x-auto flex-none').style('white-space: pre; line-height: 1.4;')
+            # Interactive Graph Tab selection if JSON format resolved successfully
+            mermaid_code = json_plan_to_mermaid(json_plan) if json_plan else None
+            if mermaid_code:
+                with ui.tabs().classes('w-full') as plan_tabs:
+                    diag_tab = ui.tab('Interactive Flow', icon='schema')
+                    text_tab = ui.tab('Raw Text Plan', icon='notes')
+                with ui.tab_panels(plan_tabs, value=diag_tab).classes('w-full bg-transparent flex-none'):
+                    with ui.tab_panel(diag_tab).classes('p-0 pt-2 flex-col items-center'):
+                        ui.mermaid(mermaid_code).classes('w-full overflow-auto bg-slate-900 border border-slate-800 rounded-lg p-4')
+                    with ui.tab_panel(text_tab).classes('p-0 pt-2'):
+                        ui.label(explain_value).classes('w-full font-mono text-xs bg-slate-900 text-emerald-400 p-4 rounded-lg border border-slate-800 shadow-inner whitespace-pre overflow-x-auto').style('white-space: pre; line-height: 1.4;')
+            else:
+                # Monospace visual tree plan using a bulletproof preformatted ui.label to avoid Prism.js theme conflicts
+                # Rendered at full height with flex-none to prevent Quasar flex squishing, allowing clean single-scrollbar scrolling in the parent panel
+                ui.label(explain_value).classes('w-full font-mono text-xs bg-slate-900 text-emerald-400 p-4 rounded-lg border border-slate-800 shadow-inner whitespace-pre overflow-x-auto flex-none').style('white-space: pre; line-height: 1.4;')
             
         ui.notify("Successfully profiled execution plan!", type='success')
 
