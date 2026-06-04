@@ -1048,7 +1048,12 @@ def index():
             explorer.conn.execute(sql)
             ui.notify(f"Successfully uploaded and imported local file to table '{table_name}'", type='success')
             
-            sql_editor.value = f"SELECT * FROM {table_name} LIMIT 100;"
+            try:
+                col_rows = explorer.conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+                cols = [r[1] for r in col_rows]
+                sql_editor.value = format_column_projection_query(cols, table_name)
+            except Exception:
+                sql_editor.value = f"SELECT * FROM {table_name} LIMIT 100;"
             refresh_schema_tree()
             tabs.value = 'Explorer'
         except Exception as ex:
@@ -1084,7 +1089,12 @@ def index():
             explorer.conn.execute(sql)
             ui.notify(f"Successfully imported dataset to table '{tbl_name}'", type='success')
             
-            sql_editor.value = f"SELECT * FROM {tbl_name} LIMIT 100;"
+            try:
+                col_rows = explorer.conn.execute(f"PRAGMA table_info('{tbl_name}')").fetchall()
+                cols = [r[1] for r in col_rows]
+                sql_editor.value = format_column_projection_query(cols, tbl_name)
+            except Exception:
+                sql_editor.value = f"SELECT * FROM {tbl_name} LIMIT 100;"
             refresh_schema_tree()
             tabs.value = 'Explorer'
         except Exception as ex:
@@ -1130,7 +1140,12 @@ def index():
             explorer.conn.execute(sql)
             ui.notify(f"Successfully imported S3 dataset to table '{tbl_name}'", type='success')
             
-            sql_editor.value = f"SELECT * FROM {tbl_name} LIMIT 100;"
+            try:
+                col_rows = explorer.conn.execute(f"PRAGMA table_info('{tbl_name}')").fetchall()
+                cols = [r[1] for r in col_rows]
+                sql_editor.value = format_column_projection_query(cols, tbl_name)
+            except Exception:
+                sql_editor.value = f"SELECT * FROM {tbl_name} LIMIT 100;"
             refresh_schema_tree()
             tabs.value = 'Explorer'
         except Exception as ex:
