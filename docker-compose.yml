@@ -36,6 +36,8 @@ services:
       - ./ducklake:/ducklake
       - ./databases:/databases
       - ./shared:/shared
+      - ./dbt_project:/app/dbt_project
+      - ./dbt_data:/app/dbt_data
     environment:
       - STORAGE_SECRET=duckdb_studio_secret_key_1337
       - JUPYTER_URL=http://jupyter.localhost:8880
