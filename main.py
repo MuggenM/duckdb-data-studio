@@ -1719,7 +1719,7 @@ def index():
         with ui.row().classes('w-full items-center justify-between no-wrap bg-slate-900 dark:bg-slate-950 text-white px-4 border-b border-slate-700 dark:border-slate-800').style('height: 48px;'):
             with ui.row().classes('items-center gap-2 no-wrap flex-none'):
                 ui.icon('database', color='primary').classes('text-2xl')
-                ui.label('DuckDB Studio').classes('text-lg font-bold text-white')
+                ui.label('DuckDB Data Studio').classes('text-lg font-bold text-white')
             
             # Retrieve last selected tab or default to 'Explorer'
             try:
@@ -1739,6 +1739,8 @@ def index():
                 api_creator_tab = ui.tab(name='API Endpoints', label='', icon='img:/api_endpoint_colored.svg').tooltip('API Endpoints Creator')
                 api_docs_tab = ui.tab(name='API Docs & Explorer', label='', icon='img:/swagger_green.svg').tooltip('API Docs & Swagger UI')
                 scheduler_tab = ui.tab(name='Scheduler', label='', icon='img:/scheduler_colored.svg').tooltip('Background Query Scheduler')
+                garage_tab = ui.tab(name='Garage S3', label='', icon='img:/garage_orange.svg').tooltip('Garage S3 Console')
+                telemetry_tab = ui.tab(name='Telemetry', label='', icon='img:/telemetry_colored.svg').tooltip('Telemetry & Observability')
                 settings_tab = ui.tab(name='Settings', label='', icon='img:/settings_colored.svg').tooltip('Studio Settings')
             
         studio_container = ui.row().classes('w-full no-wrap min-h-0 flex-grow').style('margin: 0; padding: 0;')
@@ -1750,6 +1752,8 @@ def index():
         api_creator_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         api_docs_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         scheduler_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
+        garage_container = ui.column().classes('w-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
+        telemetry_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         settings_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         
         # Build Database Tools Container Content
@@ -1761,271 +1765,160 @@ def index():
                     ui.label('Database Utilities & Tools').classes('text-2xl font-black text-slate-800 dark:text-white')
                 ui.label('Perform high-performance local data backups, restore catalog structures, and re-seed the core database tables with customizable record densities.').classes('text-sm text-slate-500 dark:text-slate-400')
             
-            # Sub Cards Layout (Grid / Side-by-Side Cards)
-            with ui.grid(columns=(1, 2)).classes('w-full gap-6 flex-none'):
-                # CARD 1: EXPORT & BACKUP
-                with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
-                    with ui.row().classes('items-center gap-2'):
-                        ui.icon('backup', color='primary').classes('text-2xl')
-                        ui.label('Visual Database Backup / Export').classes('text-lg font-bold text-slate-800 dark:text-white')
-                    ui.separator().classes('opacity-50')
-                    ui.label('Export all catalog tables, structures, and schemas from the active database to a local directory in highly compressed Parquet format or standard CSV files.').classes('text-xs text-slate-400 leading-relaxed')
-                    
-                    # Controls
-                    with ui.row().classes('w-full gap-3 flex-nowrap items-center'):
-                        export_db_select = ui.select(
-                            options={},
-                            value=None,
-                            label='Select Database'
-                        ).props('dense outlined').style('width: 180px;')
-                        
-                        export_format_select = ui.select(
-                            options=['PARQUET', 'CSV', 'SQL'],
-                            value='PARQUET',
-                            label='Export Format'
-                        ).props('dense outlined').style('width: 140px;')
-                        
-                        export_path_input = ui.input(placeholder='Select or type output directory path...').props('dense outlined').classes('flex-grow')
-                        
-                        async def select_export_dir():
-                            start_dir = '/shared' if os.path.exists('/shared') else os.path.abspath('.')
-                            picker = local_file_picker(start_dir, upper_limit=None, multiple=False)
-                            res = await picker
-                            if res:
-                                path = res[0]
-                                export_path_input.set_value(os.path.dirname(path) if os.path.isfile(path) else path)
-                                
-                        ui.button(icon='folder_open', on_click=select_export_dir).props('dense outline').classes('p-2')
-                    
-                    ui.button('Run Backup / Export', icon='play_arrow', color='primary',
-                              on_click=lambda: trigger_db_export(export_path_input.value, export_format_select.value, export_db_select.value)).props('elevated dense').classes('px-4 self-end mt-2')
-
-                # CARD 2: IMPORT & RESTORE
-                with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
-                    with ui.row().classes('items-center gap-2'):
-                        ui.icon('restore', color='secondary').classes('text-2xl')
-                        ui.label('Database Schema Import / Restore').classes('text-lg font-bold text-slate-800 dark:text-white')
-                    ui.separator().classes('opacity-50')
-                    ui.label('Re-create catalog tables and load bulk data from a previously exported directory containing schema.sql and Parquet/CSV data formats.').classes('text-xs text-slate-400 leading-relaxed')
-                    
-                    # Controls
-                    with ui.row().classes('w-full gap-3 flex-nowrap items-center'):
-                        import_path_input = ui.input(placeholder='Select or type backup directory path...').props('dense outlined').classes('flex-grow')
-                        
-                        async def select_import_dir():
-                            start_dir = '/shared' if os.path.exists('/shared') else os.path.abspath('.')
-                            picker = local_file_picker(start_dir, upper_limit=None, multiple=False)
-                            res = await picker
-                            if res:
-                                path = res[0]
-                                import_path_input.set_value(os.path.dirname(path) if os.path.isfile(path) else path)
-                                
-                        ui.button(icon='folder_open', on_click=select_import_dir).props('dense outline').classes('p-2')
-                    
-                    ui.button('Run Import / Restore', icon='play_arrow', color='secondary',
-                              on_click=lambda: trigger_db_import(import_path_input.value)).props('elevated dense').classes('px-4 self-end mt-2')
-
-            # CARD 3: CUSTOMIZABLE SEEDING ENGINE
-            with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4 flex-none'):
-                with ui.row().classes('items-center gap-2'):
-                    ui.icon('science', color='warning').classes('text-2xl')
-                    ui.label('Synthetic Seeding Engine').classes('text-lg font-bold text-slate-800 dark:text-white')
-                ui.separator().classes('opacity-50')
+            # Sub Tabs for database tools
+            with ui.tabs().classes('w-full border-b flex-none') as db_tools_subtabs:
+                backup_restore_tab = ui.tab('Backup & Restore', icon='settings_backup_restore')
+                ingestion_seeding_tab = ui.tab('Ingestion & Seeding', icon='science')
                 
-                with ui.row().classes('w-full items-center justify-between gap-6 flex-wrap'):
-                    with ui.column().classes('gap-2'):
-                        ui.label('Generate structured sales records, loyalty customer profiles, and stock categorisation lists using Fake Analytics Seeder.').classes('text-xs text-slate-400 leading-relaxed max-w-2xl')
-                        
-                        # Metrics breakdown
-                        with ui.row().classes('gap-4 mt-2'):
-                            with ui.row().classes('items-center gap-1.5'):
-                                ui.label('Transactions:').classes('text-[10px] text-slate-400 font-semibold uppercase')
-                                trans_badge = ui.badge('Checking...', color='indigo').classes('text-[10px]')
-                            with ui.row().classes('items-center gap-1.5'):
-                                ui.label('Customers:').classes('text-[10px] text-slate-400 font-semibold uppercase')
-                                cust_badge = ui.badge('Checking...', color='indigo').classes('text-[10px]')
-                            with ui.row().classes('items-center gap-1.5'):
-                                ui.label('Inventory:').classes('text-[10px] text-slate-400 font-semibold uppercase')
-                                invent_badge = ui.badge('Checking...', color='indigo').classes('text-[10px]')
-                    
-                    # Controls
-                    with ui.row().classes('items-center gap-3'):
-                        density_select = ui.select(
-                            options={
-                                '1000': '1,000 Rows (Light)',
-                                '6500': '6,500 Rows (Standard)',
-                                '15000': '15,000 Rows (Dense)'
-                            },
-                            value='6500',
-                            label='Mock Data Density'
-                        ).props('dense outlined').style('width: 220px;')
-                        
-                        ui.button('Reset & Custom Seed', icon='restart_alt', color='warning',
-                                  on_click=lambda: trigger_custom_seed(density_select.value)).props('elevated dense').classes('px-4 py-2')
-            
-            # CARD 4: DYNAMIC FILE IMPORT WIZARD
-            with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4 flex-none'):
-                with ui.row().classes('items-center gap-2'):
-                    ui.icon('cloud_upload', color='primary').classes('text-2xl')
-                    ui.label('Dynamic File Import Wizard').classes('text-lg font-bold text-slate-800 dark:text-white')
-                ui.separator().classes('opacity-50')
-                
-                with ui.tabs().classes('w-full border-b') as wizard_tabs:
-                    local_import_tab = ui.tab('Local File Upload', icon='upload_file')
-                    url_import_tab = ui.tab('Remote HTTPS URL', icon='link')
-                    s3_import_tab = ui.tab('Amazon S3 Bucket', icon='cloud')
-                    
-                with ui.tab_panels(wizard_tabs, value=local_import_tab).classes('w-full bg-transparent min-h-0 flex-grow'):
-                    # Tab 1: Local
-                    with ui.tab_panel(local_import_tab).classes('gap-4 p-4 flex-col'):
-                        ui.label('Upload a Parquet, CSV, or JSON file. The file will be uploaded to /shared and registered as a dynamic table.').classes('text-xs text-slate-400')
-                        ui.upload(label='Drag & Drop or click to upload', on_upload=handle_local_file_upload, auto_upload=True).classes('w-full').props('outlined dense accept=".parquet,.csv,.json"')
-                        
-                    # Tab 2: URL
-                    with ui.tab_panel(url_import_tab).classes('gap-4 p-4 flex-col'):
-                        ui.label('Directly query and register dynamic tables from public HTTP/HTTPS URLs.').classes('text-xs text-slate-400')
-                        url_input = ui.input('HTTPS Endpoint URL', placeholder='https://raw.githubusercontent.com/.../data.csv').props('outlined dense').classes('w-full')
-                        with ui.row().classes('w-full gap-3 flex-wrap items-center'):
-                            url_fmt = ui.select(['Auto-Detect', 'CSV', 'Parquet', 'JSON'], value='Auto-Detect', label='Format').props('outlined dense').style('width: 160px;')
-                            url_table = ui.input('Target Table Name', placeholder='e.g. gdp_data').props('outlined dense').classes('flex-grow')
-                            ui.button('Load remote URL', icon='cloud_download',
-                                      on_click=lambda: trigger_url_import(url_input.value, url_fmt.value, url_table.value)).props('elevated dense color=primary').classes('px-4 py-2')
-                                      
-                    # Tab 3: S3
-                    with ui.tab_panel(s3_import_tab).classes('gap-4 p-4 flex-col'):
-                        ui.label('Query tables directly from Amazon S3 buckets.').classes('text-xs text-slate-400')
-                        s3_uri_input = ui.input('S3 URI', placeholder='s3://my-bucket/path/to/data.parquet').props('outlined dense').classes('w-full')
-                        with ui.row().classes('w-full gap-3 flex-wrap items-center'):
-                            s3_fmt = ui.select(['Auto-Detect', 'CSV', 'Parquet', 'JSON'], value='Auto-Detect', label='Format').props('outlined dense').style('width: 160px;')
-                            s3_table = ui.input('Target Table Name', placeholder='e.g. s3_data').props('outlined dense').classes('flex-grow')
-                        with ui.row().classes('w-full gap-3 flex-wrap items-center'):
-                            s3_key = ui.input('AWS Access Key ID').props('outlined dense password password-toggle-button').classes('flex-grow')
-                            s3_secret = ui.input('AWS Secret Access Key').props('outlined dense password password-toggle-button').classes('flex-grow')
-                        with ui.row().classes('w-full gap-3 flex-wrap items-center'):
-                            s3_token = ui.input('AWS Session Token (Optional)').props('outlined dense').classes('flex-grow')
-                            s3_region_input = ui.input('AWS Region', value='us-east-1').props('outlined dense').style('width: 160px;')
-                        ui.button('Load S3 Dataset', icon='play_arrow',
-                                  on_click=lambda: trigger_s3_import(s3_uri_input.value, s3_fmt.value, s3_key.value, s3_secret.value, s3_token.value, s3_region_input.value, s3_table.value)).props('elevated dense color=primary').classes('self-end px-4 py-2 mt-2')
-
-            # CARD 5: DUCKDB LIVE PERFORMANCE & TELEMETRY DASHBOARD
-            with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4 flex-none'):
-                with ui.row().classes('items-center justify-between w-full'):
-                    with ui.row().classes('items-center gap-2'):
-                        ui.icon('monitoring', color='primary').classes('text-2xl')
-                        ui.label('DuckDB Live Performance & Telemetry Dashboard').classes('text-lg font-bold text-slate-800 dark:text-white')
-                    ui.badge('Live Monitor', color='emerald').classes('text-[10px] uppercase font-bold animate-pulse')
-                ui.separator().classes('opacity-50')
-                
-                with ui.row().classes('w-full items-center justify-between gap-4 flex-wrap bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800'):
-                    with ui.column().classes('items-center'):
-                        ui.label('System CPU').classes('text-[10px] text-slate-400 font-semibold uppercase')
-                        cpu_lbl = ui.label('0.0%').classes('text-xl font-black text-indigo-500')
-                    with ui.column().classes('items-center'):
-                        ui.label('System RAM').classes('text-[10px] text-slate-400 font-semibold uppercase')
-                        sys_ram_lbl = ui.label('0.0 / 0.0 GB').classes('text-sm font-black text-indigo-500')
-                    with ui.column().classes('items-center'):
-                        ui.label('DuckDB Memory').classes('text-[10px] text-slate-400 font-semibold uppercase')
-                        db_mem_lbl = ui.label('0.0 MB / 0.0 GB').classes('text-sm font-black text-emerald-500')
-                    with ui.column().classes('items-center'):
-                        ui.label('Memory Load').classes('text-[10px] text-slate-400 font-semibold uppercase')
-                        db_mem_pct_lbl = ui.label('0.0%').classes('text-xl font-black text-emerald-500')
-                    with ui.column().classes('items-center'):
-                        ui.label('Active Threads').classes('text-[10px] text-slate-400 font-semibold uppercase')
-                        threads_lbl = ui.label('0').classes('text-xl font-black text-indigo-500')
-                    with ui.column().classes('items-center'):
-                        ui.label('Active Transactions').classes('text-[10px] text-slate-400 font-semibold uppercase')
-                        tx_lbl = ui.label('0').classes('text-xl font-black text-indigo-500')
-                
-                with ui.grid(columns=(1, 2)).classes('w-full gap-6 mt-2'):
-                    import collections
-                    mem_history_list = collections.deque(maxlen=15)
-                    mem_time_list = collections.deque(maxlen=15)
-                    
-                    mem_chart_options = {
-                        'title': {'text': 'DuckDB Memory Footprint (MB)', 'left': 'center'},
-                        'tooltip': {'trigger': 'axis'},
-                        'xAxis': {'type': 'category', 'data': []},
-                        'yAxis': {'type': 'value'},
-                        'series': [{'name': 'Active Usage', 'type': 'line', 'data': [], 'smooth': True, 'areaStyle': {}, 'color': '#6366f1'}]
-                    }
-                    latency_chart_options = {
-                        'title': {'text': 'Execution Latency History (ms)', 'left': 'center'},
-                        'tooltip': {'trigger': 'axis'},
-                        'xAxis': {'type': 'category', 'data': []},
-                        'yAxis': {'type': 'value'},
-                        'series': [{'name': 'Query Time', 'type': 'bar', 'data': [], 'color': '#10b981'}]
-                    }
-                    
-                    mem_chart = ui.echart(mem_chart_options).classes('w-full border rounded-xl p-2 bg-white dark:bg-slate-950')
-                    latency_chart = ui.echart(latency_chart_options).classes('w-full border rounded-xl p-2 bg-white dark:bg-slate-950')
-                    
-                def update_performance_dashboard():
-                    if tabs.value != 'Database Tools':
-                        return
-                    
-                    cpu_val = get_cpu_load()
-                    cpu_lbl.text = f"{cpu_val:.1f}%"
-                    
-                    used_ram, total_ram = get_system_memory()
-                    sys_ram_lbl.text = f"{used_ram / (1024**3):.1f} / {total_ram / (1024**3):.1f} GB"
-                    
-                    try:
-                        mem_rows = explorer.conn.execute("SELECT SUM(memory_usage_bytes) FROM duckdb_memory()").fetchone()
-                        mem_bytes = mem_rows[0] or 0
-                        mem_mb = round(mem_bytes / (1024 * 1024), 2)
-                        
-                        limit_rows = explorer.conn.execute("SELECT value FROM duckdb_settings() WHERE name = 'max_memory'").fetchone()
-                        limit_val = limit_rows[0] if limit_rows else None
-                        
-                        import re
-                        limit_bytes = 0
-                        if limit_val:
-                            num = re.findall(r"[-+]?\d*\.\d+|\d+", limit_val)
-                            if num:
-                                val_num = float(num[0])
-                                if 'gib' in limit_val.lower():
-                                    limit_bytes = val_num * 1024 * 1024 * 1024
-                                elif 'mib' in limit_val.lower():
-                                    limit_bytes = val_num * 1024 * 1024
-                                elif 'kb' in limit_val.lower():
-                                    limit_bytes = val_num * 1024
-                                else:
-                                    limit_bytes = val_num
-                        
-                        if limit_bytes == 0:
-                            limit_bytes = total_ram
+            with ui.tab_panels(db_tools_subtabs, value=backup_restore_tab).classes('w-full bg-transparent min-h-0 flex-grow p-0').style('padding: 0;'):
+                # TAB 1: Backup & Restore
+                with ui.tab_panel(backup_restore_tab).classes('gap-6 p-0 flex-col'):
+                    with ui.grid().classes('grid grid-cols-1 md:grid-cols-2 gap-6 w-full flex-none'):
+                        # CARD 1: EXPORT & BACKUP
+                        with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                            with ui.row().classes('items-center gap-2'):
+                                ui.icon('backup', color='primary').classes('text-2xl')
+                                ui.label('Visual Database Backup / Export').classes('text-lg font-bold text-slate-800 dark:text-white')
+                            ui.separator().classes('opacity-50')
+                            ui.label('Export all catalog tables, structures, and schemas from the active database to a local directory in highly compressed Parquet format or standard CSV files.').classes('text-xs text-slate-400 leading-relaxed')
                             
-                        mem_pct = round((mem_bytes / limit_bytes) * 100, 1) if limit_bytes else 0.0
+                            # Controls
+                            with ui.row().classes('w-full gap-3 flex-nowrap items-center'):
+                                export_db_select = ui.select(
+                                    options={},
+                                    value=None,
+                                    label='Select Database'
+                                ).props('dense outlined').style('width: 180px;')
+                                
+                                export_format_select = ui.select(
+                                    options=['PARQUET', 'CSV', 'SQL'],
+                                    value='PARQUET',
+                                    label='Export Format'
+                                ).props('dense outlined').style('width: 140px;')
+                                
+                                export_path_input = ui.input(placeholder='Select or type output directory path...').props('dense outlined').classes('flex-grow')
+                                
+                                async def select_export_dir():
+                                    start_dir = '/shared' if os.path.exists('/shared') else os.path.abspath('.')
+                                    picker = local_file_picker(start_dir, upper_limit=None, multiple=False)
+                                    res = await picker
+                                    if res:
+                                        path = res[0]
+                                        export_path_input.set_value(os.path.dirname(path) if os.path.isfile(path) else path)
+                                        
+                                ui.button(icon='folder_open', on_click=select_export_dir).props('dense outline').classes('p-2')
+                            
+                            ui.button('Run Backup / Export', icon='play_arrow', color='primary',
+                                      on_click=lambda: trigger_db_export(export_path_input.value, export_format_select.value, export_db_select.value)).props('elevated dense').classes('px-4 self-end mt-2')
+
+                        # CARD 2: IMPORT & RESTORE
+                        with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                            with ui.row().classes('items-center gap-2'):
+                                ui.icon('restore', color='secondary').classes('text-2xl')
+                                ui.label('Database Schema Import / Restore').classes('text-lg font-bold text-slate-800 dark:text-white')
+                            ui.separator().classes('opacity-50')
+                            ui.label('Re-create catalog tables and load bulk data from a previously exported directory containing schema.sql and Parquet/CSV data formats.').classes('text-xs text-slate-400 leading-relaxed')
+                            
+                            # Controls
+                            with ui.row().classes('w-full gap-3 flex-nowrap items-center'):
+                                import_path_input = ui.input(placeholder='Select or type backup directory path...').props('dense outlined').classes('flex-grow')
+                                
+                                async def select_import_dir():
+                                    start_dir = '/shared' if os.path.exists('/shared') else os.path.abspath('.')
+                                    picker = local_file_picker(start_dir, upper_limit=None, multiple=False)
+                                    res = await picker
+                                    if res:
+                                        path = res[0]
+                                        import_path_input.set_value(os.path.dirname(path) if os.path.isfile(path) else path)
+                                        
+                                ui.button(icon='folder_open', on_click=select_import_dir).props('dense outline').classes('p-2')
+                            
+                            ui.button('Run Import / Restore', icon='play_arrow', color='secondary',
+                                      on_click=lambda: trigger_db_import(import_path_input.value)).props('elevated dense').classes('px-4 self-end mt-2')
+
+                # TAB 2: Ingestion & Seeding
+                with ui.tab_panel(ingestion_seeding_tab).classes('gap-6 p-0 flex-col'):
+                    # CARD 3: Synthetic Seeding Engine
+                    with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4 flex-none'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.icon('science', color='warning').classes('text-2xl')
+                            ui.label('Synthetic Seeding Engine').classes('text-lg font-bold text-slate-800 dark:text-white')
+                        ui.separator().classes('opacity-50')
                         
-                        db_mem_lbl.text = f"{mem_mb:.1f} MB / {limit_bytes / (1024**3):.1f} GB"
-                        db_mem_pct_lbl.text = f"{mem_pct}%"
+                        with ui.row().classes('w-full items-center justify-between gap-6 flex-wrap'):
+                            with ui.column().classes('gap-2'):
+                                ui.label('Generate structured sales records, loyalty customer profiles, and stock categorisation lists using Fake Analytics Seeder.').classes('text-xs text-slate-400 leading-relaxed max-w-2xl')
+                                
+                                # Metrics breakdown
+                                with ui.row().classes('gap-4 mt-2'):
+                                    with ui.row().classes('items-center gap-1.5'):
+                                        ui.label('Transactions:').classes('text-[10px] text-slate-400 font-semibold uppercase')
+                                        trans_badge = ui.badge('Checking...', color='indigo').classes('text-[10px]')
+                                    with ui.row().classes('items-center gap-1.5'):
+                                        ui.label('Customers:').classes('text-[10px] text-slate-400 font-semibold uppercase')
+                                        cust_badge = ui.badge('Checking...', color='indigo').classes('text-[10px]')
+                                    with ui.row().classes('items-center gap-1.5'):
+                                        ui.label('Inventory:').classes('text-[10px] text-slate-400 font-semibold uppercase')
+                                        invent_badge = ui.badge('Checking...', color='indigo').classes('text-[10px]')
+                            
+                            # Controls
+                            with ui.row().classes('items-center gap-3'):
+                                density_select = ui.select(
+                                    options={
+                                        '1000': '1,000 Rows (Light)',
+                                        '6500': '6,500 Rows (Standard)',
+                                        '15000': '15,000 Rows (Dense)'
+                                    },
+                                    value='6500',
+                                    label='Mock Data Density'
+                                ).props('dense outlined').style('width: 220px;')
+                                
+                                ui.button('Reset & Custom Seed', icon='restart_alt', color='warning',
+                                          on_click=lambda: trigger_custom_seed(density_select.value)).props('elevated dense').classes('px-4 py-2')
+
+                    # CARD 4: Dynamic File Import Wizard
+                    with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4 flex-none'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.icon('cloud_upload', color='primary').classes('text-2xl')
+                            ui.label('Dynamic File Import Wizard').classes('text-lg font-bold text-slate-800 dark:text-white')
+                        ui.separator().classes('opacity-50')
                         
-                        threads_rows = explorer.conn.execute("SELECT value FROM duckdb_settings() WHERE name = 'threads'").fetchone()
-                        threads_lbl.text = str(threads_rows[0]) if threads_rows else 'N/A'
-                        
-                        tx_lbl.text = 'Active'
-                        
-                        import datetime
-                        mem_history_list.append(mem_mb)
-                        mem_time_list.append(datetime.datetime.now().strftime('%H:%M:%S'))
-                        
-                        mem_chart.options['xAxis']['data'] = list(mem_time_list)
-                        mem_chart.options['series'][0]['data'] = list(mem_history_list)
-                        mem_chart.update()
-                    except Exception as ex:
-                        print(f"Telemetry query error: {ex}")
-                        
-                    try:
-                        lat_data = [x['latency'] for x in query_latency_history]
-                        lat_labels = [x['timestamp'] for x in query_latency_history]
-                        
-                        latency_chart.options['xAxis']['data'] = list(lat_labels)
-                        latency_chart.options['series'][0]['data'] = list(lat_data)
-                        latency_chart.update()
-                    except Exception as ex:
-                        print(f"Telemetry latency chart error: {ex}")
-                        
-                ui.timer(2.0, update_performance_dashboard)
+                        with ui.tabs().classes('w-full border-b') as wizard_tabs:
+                            local_import_tab = ui.tab('Local File Upload', icon='upload_file')
+                            url_import_tab = ui.tab('Remote HTTPS URL', icon='link')
+                            s3_import_tab = ui.tab('Amazon S3 Bucket', icon='cloud')
+                            
+                        with ui.tab_panels(wizard_tabs, value=local_import_tab).classes('w-full bg-transparent min-h-0 flex-grow'):
+                            # Tab 1: Local
+                            with ui.tab_panel(local_import_tab).classes('gap-4 p-4 flex-col'):
+                                ui.label('Upload a Parquet, CSV, or JSON file. The file will be uploaded to /shared and registered as a dynamic table.').classes('text-xs text-slate-400')
+                                ui.upload(label='Drag & Drop or click to upload', on_upload=handle_local_file_upload, auto_upload=True).classes('w-full').props('outlined dense accept=".parquet,.csv,.json"')
+                                
+                            # Tab 2: URL
+                            with ui.tab_panel(url_import_tab).classes('gap-4 p-4 flex-col'):
+                                ui.label('Directly query and register dynamic tables from public HTTP/HTTPS URLs.').classes('text-xs text-slate-400')
+                                url_input = ui.input('HTTPS Endpoint URL', placeholder='https://raw.githubusercontent.com/.../data.csv').props('outlined dense').classes('w-full')
+                                with ui.row().classes('w-full gap-3 flex-wrap items-center'):
+                                    url_fmt = ui.select(['Auto-Detect', 'CSV', 'Parquet', 'JSON'], value='Auto-Detect', label='Format').props('outlined dense').style('width: 160px;')
+                                    url_table = ui.input('Target Table Name', placeholder='e.g. gdp_data').props('outlined dense').classes('flex-grow')
+                                    ui.button('Load remote URL', icon='cloud_download',
+                                              on_click=lambda: trigger_url_import(url_input.value, url_fmt.value, url_table.value)).props('elevated dense color=primary').classes('px-4 py-2')
+                                              
+                            # Tab 3: S3
+                            with ui.tab_panel(s3_import_tab).classes('gap-4 p-4 flex-col'):
+                                ui.label('Query tables directly from Amazon S3 buckets.').classes('text-xs text-slate-400')
+                                s3_uri_input = ui.input('S3 URI', placeholder='s3://my-bucket/path/to/data.parquet').props('outlined dense').classes('w-full')
+                                with ui.row().classes('w-full gap-3 flex-wrap items-center'):
+                                    s3_fmt = ui.select(['Auto-Detect', 'CSV', 'Parquet', 'JSON'], value='Auto-Detect', label='Format').props('outlined dense').style('width: 160px;')
+                                    s3_table = ui.input('Target Table Name', placeholder='e.g. s3_data').props('outlined dense').classes('flex-grow')
+                                with ui.row().classes('w-full gap-3 flex-wrap items-center'):
+                                    s3_key = ui.input('AWS Access Key ID').props('outlined dense password password-toggle-button').classes('flex-grow')
+                                    s3_secret = ui.input('AWS Secret Access Key').props('outlined dense password password-toggle-button').classes('flex-grow')
+                                with ui.row().classes('w-full gap-3 flex-wrap items-center'):
+                                    s3_token = ui.input('AWS Session Token (Optional)').props('outlined dense').classes('flex-grow')
+                                    s3_region_input = ui.input('AWS Region', value='us-east-1').props('outlined dense').style('width: 160px;')
+                                ui.button('Load S3 Dataset', icon='play_arrow',
+                                          on_click=lambda: trigger_s3_import(s3_uri_input.value, s3_fmt.value, s3_key.value, s3_secret.value, s3_token.value, s3_region_input.value, s3_table.value)).props('elevated dense color=primary').classes('self-end px-4 py-2 mt-2')
 
         
         # Build Extensions Container Content
@@ -2067,7 +1960,7 @@ def index():
             # Dynamic Extensions Grid (wrapped in scrollable column to fit viewport)
             extensions_grid_wrapper = ui.column().classes('w-full flex-grow overflow-auto min-h-0')
             with extensions_grid_wrapper:
-                extensions_grid = ui.grid(columns=(1, 2, 3)).classes('w-full gap-4 mt-2 pb-6')
+                extensions_grid = ui.grid().classes('grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 w-full gap-4 mt-2 pb-6')
         
         # Build JupyterLab container content
         with jupyter_container:
@@ -2142,7 +2035,7 @@ def index():
                 ui.label('Instantly design, test, and expose high-performance HTTP REST API endpoints from raw SQL queries on-the-fly. Support query parameters via the $parameter_name notation in your queries.').classes('text-sm text-slate-500 dark:text-slate-400')
             
             # Sub Cards Layout (Grid / Side-by-Side Cards)
-            with ui.grid(columns=(1, 2)).classes('w-full gap-6 flex-none'):
+            with ui.grid().classes('grid grid-cols-1 md:grid-cols-2 gap-6 w-full flex-none'):
                 # CARD 1: CREATE API ENDPOINT FORM
                 with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
                     with ui.row().classes('items-center gap-2'):
@@ -2183,8 +2076,7 @@ def index():
                     # Endpoints List Container
                     api_endpoints_list_container = ui.column().classes('w-full gap-4 overflow-auto').style('max-height: 480px;')
             
-            # Telemetry Metrics Dashboard Container
-            dashboard_container = ui.column().classes('w-full gap-6 mt-4 flex-none')
+
 
         # API Creator Helper Functions inside index()
         columns_checkboxes = {}
@@ -2555,13 +2447,267 @@ def index():
             # Keep API Docs explorer in perfect sync!
             refresh_api_docs_explorer()
             
-            # Keep Telemetry Metrics Dashboard in perfect sync!
-            refresh_metrics_dashboard()
 
-        def refresh_metrics_dashboard():
-            dashboard_container.clear()
+
+        # API Creator Helper Functions inside index()
+        columns_checkboxes = {}
+
+        def parse_table_from_sql(sql_str):
+            import re
+            # Match FROM followed by optional spaces, optional quotes, and a word
+            # Support database.schema.table formats
+            match = re.search(r'(?i)\bFROM\s+["\']?([a-zA-Z0-9_\.\-]+)["\']?', sql_str)
+            if match:
+                full_table_name = match.group(1)
+                # Get just the table name at the end if it's database.schema.table
+                table_name_only = full_table_name.split('.')[-1]
+                return full_table_name, table_name_only
+            return None, None
+
+        def parse_selected_columns_with_aliases(sql_str):
+            import re
+            # Use (?is) so that dot (.) matches newlines in multi-line SELECT statements
+            match = re.search(r'(?is)\bSELECT\s+(.+?)\s+\bFROM\b', sql_str)
+            if not match:
+                return None
             
-            # Query global metrics
+            projection = match.group(1).strip()
+            # Replace newlines, carriage returns, and tabs with single spaces
+            projection = re.sub(r'\s+', ' ', projection)
+            if projection == '*':
+                return {'*': '*'}
+                
+            mapping = {}
+            parts = projection.split(',')
+            for part in parts:
+                part = part.strip()
+                # Match "expr AS alias" where alias is the last word
+                as_match = re.search(r'(?i)(.+?)\s+AS\s+(\w+)', part)
+                if as_match:
+                    orig = as_match.group(1).strip('"\'`[] ')
+                    alias = as_match.group(2).strip('"\'`[] ')
+                    orig_clean = orig.split('.')[-1].strip('"\'`[] ')
+                    mapping[orig_clean.lower()] = alias
+                else:
+                    # Space-separated: "col alias"
+                    words = part.split()
+                    if len(words) > 1:
+                        orig = " ".join(words[:-1]).strip('"\'`[] ')
+                        alias = words[-1].strip('"\'`[] ')
+                        orig_clean = orig.split('.')[-1].strip('"\'`[] ')
+                        mapping[orig_clean.lower()] = alias
+                    else:
+                        orig_clean = part.split('.')[-1].strip('"\'`[] ')
+                        mapping[orig_clean.lower()] = orig_clean
+            return mapping
+
+        def handle_analyze_sql_columns():
+            sql = api_sql_input.value.strip() if api_sql_input.value else ""
+            if not sql:
+                ui.notify('Please enter a SQL select query first!', type='warning')
+                return
+            
+            full_tbl, tbl_only = parse_table_from_sql(sql)
+            if not tbl_only:
+                ui.notify('Could not parse a valid table name from the query (looking for FROM <table_name>).', type='warning')
+                return
+                
+            try:
+                # Query columns using explorer
+                cols = explorer.list_columns_with_types(tbl_only)
+                if not cols:
+                    # Try with full table name just in case
+                    cols = explorer.list_columns_with_types(full_tbl)
+                    
+                if not cols:
+                    ui.notify(f"Could not fetch columns for table '{tbl_only}'. Make sure the table exists in the database.", type='warning')
+                    return
+                
+                # Parse columns specified in the select projection
+                proj_map = parse_selected_columns_with_aliases(sql)
+                
+                def generate_dynamic_where():
+                    selected_cols = [c_name for c_name, cb in columns_checkboxes.items() if cb.value]
+                    if not selected_cols:
+                        ui.notify('No columns selected!', type='warning')
+                        return
+                        
+                    sql = api_sql_input.value.strip()
+                    # Strip trailing semicolon
+                    has_semicolon = sql.endswith(';')
+                    if has_semicolon:
+                        sql = sql[:-1].strip()
+                        
+                    # Split trailing clauses (ORDER BY, LIMIT, OFFSET)
+                    sql, trailing = split_sql_trailing_clauses(sql)
+                    
+                    # Create type mapping and alias-lookup
+                    col_type_map = {c_name.lower(): c_type for c_name, c_type in cols}
+                    inv_proj_map = {alias.lower(): orig for orig, alias in proj_map.items()} if proj_map else {}
+                    
+                    # Build parameter clauses
+                    clauses = []
+                    generate_ranges = range_switch.value
+                    
+                    for col in selected_cols:
+                        # Find original column name to look up its data type
+                        orig_col = inv_proj_map.get(col.lower(), col)
+                        c_type = col_type_map.get(orig_col.lower(), "")
+                        c_type_upper = c_type.upper()
+                        is_numeric_or_date = any(t in c_type_upper for t in ['INT', 'DOUBLE', 'FLOAT', 'DECIMAL', 'REAL', 'NUMERIC', 'DATE', 'TIME', 'TIMESTAMP'])
+                        
+                        if generate_ranges and is_numeric_or_date:
+                            clauses.append(f"  AND (${col}_eq IS NULL  OR \"{col}\" = ${col}_eq)")
+                            clauses.append(f"  AND (${col}_gt IS NULL  OR \"{col}\" > ${col}_gt)")
+                            clauses.append(f"  AND (${col}_gte IS NULL OR \"{col}\" >= ${col}_gte)")
+                            clauses.append(f"  AND (${col}_lt IS NULL  OR \"{col}\" < ${col}_lt)")
+                            clauses.append(f"  AND (${col}_lte IS NULL OR \"{col}\" <= ${col}_lte)")
+                        else:
+                            clauses.append(f"  AND (${col} IS NULL OR \"{col}\" = ${col})")
+                        
+                    # Check if WHERE exists (case-insensitive search)
+                    import re
+                    has_where = re.search(r'(?i)\bWHERE\b', sql)
+                    
+                    if has_where:
+                        # Append clauses to the existing WHERE block
+                        sql += "\n" + "\n".join(clauses)
+                    else:
+                        # Add WHERE 1=1 and then clauses
+                        sql += "\nWHERE 1=1\n" + "\n".join(clauses)
+                        
+                    # Re-append trailing clauses
+                    if trailing:
+                        sql += "\n" + trailing.strip()
+                        
+                    if has_semicolon:
+                        sql += ";"
+                        
+                    api_sql_input.value = sql
+                    column_selection_container.style('display: none;')
+                    ui.notify('Dynamic WHERE clause injected into your query!', type='success')
+                
+                # Show container
+                column_selection_container.clear()
+                column_selection_container.style('display: flex;')
+                
+                # Define nested drawing helper for toggling and alias resolution
+                def draw_columns_grid(show_all):
+                    grid_container.clear()
+                    columns_checkboxes.clear()
+                    
+                    display_cols = []
+                    if show_all:
+                        # Display all columns. If a column has an alias in the query, use the alias!
+                        for c_name, c_type in cols:
+                            display_name = proj_map.get(c_name.lower(), c_name) if proj_map else c_name
+                            display_cols.append((display_name, c_type))
+                    else:
+                        if proj_map:
+                            if '*' in proj_map:
+                                display_cols = [(c_name, c_type) for c_name, c_type in cols]
+                            else:
+                                # Only show columns present in projection mapping
+                                for c_name, c_type in cols:
+                                    if c_name.lower() in proj_map:
+                                        alias_name = proj_map[c_name.lower()]
+                                        display_cols.append((alias_name, c_type))
+                        else:
+                            display_cols = cols
+                            
+                    print(f"DEBUG_PARSER: show_all={show_all} display_cols={display_cols}", flush=True)
+                    with grid_container:
+                        for c_name, c_type in display_cols:
+                            cb = ui.checkbox(f"{c_name} ({c_type})").classes('text-xs')
+                            columns_checkboxes[c_name] = cb
+                
+                with column_selection_container:
+                    with ui.row().classes('w-full justify-between items-center no-wrap'):
+                        ui.label(f"Parsed Table: {full_tbl}").classes('text-xs font-bold text-slate-700 dark:text-slate-300')
+                        # Reactive show all switch
+                        ui.switch('Show all columns', value=False, on_change=lambda e: draw_columns_grid(e.value)).classes('text-xs')
+                        
+                    range_switch = ui.switch('Enable range filters (>=, <=, etc.) for numeric & date columns', value=False).classes('text-xs font-medium text-slate-600 my-0.5')
+                    ui.label("Select columns to add as optional dynamic API parameters:").classes('text-[10px] text-slate-400 -mt-1')
+                    
+                    grid_container = ui.grid(columns=2).classes('w-full gap-1')
+                    
+                    # Initial draw (False = restricted to selected columns)
+                    draw_columns_grid(False)
+                    
+                    ui.button('Inject Dynamic Parameters', icon='auto_fix_high', color='secondary',
+                               on_click=generate_dynamic_where).props('dense unelevated size=sm').classes('mt-2 self-end text-xs')
+
+                ui.notify(f"Analyzed table '{tbl_only}' successfully!", type='info')
+            except Exception as ex:
+                ui.notify(f"Error analyzing columns: {ex}", type='negative')
+
+        def handle_create_api_endpoint(endpoint_path, description, sql_code, security_enabled=False, rate_limit=None):
+            if not endpoint_path or not endpoint_path.strip():
+                ui.notify("Please specify a valid API endpoint path.", type='warning')
+                return
+            endpoint_path = endpoint_path.strip().strip('/')
+            if not sql_code or not sql_code.strip():
+                ui.notify("Please specify the SQL query source for this endpoint.", type='warning')
+                return
+                
+            # Clean path from illegal characters
+            import re
+            if not re.match(r'^[a-zA-Z0-9_\-\/]+$', endpoint_path):
+                ui.notify("Path can only contain alphanumeric characters, hyphens, underscores, and slashes.", type='warning')
+                return
+                
+            try:
+                import uuid, datetime
+                # Check duplicate path
+                dup = explorer.conn.execute("SELECT 1 FROM _duckdb_studio_api_endpoints WHERE path = ?", [endpoint_path]).fetchone()
+                if dup:
+                    ui.notify(f"Endpoint path '/api/{endpoint_path}' already exists. Please use a unique path.", type='negative')
+                    return
+                    
+                rl_value = rate_limit.strip() if rate_limit and rate_limit.strip() else None
+                
+                explorer.conn.execute("""
+                    INSERT INTO _duckdb_studio_api_endpoints (id, path, description, sql_code, created_at, security_enabled, rate_limit)
+                    VALUES (?, ?, ?, ?, ?, ?, ?);
+                """, [
+                    str(uuid.uuid4()),
+                    endpoint_path,
+                    description.strip() if description else '',
+                    sql_code.strip(),
+                    datetime.datetime.now(),
+                    security_enabled,
+                    rl_value
+                ])
+                ui.notify(f"API Endpoint '/api/{endpoint_path}' created successfully!", type='success')
+                
+                # Clear form inputs
+                api_path_input.value = ''
+                api_desc_input.value = ''
+                api_sql_input.value = ''
+                try:
+                    api_security_toggle.value = False
+                    api_rate_limit_input.value = ''
+                except Exception:
+                    pass
+                
+                refresh_api_endpoints_grid()
+            except Exception as err:
+                ui.notify(f"Failed to create endpoint: {err}", type='negative')
+
+        def delete_api_endpoint(endpoint_id, endpoint_path):
+            try:
+                explorer.conn.execute("DELETE FROM _duckdb_studio_api_endpoints WHERE id = ?", [endpoint_id])
+                ui.notify(f"API Endpoint '/api/{endpoint_path}' deleted successfully.", type='success')
+                refresh_api_endpoints_grid()
+            except Exception as err:
+                ui.notify(f"Failed to delete endpoint: {err}", type='negative')
+
+        def refresh_api_endpoints_grid():
+            api_endpoints_list_container.clear()
+            
+            # Query aggregate metrics for endpoints
+            metrics_map = {}
             try:
                 explorer.conn.execute("""
                     CREATE TABLE IF NOT EXISTS _duckdb_studio_api_metrics (
@@ -2572,143 +2718,107 @@ def index():
                         error_message VARCHAR
                     );
                 """)
-                
-                global_stats = explorer.conn.execute("""
+                m_rows = explorer.conn.execute("""
                     SELECT 
-                        COUNT(*),
-                        AVG(latency_ms),
-                        SUM(CASE WHEN status_code < 400 THEN 1 ELSE 0 END)
-                    FROM _duckdb_studio_api_metrics;
-                """).fetchone()
-                
-                total_calls = global_stats[0] if global_stats[0] is not None else 0
-                avg_latency = global_stats[1] if global_stats[1] is not None else 0.0
-                success_count = global_stats[2] if global_stats[2] is not None else 0
-                
-                success_rate = (success_count * 100.0 / total_calls) if total_calls > 0 else 100.0
-                
-                active_endpoints_count = explorer.conn.execute("SELECT COUNT(*) FROM _duckdb_studio_api_endpoints;").fetchone()[0]
-                
+                        endpoint_path,
+                        COUNT(*) as total_calls,
+                        AVG(latency_ms) as avg_latency,
+                        MIN(latency_ms) as min_latency,
+                        MAX(latency_ms) as max_latency,
+                        SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as total_errors
+                    FROM _duckdb_studio_api_metrics
+                    GROUP BY endpoint_path;
+                """).fetchall()
+                for m_path, m_calls, m_avg, m_min, m_max, m_errs in m_rows:
+                    metrics_map[m_path] = {
+                        'calls': m_calls,
+                        'avg': m_avg,
+                        'min': m_min,
+                        'max': m_max,
+                        'errors': m_errs,
+                        'error_rate': (m_errs * 100.0 / m_calls) if m_calls > 0 else 0.0
+                    }
             except Exception as e:
-                print(f"DEBUG: Failed to load global API metrics: {e}", flush=True)
-                total_calls = 0
-                avg_latency = 0.0
-                success_rate = 100.0
-                active_endpoints_count = 0
+                print(f"DEBUG: Failed to query API metrics: {e}", flush=True)
+            
+            try:
+                rows = explorer.conn.execute("SELECT id, path, description, sql_code, COALESCE(security_enabled, FALSE), rate_limit FROM _duckdb_studio_api_endpoints ORDER BY created_at DESC;").fetchall()
+            except Exception as e:
+                with api_endpoints_list_container:
+                    ui.label(f"Failed to load endpoints: {e}").classes('text-xs text-negative')
+                return
+                
+            if not rows:
+                with api_endpoints_list_container:
+                    with ui.column().classes('w-full items-center justify-center py-12 gap-2'):
+                        ui.icon('cloud_off', color='grey').classes('text-5xl')
+                        ui.label("No dynamic API endpoints active.").classes('text-sm text-slate-400 font-medium')
+                        ui.label("Define a path and query in the creator form to expose your first REST API!").classes('text-xs text-slate-500')
+                return
+                
+            with api_endpoints_list_container:
+                for ep_id, ep_path, ep_desc, ep_sql, ep_secured, ep_rate_limit in rows:
+                    with ui.card().classes('w-full p-4 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-3'):
+                        # Top Row: GET Badge + Path
+                        with ui.row().classes('w-full items-center justify-between no-wrap'):
+                            with ui.row().classes('items-center gap-2 no-wrap'):
+                                ui.badge('GET', color='positive').classes('text-[10px] font-bold px-2 py-0.5')
+                                if ep_secured:
+                                    ui.icon('lock', color='amber').classes('text-xs').tooltip('Requires JWT Authorization')
+                                ui.label(f"/api/{ep_path}").classes('text-sm font-bold text-slate-800 dark:text-white truncate')
+                                limit_str = ep_rate_limit if ep_rate_limit else f"{APP_SETTINGS.get('default_rate_limit', '5/minute')} (default)"
+                                ui.badge(limit_str, color='info').classes('text-[10px] px-2 py-0.5').tooltip('Rate Limit')
+                            
+                            with ui.row().classes('items-center gap-1'):
+                                ui.button(icon='edit', on_click=lambda _, i=ep_id, p=ep_path, d=ep_desc, s=ep_sql, sec=ep_secured, rl=ep_rate_limit: open_edit_api_dialog(i, p, d, s, sec, rl)).props('flat dense size=sm color=primary').classes('p-1').tooltip('Edit Endpoint')
+                                ui.button(icon='delete', on_click=lambda _, i=ep_id, p=ep_path: delete_api_endpoint(i, p)).props('flat dense size=sm color=negative').classes('p-1').tooltip('Delete Endpoint')
+                            
+                        # Middle Row: Description
+                        if ep_desc:
+                            ui.label(ep_desc).classes('text-xs text-slate-400 font-normal leading-relaxed')
+                            
+                        # Telemetry Stats Badge/Bar
+                        stats = metrics_map.get(ep_path, {
+                            'calls': 0,
+                            'avg': 0.0,
+                            'min': 0.0,
+                            'max': 0.0,
+                            'errors': 0,
+                            'error_rate': 0.0
+                        })
+                        with ui.row().classes('w-full items-center gap-4 text-[11px] bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-850'):
+                            with ui.row().classes('items-center gap-1'):
+                                ui.icon('analytics', color='primary', size='xs')
+                                ui.label('Telemetry:').classes('font-bold text-slate-500')
+                            with ui.row().classes('items-center gap-1'):
+                                ui.label('Calls:').classes('text-slate-400')
+                                ui.label(str(stats['calls'])).classes('font-bold text-slate-700 dark:text-slate-350')
+                            with ui.row().classes('items-center gap-1'):
+                                ui.label('Avg Latency:').classes('text-slate-400')
+                                ui.label(f"{stats['avg']:.1f}ms").classes('font-bold text-slate-700 dark:text-slate-350')
+                            with ui.row().classes('items-center gap-1'):
+                                ui.label('Error Rate:').classes('text-slate-400')
+                                err_color = 'rose-500' if stats['error_rate'] > 0 else 'emerald-500'
+                                ui.label(f"{stats['error_rate']:.1f}%").classes(f'font-bold text-{err_color}')
+                            
+                        # Code Snippet: Monospace SQL code
+                        with ui.expansion('Source Query SQL', icon='code').classes('w-full border border-slate-100 dark:border-slate-900 rounded-lg text-xs'):
+                            ui.code(ep_sql, language='sql').classes('w-full text-[10px] rounded-lg p-2 dark:bg-slate-950')
+                            
+                        # Action row: Test / Copy full url
+                        with ui.row().classes('w-full items-center justify-between border-t border-slate-100 dark:border-slate-900 pt-2 mt-1 flex-wrap gap-2'):
+                            full_relative_path = f"/api/{ep_path}"
+                            ui.label(full_relative_path).classes('text-[10px] font-semibold text-slate-400 truncate max-w-[200px]')
+                            
+                            with ui.row().classes('items-center gap-2'):
+                                with ui.link(target=f'/api/{ep_path}', new_tab=True).style('text-decoration: none'):
+                                    ui.button('Test Endpoint', icon='open_in_new').props('flat dense size=sm color=primary').classes('text-xs')
+                                ui.button('Copy Path', icon='content_copy', on_click=lambda _, p=full_relative_path: ui.run_javascript(f"navigator.clipboard.writeText(window.location.origin + '{p}')")).props('flat dense size=sm color=secondary').classes('text-xs')
+            
+            # Keep API Docs explorer in perfect sync!
+            refresh_api_docs_explorer()
+            
 
-            with dashboard_container:
-                with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-6'):
-                    # Header row
-                    with ui.row().classes('w-full items-center justify-between no-wrap'):
-                        with ui.row().classes('items-center gap-3'):
-                            ui.icon('analytics', color='primary').classes('text-2xl')
-                            ui.label('Live API Telemetry & Performance Dashboard').classes('text-lg font-bold text-slate-800 dark:text-white')
-                        
-                        # Reset / Clear metrics button
-                        def handle_clear_metrics():
-                            try:
-                                explorer.conn.execute("DELETE FROM _duckdb_studio_api_metrics;")
-                                ui.notify('Telemetry logs cleared successfully!', type='positive')
-                                refresh_api_endpoints_grid()
-                            except Exception as ex:
-                                ui.notify(f"Failed to clear telemetry: {ex}", type='negative')
-                        
-                        ui.button('Clear Telemetry Logs', icon='cleaning_services', on_click=handle_clear_metrics).props('outline dense color=negative size=sm').classes('px-3 text-xs')
-                    
-                    ui.separator().classes('opacity-50')
-                    
-                    # 4 KPI Cards Grid
-                    with ui.grid(columns=(1, 4)).classes('w-full gap-4'):
-                        # KPI 1: Active Endpoints
-                        with ui.card().classes('p-4 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/40 flex-row items-center gap-4'):
-                            ui.icon('dns', color='primary').classes('text-3xl p-2 bg-indigo-50 dark:bg-indigo-950/50 rounded-lg')
-                            with ui.column().classes('gap-0'):
-                                ui.label('Active API Routes').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
-                                ui.label(str(active_endpoints_count)).classes('text-xl font-black text-slate-700 dark:text-slate-200')
-                                
-                        # KPI 2: Total Calls
-                        with ui.card().classes('p-4 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/40 flex-row items-center gap-4'):
-                            ui.icon('call', color='secondary').classes('text-3xl p-2 bg-purple-50 dark:bg-purple-950/50 rounded-lg')
-                            with ui.column().classes('gap-0'):
-                                ui.label('Total Requests').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
-                                ui.label(f"{total_calls:,}").classes('text-xl font-black text-slate-700 dark:text-slate-200')
-
-                        # KPI 3: Avg Latency
-                        with ui.card().classes('p-4 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/40 flex-row items-center gap-4'):
-                            ui.icon('speed', color='warning').classes('text-3xl p-2 bg-amber-50 dark:bg-amber-950/50 rounded-lg')
-                            with ui.column().classes('gap-0'):
-                                ui.label('Avg Latency').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
-                                ui.label(f"{avg_latency:.1f} ms").classes('text-xl font-black text-slate-700 dark:text-slate-200')
-
-                        # KPI 4: Success Rate
-                        with ui.card().classes('p-4 border border-slate-100 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/40 flex-row items-center gap-4'):
-                            color_indicator = 'positive' if success_rate >= 95 else ('warning' if success_rate >= 80 else 'negative')
-                            bg_class = 'bg-emerald-50 dark:bg-emerald-950/50' if success_rate >= 95 else 'bg-rose-50 dark:bg-rose-950/50'
-                            ui.icon('health_and_safety', color=color_indicator).classes(f'text-3xl p-2 {bg_class} rounded-lg')
-                            with ui.column().classes('gap-0'):
-                                ui.label('Success Rate').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
-                                ui.label(f"{success_rate:.1f}%").classes('text-xl font-black text-slate-700 dark:text-slate-200')
-
-                    # Metrics Details Table
-                    ui.label('Endpoint Performance Analytics').classes('text-sm font-bold text-slate-700 dark:text-slate-300 mt-2')
-                    
-                    try:
-                        detail_rows = explorer.conn.execute("""
-                            SELECT 
-                                m.endpoint_path,
-                                COUNT(*) as calls,
-                                AVG(m.latency_ms) as avg_lat,
-                                MIN(m.latency_ms) as min_lat,
-                                MAX(m.latency_ms) as max_lat,
-                                SUM(CASE WHEN m.status_code < 400 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as success_rate,
-                                MAX(m.timestamp) as last_called
-                            FROM _duckdb_studio_api_metrics m
-                            GROUP BY m.endpoint_path
-                            ORDER BY calls DESC;
-                        """).fetchall()
-                    except Exception:
-                        detail_rows = []
-                        
-                    if not detail_rows:
-                        with ui.column().classes('w-full items-center justify-center py-8 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-900/20'):
-                            ui.icon('hourglass_empty', color='grey').classes('text-3xl')
-                            ui.label('No performance data logged yet.').classes('text-xs text-slate-400 font-medium mt-1')
-                            ui.label('Hit your exposed API endpoints to see live stats populate here in real-time.').classes('text-[10px] text-slate-500')
-                    else:
-                        # Draw high quality interactive HTML/CSS table
-                        with ui.element('div').classes('w-full overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-lg'):
-                            # Table structure
-                            with ui.element('table').classes('w-full text-left border-collapse text-xs'):
-                                # Table Header
-                                with ui.element('thead').classes('bg-slate-100 dark:bg-slate-900 text-slate-500 font-bold uppercase tracking-wider text-[10px]'):
-                                    with ui.element('tr'):
-                                        ui.element('th').classes('p-3').text('Endpoint Route')
-                                        ui.element('th').classes('p-3 text-center').text('Invocations')
-                                        ui.element('th').classes('p-3 text-center').text('Avg Latency')
-                                        ui.element('th').classes('p-3 text-center').text('Min / Max')
-                                        ui.element('th').classes('p-3 text-center').text('Success Ratio')
-                                        ui.element('th').classes('p-3 text-right').text('Last Triggered')
-                                
-                                # Table Body
-                                with ui.element('tbody').classes('divide-y divide-slate-100 dark:divide-slate-850 text-slate-700 dark:text-slate-350 font-mono'):
-                                    for path, calls, avg_lat, min_lat, max_lat, succ_rate, last_called in detail_rows:
-                                        with ui.element('tr').classes('hover:bg-slate-50/50 dark:hover:bg-slate-900/50 transition-colors'):
-                                            # Path
-                                            ui.element('td').classes('p-3 font-bold text-slate-800 dark:text-slate-200').text(f"/api/{path}")
-                                            # Calls
-                                            ui.element('td').classes('p-3 text-center font-bold').text(f"{calls:,}")
-                                            # Avg Latency
-                                            ui.element('td').classes('p-3 text-center text-primary font-bold').text(f"{avg_lat:.1f} ms")
-                                            # Min / Max
-                                            ui.element('td').classes('p-3 text-center text-slate-500 text-[11px]').text(f"{min_lat:.1f}ms / {max_lat:.1f}ms")
-                                            
-                                            # Success Rate
-                                            succ_color = 'text-emerald-500' if succ_rate >= 95 else ('text-amber-500' if succ_rate >= 80 else 'text-rose-500')
-                                            ui.element('td').classes(f'p-3 text-center font-bold {succ_color}').text(f"{succ_rate:.1f}%")
-                                            
-                                            # Last Triggered
-                                            time_str = last_called.strftime('%Y-%m-%d %H:%M:%S') if last_called else '-'
-                                            ui.element('td').classes('p-3 text-right text-slate-400 text-[11px]').text(time_str)
 
         def refresh_api_docs_explorer():
             api_docs_container.clear()
@@ -2968,7 +3078,7 @@ def index():
                 ui.label('Expose, automate, and export high-performance DuckDB query results to Parquet, CSV, or JSON in the background on periodic schedules. Supports automatic data partitioning.').classes('text-sm text-slate-500 dark:text-slate-400')
 
             # Sub Cards Layout (Grid)
-            with ui.grid(columns=(1, 2)).classes('w-full gap-6 flex-none'):
+            with ui.grid().classes('grid grid-cols-1 md:grid-cols-2 gap-6 w-full flex-none'):
                 # CARD 1: CREATE SCHEDULER JOB FORM
                 with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
                     with ui.row().classes('items-center gap-2'):
@@ -3289,7 +3399,7 @@ def index():
                 return
 
             with scheduler_logs_table_container:
-                with ui.element('div').classes('w-full overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-lg'):
+                with ui.element('div').classes('w-full overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-950'):
                     with ui.element('table').classes('w-full text-left border-collapse text-xs'):
                         with ui.element('thead').classes('bg-slate-100 dark:bg-slate-900 text-slate-500 font-bold uppercase tracking-wider text-[10px]'):
                             with ui.element('tr'):
@@ -3324,6 +3434,284 @@ def index():
         refresh_scheduler_jobs_list()
         refresh_scheduler_logs_table()
 
+        # Build Garage S3 Container Content
+        with garage_container:
+            ui.element('iframe').props('id="garage-webui-frame" sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads allow-modals"').classes('w-full h-full border-none')
+            ui.run_javascript('''
+                (function() {
+                    var host = window.location.hostname;
+                    var port = window.location.port;
+                    var proto = window.location.protocol;
+                    var targetUrl;
+                    if (host.endsWith('.localhost')) {
+                        var baseDomain = host.substring(host.indexOf('.'));
+                        targetUrl = proto + '//garage' + baseDomain + (port ? ':' + port : '');
+                    } else {
+                        targetUrl = proto + '//' + host + ':3909';
+                    }
+                    document.getElementById("garage-webui-frame").src = targetUrl;
+                })();
+            ''')
+
+        # Build Telemetry Container Content
+        with telemetry_container:
+            # Header Card
+            with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-none'):
+                with ui.row().classes('items-center justify-between w-full'):
+                    with ui.row().classes('items-center gap-3'):
+                        ui.icon('insights', color='primary').classes('text-3xl')
+                        ui.label('Telemetry & Observability Hub').classes('text-2xl font-black text-slate-800 dark:text-white')
+                    
+                    # Reset / Clear metrics button
+                    def handle_clear_telemetry():
+                        try:
+                            explorer.conn.execute("DELETE FROM _duckdb_studio_api_metrics;")
+                            ui.notify('Telemetry logs cleared successfully!', type='positive')
+                            update_telemetry_dashboard()
+                        except Exception as ex:
+                            ui.notify(f"Failed to clear telemetry: {ex}", type='negative')
+                    
+                    ui.button('Clear Telemetry Logs', icon='cleaning_services', on_click=handle_clear_telemetry).props('outline dense color=negative size=sm').classes('px-3 text-xs')
+                ui.label('Real-time diagnostics of DuckDB database engine execution, memory allocation profiles, and compiled FastAPI endpoint traffic.').classes('text-sm text-slate-500 dark:text-slate-400')
+            
+            # Grid layout for Metrics (3 columns, room for growth)
+            with ui.grid().classes('grid grid-cols-1 md:grid-cols-3 gap-4 w-full flex-none'):
+                # Card 1: Active Routes
+                with ui.card().classes('p-2.5 h-16 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel flex-row items-center gap-3'):
+                    ui.icon('dns', color='primary').classes('text-xl p-1.5 bg-indigo-50 dark:bg-indigo-950/50 rounded-lg')
+                    with ui.column().classes('gap-0'):
+                        ui.label('Active API Routes').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
+                        api_routes_lbl = ui.label('0').classes('text-base font-black text-slate-700 dark:text-slate-200')
+
+                # Card 2: Total Calls
+                with ui.card().classes('p-2.5 h-16 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel flex-row items-center gap-3'):
+                    ui.icon('call', color='secondary').classes('text-xl p-1.5 bg-purple-50 dark:bg-purple-950/50 rounded-lg')
+                    with ui.column().classes('gap-0'):
+                        ui.label('Total API Requests').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
+                        api_calls_lbl = ui.label('0').classes('text-base font-black text-slate-700 dark:text-slate-200')
+
+                # Card 3: Avg Latency
+                with ui.card().classes('p-2.5 h-16 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel flex-row items-center gap-3'):
+                    ui.icon('speed', color='warning').classes('text-xl p-1.5 bg-amber-50 dark:bg-amber-950/50 rounded-lg')
+                    with ui.column().classes('gap-0'):
+                        ui.label('Avg API Latency').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
+                        api_latency_lbl = ui.label('0.0 ms').classes('text-base font-black text-slate-700 dark:text-slate-200')
+
+                # Card 4: Success Rate
+                with ui.card().classes('p-2.5 h-16 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel flex-row items-center gap-3'):
+                    ui.icon('health_and_safety', color='positive').classes('text-xl p-1.5 bg-emerald-50 dark:bg-emerald-950/50 rounded-lg')
+                    with ui.column().classes('gap-0'):
+                        ui.label('API Success Rate').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
+                        api_success_lbl = ui.label('100.0%').classes('text-base font-black text-slate-700 dark:text-slate-200')
+
+                # Card 5: System CPU
+                with ui.card().classes('p-2.5 h-16 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel flex-row items-center gap-3'):
+                    ui.icon('insights', color='primary').classes('text-xl p-1.5 bg-blue-50 dark:bg-blue-950/50 rounded-lg')
+                    with ui.column().classes('gap-0'):
+                        ui.label('System CPU Load').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
+                        cpu_lbl = ui.label('0.0%').classes('text-base font-black text-slate-700 dark:text-slate-200')
+
+                # Card 6: System Memory
+                with ui.card().classes('p-2.5 h-16 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel flex-row items-center gap-3'):
+                    ui.icon('memory', color='secondary').classes('text-xl p-1.5 bg-pink-50 dark:bg-pink-950/50 rounded-lg')
+                    with ui.column().classes('gap-0'):
+                        ui.label('System RAM Usage').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
+                        sys_ram_lbl = ui.label('0.0 / 0.0 GB').classes('text-base font-black text-slate-700 dark:text-slate-200')
+
+                # Card 7: DuckDB Memory Load
+                with ui.card().classes('p-2.5 h-16 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel flex-row items-center gap-3'):
+                    ui.icon('analytics', color='emerald').classes('text-xl p-1.5 bg-teal-50 dark:bg-teal-950/50 rounded-lg')
+                    with ui.column().classes('gap-0'):
+                        ui.label('DuckDB Memory Load').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
+                        db_mem_pct_lbl = ui.label('0.0%').classes('text-base font-black text-slate-700 dark:text-slate-200')
+
+                # Card 8: DuckDB Memory Usage
+                with ui.card().classes('p-2.5 h-16 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel flex-row items-center gap-3'):
+                    ui.icon('save', color='warning').classes('text-xl p-1.5 bg-amber-50 dark:bg-amber-950/50 rounded-lg')
+                    with ui.column().classes('gap-0'):
+                        ui.label('DuckDB Memory Usage').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
+                        db_mem_lbl = ui.label('0.0 MB / 0.0 GB').classes('text-base font-black text-slate-700 dark:text-slate-200')
+
+                # Card 9: Active Threads
+                with ui.card().classes('p-2.5 h-16 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel flex-row items-center gap-3'):
+                    ui.icon('lan', color='primary').classes('text-xl p-1.5 bg-sky-50 dark:bg-sky-950/50 rounded-lg')
+                    with ui.column().classes('gap-0'):
+                        ui.label('Active Engine Threads').classes('text-[10px] text-slate-400 font-bold uppercase tracking-wider')
+                        threads_lbl = ui.label('0').classes('text-base font-black text-slate-700 dark:text-slate-200')
+            
+            # Interactive Charts Grid
+            with ui.grid().classes('grid grid-cols-1 md:grid-cols-2 gap-6 mt-2 w-full flex-none'):
+                import collections
+                mem_history_list = collections.deque(maxlen=15)
+                mem_time_list = collections.deque(maxlen=15)
+                
+                mem_chart_options = {
+                    'title': {'text': 'DuckDB Memory Footprint (MB)', 'left': 'center'},
+                    'tooltip': {'trigger': 'axis'},
+                    'xAxis': {'type': 'category', 'data': []},
+                    'yAxis': {'type': 'value'},
+                    'series': [{'name': 'Active Usage', 'type': 'line', 'data': [], 'smooth': True, 'areaStyle': {}, 'color': '#6366f1'}]
+                }
+                latency_chart_options = {
+                    'title': {'text': 'Execution Latency History (ms)', 'left': 'center'},
+                    'tooltip': {'trigger': 'axis'},
+                    'xAxis': {'type': 'category', 'data': []},
+                    'yAxis': {'type': 'value'},
+                    'series': [{'name': 'Query Time', 'type': 'bar', 'data': [], 'color': '#10b981'}]
+                }
+                
+                mem_chart = ui.echart(mem_chart_options).classes('w-full border rounded-xl p-2 bg-white dark:bg-slate-950').style('height: 350px;')
+                latency_chart = ui.echart(latency_chart_options).classes('w-full border rounded-xl p-2 bg-white dark:bg-slate-950').style('height: 350px;')
+            
+            # Performance details analytics card
+            analytics_card = ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4 flex-none')
+            with analytics_card:
+                ui.label('Endpoint Performance Analytics').classes('text-lg font-bold text-slate-800 dark:text-white')
+                ui.separator().classes('opacity-50')
+                table_container = ui.column().classes('w-full')
+                
+            def update_telemetry_dashboard():
+                if tabs.value != 'Telemetry':
+                    return
+                
+                # Update Engine metrics
+                cpu_val = get_cpu_load()
+                cpu_lbl.text = f"{cpu_val:.1f}%"
+                
+                used_ram, total_ram = get_system_memory()
+                sys_ram_lbl.text = f"{used_ram / (1024**3):.1f} / {total_ram / (1024**3):.1f} GB"
+                
+                try:
+                    mem_rows = explorer.conn.execute("SELECT SUM(memory_usage_bytes) FROM duckdb_memory()").fetchone()
+                    mem_bytes = mem_rows[0] or 0
+                    mem_mb = round(mem_bytes / (1024 * 1024), 2)
+                    
+                    limit_rows = explorer.conn.execute("SELECT value FROM duckdb_settings() WHERE name = 'max_memory'").fetchone()
+                    limit_val = limit_rows[0] if limit_rows else None
+                    
+                    import re
+                    limit_bytes = 0
+                    if limit_val:
+                        num = re.findall(r"[-+]?\d*\.\d+|\d+", limit_val)
+                        if num:
+                            val_num = float(num[0])
+                            if 'gib' in limit_val.lower():
+                                limit_bytes = val_num * 1024 * 1024 * 1024
+                            elif 'mib' in limit_val.lower():
+                                limit_bytes = val_num * 1024 * 1024
+                            elif 'kb' in limit_val.lower():
+                                limit_bytes = val_num * 1024
+                            else:
+                                limit_bytes = val_num
+                    
+                    if limit_bytes == 0:
+                        limit_bytes = total_ram
+                        
+                    mem_pct = round((mem_bytes / limit_bytes) * 100, 1) if limit_bytes else 0.0
+                    
+                    db_mem_lbl.text = f"{mem_mb:.1f} MB / {limit_bytes / (1024**3):.1f} GB"
+                    db_mem_pct_lbl.text = f"{mem_pct}%"
+                    
+                    threads_rows = explorer.conn.execute("SELECT value FROM duckdb_settings() WHERE name = 'threads'").fetchone()
+                    threads_lbl.text = str(threads_rows[0]) if threads_rows else 'N/A'
+                    
+                    # Log active memory usage history
+                    import datetime
+                    mem_history_list.append(mem_mb)
+                    mem_time_list.append(datetime.datetime.now().strftime('%H:%M:%S'))
+                    
+                    mem_chart.options['xAxis']['data'] = list(mem_time_list)
+                    mem_chart.options['series'][0]['data'] = list(mem_history_list)
+                    mem_chart.update()
+                except Exception as ex:
+                    print(f"Telemetry engine query error: {ex}")
+                
+                # Update latency chart
+                try:
+                    lat_data = [x['latency'] for x in query_latency_history]
+                    lat_labels = [x['timestamp'] for x in query_latency_history]
+                    
+                    latency_chart.options['xAxis']['data'] = list(lat_labels)
+                    latency_chart.options['series'][0]['data'] = list(lat_data)
+                    latency_chart.update()
+                except Exception as ex:
+                    print(f"Telemetry engine latency chart error: {ex}")
+                
+                # Update API metrics
+                try:
+                    global_stats = explorer.conn.execute("""
+                        SELECT 
+                            COUNT(*),
+                            AVG(latency_ms),
+                            SUM(CASE WHEN status_code < 400 THEN 1 ELSE 0 END)
+                        FROM _duckdb_studio_api_metrics;
+                    """).fetchone()
+                    
+                    total_calls = global_stats[0] if global_stats[0] is not None else 0
+                    avg_latency = global_stats[1] if global_stats[1] is not None else 0.0
+                    success_count = global_stats[2] if global_stats[2] is not None else 0
+                    success_rate = (success_count * 100.0 / total_calls) if total_calls > 0 else 100.0
+                    
+                    active_routes = explorer.conn.execute("SELECT COUNT(*) FROM _duckdb_studio_api_endpoints;").fetchone()[0]
+                    
+                    api_calls_lbl.text = str(total_calls)
+                    api_latency_lbl.text = f"{avg_latency:.1f} ms"
+                    api_success_lbl.text = f"{success_rate:.1f}%"
+                    api_routes_lbl.text = str(active_routes)
+                except Exception as ex:
+                    print(f"Telemetry API metrics query error: {ex}")
+                    
+                # Update performance table
+                try:
+                    detail_rows = explorer.conn.execute("""
+                        SELECT 
+                            m.endpoint_path,
+                            COUNT(*) as calls,
+                            AVG(m.latency_ms) as avg_lat,
+                            MIN(m.latency_ms) as min_lat,
+                            MAX(m.latency_ms) as max_lat,
+                            SUM(CASE WHEN m.status_code < 400 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as success_rate,
+                            MAX(m.timestamp) as last_called
+                        FROM _duckdb_studio_api_metrics m
+                        GROUP BY m.endpoint_path
+                        ORDER BY calls DESC;
+                    """).fetchall()
+                except Exception as ex:
+                    print(f"Failed to query detail api rows: {ex}")
+                    detail_rows = []
+                    
+                table_container.clear()
+                with table_container:
+                    if not detail_rows:
+                        with ui.column().classes('w-full items-center justify-center py-8 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-900/20'):
+                            ui.icon('hourglass_empty', color='grey').classes('text-3xl')
+                            ui.label('No performance data logged yet.').classes('text-xs text-slate-400 font-medium mt-1')
+                            ui.label('Hit your exposed API endpoints to see live stats populate here in real-time.').classes('text-[10px] text-slate-500')
+                    else:
+                        with ui.element('div').classes('w-full overflow-x-auto border border-slate-100 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-950'):
+                            with ui.element('table').classes('w-full text-left border-collapse text-xs'):
+                                with ui.element('thead').classes('bg-slate-100 dark:bg-slate-900 text-slate-500 font-bold uppercase tracking-wider text-[10px]'):
+                                    with ui.element('tr'):
+                                        ui.element('th').classes('p-3').text('Endpoint Route')
+                                        ui.element('th').classes('p-3 text-center').text('Invocations')
+                                        ui.element('th').classes('p-3 text-center').text('Avg Latency')
+                                        ui.element('th').classes('p-3 text-center').text('Min / Max')
+                                        ui.element('th').classes('p-3 text-center').text('Success Ratio')
+                                        ui.element('th').classes('p-3 text-right').text('Last Triggered')
+                                        
+                                with ui.element('tbody').classes('divide-y divide-slate-100 dark:divide-slate-800'):
+                                    for path, calls, avg_lat, min_lat, max_lat, success_rate, last_called in detail_rows:
+                                        with ui.element('tr').classes('hover:bg-slate-50/50 dark:hover:bg-slate-900/10'):
+                                            ui.element('td').classes('p-3 font-semibold text-slate-700 dark:text-slate-350').text(f"/api/{path}")
+                                            ui.element('td').classes('p-3 text-center').text(str(calls))
+                                            ui.element('td').classes('p-3 text-center').text(f"{avg_lat:.1f}ms")
+                                            ui.element('td').classes('p-3 text-center text-slate-400').text(f"{min_lat:.1f} / {max_lat:.1f}ms")
+                                            color_ind = 'text-emerald-500' if success_rate >= 95 else ('text-amber-500' if success_rate >= 80 else 'text-rose-500')
+                                            ui.element('td').classes(f'p-3 text-center font-bold {color_ind}').text(f"{success_rate:.1f}%")
+                                            ui.element('td').classes('p-3 text-right text-slate-400').text(str(last_called)[:19] if last_called else 'N/A')
+            
+            ui.timer(2.0, update_telemetry_dashboard)
+
         # Build Settings Container Content
         with settings_container:
             # Header Card
@@ -3337,7 +3725,7 @@ def index():
             j_url, j_token = get_jupyter_config()
 
             # Create inputs bound to APP_SETTINGS and Jupyter
-            with ui.grid(columns=(1, 2)).classes('w-full gap-6 flex-none'):
+            with ui.grid().classes('grid grid-cols-1 md:grid-cols-2 gap-6 w-full flex-none'):
                 # Card 1: Rate Limiting & Query Limits
                 with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
                     with ui.row().classes('items-center gap-2'):
@@ -3413,6 +3801,8 @@ def index():
         api_creator_container.bind_visibility_from(tabs, 'value', value='API Endpoints')
         api_docs_container.bind_visibility_from(tabs, 'value', value='API Docs & Explorer')
         scheduler_container.bind_visibility_from(tabs, 'value', value='Scheduler')
+        garage_container.bind_visibility_from(tabs, 'value', value='Garage S3')
+        telemetry_container.bind_visibility_from(tabs, 'value', value='Telemetry')
         settings_container.bind_visibility_from(tabs, 'value', value='Settings')
         
     # Main split layout container
@@ -6138,6 +6528,41 @@ def settings_colored_svg():
     return Response(content=svg_content, media_type="image/svg+xml")
 
 
+@app.get("/garage_orange.svg")
+def garage_orange_svg():
+    from fastapi import Response
+    svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="74 69 100 68" width="24" height="24">
+  <style>
+    .st0{fill:#4E4E4E;}
+    .st3{fill:#45C8FF;}
+    .st4{fill:#FF9329;}
+  </style>
+  <g transform="translate(2.0995769,2.0995769)">
+    <path id="path6" d="m 136.06214,99.13643 c -0.8681,0.09646 -1.83266,0 -2.70078,-0.289369 L 99.794436,89.780144 c -0.868109,-0.28937 -1.736218,-0.675196 -2.507872,-1.157479 z" />
+    <path id="path26" class="st3" d="m 136.73735,113.02618 18.42323,-7.42716 c 0.38583,-0.19291 0.57874,-0.57874 0.48228,-1.06102 -0.0965,-0.19292 -0.19291,-0.38583 -0.48228,-0.48229 -2.12204,-0.8681 -4.82284,-1.92913 -7.42716,-2.99015 -0.4823,-0.19291 -5.01576,3.08661 -5.40158,3.37598 l -7.90945,6.36613 c -1.83268,1.73622 -0.19291,3.27953 2.31496,2.21851 z" />
+    <ellipse id="circle28" class="st3" cx="123.42634" cy="120.26041" rx="9.645668" ry="9.6456566" />
+    <path id="path6-0" d="m 136.06214,99.13643 c -0.8681,0.09646 -1.83266,0 -2.70078,-0.289369 L 99.794436,89.780144 c -0.868109,-0.28937 -1.736218,-0.675196 -2.507872,-1.157479 z" />
+    <path id="path24-3-6-9" class="st4" d="m 123.0405,70.199461 c -1.44685,0 -2.89371,0.28937 -4.14765,0.868109 L 76.259006,89.973057 c -0.771652,0.289369 -1.157479,1.253935 -0.868109,2.025588 0,0 0,0 0,0 0,0.09646 0,0.09646 0.09646,0.192913 l 6.848424,13.503922 h 5.980314 l -0.86811,-4.72638 c -0.09646,-0.38582 -0.675197,-3.086605 -1.253937,-5.015736 l 19.966532,6.269676 c 0.28937,1.25394 0.57874,2.41141 1.06103,3.47244 h 32.31298 c 0.38582,-1.06103 0.67519,-2.2185 0.86811,-3.47244 l 19.87007,-6.17322 c -0.57873,1.929131 -1.15747,4.62992 -1.25393,5.01574 l -0.86812,4.72637 h 5.98032 l 6.75197,-13.407459 0.0965,-0.09646 0.0965,-0.192913 c 0,0 0,0 0,0 0.0965,-0.192913 0.0965,-0.28937 0.0965,-0.482283 0,-0.675196 -0.38583,-1.253935 -0.96457,-1.543305 l -42.6339,-18.905486 c -1.54332,-0.675196 -2.99017,-1.061022 -4.53347,-0.964566 z" />
+    <path id="path24-3-2" class="st0" d="m 123.0405,79.073465 c -1.44685,0 -2.89371,0.28937 -4.14765,0.868109 L 76.259006,98.847061 c -0.771652,0.289369 -1.157479,1.253939 -0.868109,2.025589 0,0 0,0 0,0 0,0.0965 0,0.0965 0.09646,0.19291 l 3.665353,7.3307 h 7.909449 c -0.289371,-1.06102 -0.578742,-2.31496 -0.964568,-3.56889 l 11.285433,3.56889 h 51.507866 l 11.28542,-3.56889 c -0.38581,1.15748 -0.67518,2.50787 -0.96455,3.56889 h 7.90943 l 3.66536,-7.23424 0.0965,-0.0965 0.0965,-0.19291 c 0,0 0,0 0,0 0.0965,-0.19291 0.0965,-0.28937 0.0965,-0.48228 0,-0.6752 -0.38582,-1.25394 -0.96457,-1.543309 L 127.47751,79.941574 c -1.44686,-0.578739 -2.89371,-0.868109 -4.43701,-0.868109 z" />
+    <path id="path24-0" class="st4" d="m 171.07592,109.45728 c 0,0.19292 0,0.28937 -0.0965,0.48229 0,0 0,0 0,0 l -0.0965,0.19291 v 0 l -0.0965,0.0965 -10.32087,20.44879 c -1.44684,2.79724 -4.05116,2.70078 -3.66533,-0.0965 l 2.12203,-11.57479 c 0.0965,-0.38582 0.6752,-3.08661 1.25394,-5.01574 l -19.87014,6.17322 c -3.08661,20.35234 -29.90156,20.64171 -34.24212,0 L 86.0974,113.89428 c 0.578741,1.92914 1.157481,4.62992 1.253938,5.01575 l 2.122046,11.57478 c 0.482284,2.8937 -2.218503,2.99016 -3.665353,0.0965 L 75.390897,110.03602 c 0,-0.0964 -0.09646,-0.0964 -0.09646,-0.19291 -0.385827,-0.77165 0,-1.73622 0.771653,-2.02559 0,0 0,0 0,0 l 42.63386,-18.905486 c 2.70078,-1.157478 5.88385,-1.157478 8.58464,0 l 42.63385,18.905486 c 0.77166,0.38583 1.15748,0.96457 1.15748,1.63976 z" />
+    <path id="path26-2" class="st0" d="m 136.73735,113.02618 18.42323,-7.42716 c 0.38583,-0.19291 0.57874,-0.57874 0.48228,-1.06102 -0.0965,-0.19292 -0.19291,-0.38583 -0.48228,-0.48229 -2.12204,-0.8681 -4.82284,-1.92913 -7.42716,-2.99015 -0.4823,-0.19291 -5.01576,3.08661 -5.40158,3.37598 l -7.90945,6.36613 c -1.83268,1.73622 -0.19291,3.27953 2.31496,2.21851 z" />
+    <ellipse id="circle28-3" class="st0" cx="123.42634" cy="120.26041" rx="9.645668" ry="9.6456566" />
+  </g>
+</svg>'''
+    return Response(content=svg_content, media_type="image/svg+xml")
+
+
+
+@app.get("/telemetry_colored.svg")
+def telemetry_colored_svg():
+    from fastapi import Response
+    svg_content = '''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24">
+  <line x1="2" y1="12" x2="22" y2="12" stroke="#818CF8" stroke-width="1" opacity="0.2" />
+  <line x1="12" y1="2" x2="12" y2="22" stroke="#818CF8" stroke-width="1" opacity="0.2" />
+  <circle cx="12" cy="12" r="10" fill="#818CF8" opacity="0.1" stroke="#818CF8" stroke-width="1.5" />
+  <path d="M3 12 h4 l2 -5 l3 10 l2 -7 l2 2 h4" fill="none" stroke="#6366F1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+</svg>'''
+    return Response(content=svg_content, media_type="image/svg+xml")
 @app.get("/scheduler_colored.svg")
 def scheduler_colored_svg():
     from fastapi import Response
@@ -6494,4 +6919,4 @@ scheduler_thread.start()
 
 
 # Start application server
-ui.run(title='DuckDB Studio Explorer', port=8085, show=False, storage_secret='duckdb_studio_secret_key_1337', reload=False)
+ui.run(title='DuckDB Data Studio Explorer', port=8085, show=False, storage_secret='duckdb_studio_secret_key_1337', reload=False)
