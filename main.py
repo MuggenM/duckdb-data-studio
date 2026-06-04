@@ -1017,6 +1017,329 @@ def index():
     current_results = {'columns': [], 'rows': []}
     query_latency_history = []
 
+    def sanitize_table_name(name):
+        import re
+        cleaned = re.sub(r'[^a-zA-Z0-9_]', '_', name)
+        if not cleaned:
+            cleaned = "imported_table"
+        elif cleaned[0].isdigit():
+            cleaned = "t_" + cleaned
+        return cleaned.lower()
+
+    async def handle_local_file_upload(e):
+        filename = e.name
+        content = e.content.read()
+        target_dir = '/shared'
+        os.makedirs(target_dir, exist_ok=True)
+        target_path = os.path.join(target_dir, filename)
+        
+        try:
+            with open(target_path, 'wb') as f:
+                f.write(content)
+            
+            ext = os.path.splitext(filename)[1].lower()
+            table_name = sanitize_table_name(os.path.splitext(filename)[0])
+            
+            if ext == '.parquet':
+                sql = f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM read_parquet('{target_path}');"
+            elif ext == '.json':
+                sql = f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM read_json('{target_path}', format='auto');"
+            else:
+                sql = f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM read_csv('{target_path}', header=true, auto_detect=true);"
+                
+            explorer.conn.execute(sql)
+            ui.notify(f"Successfully uploaded and imported local file to table '{table_name}'", type='success')
+            
+            sql_editor.value = f"SELECT * FROM {table_name} LIMIT 100;"
+            refresh_schema_tree()
+            tabs.value = 'Explorer'
+        except Exception as ex:
+            ui.notify(f"Failed to import local file: {ex}", type='negative', duration=7)
+
+    async def trigger_url_import(url, format_type, custom_table):
+        if not url or not url.strip():
+            ui.notify("Please specify a remote HTTP/HTTPS URL", type='warning')
+            return
+        
+        url = url.strip()
+        tbl_name = sanitize_table_name(custom_table.strip() if custom_table and custom_table.strip() else "remote_dataset")
+        
+        ui.notify("Connecting and importing remote dataset...", type='info')
+        try:
+            explorer.conn.execute("INSTALL httpfs; LOAD httpfs;")
+            fmt = format_type.upper()
+            if fmt == 'PARQUET':
+                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_parquet('{url}');"
+            elif fmt == 'JSON':
+                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_json('{url}', format='auto');"
+            elif fmt == 'CSV':
+                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_csv('{url}', header=true, auto_detect=true);"
+            else:
+                ext = url.split('?')[0].split('.')[-1].lower()
+                if ext == 'parquet':
+                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_parquet('{url}');"
+                elif ext == 'json':
+                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_json('{url}', format='auto');"
+                else:
+                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_csv('{url}', header=true, auto_detect=true);"
+                    
+            explorer.conn.execute(sql)
+            ui.notify(f"Successfully imported dataset to table '{tbl_name}'", type='success')
+            
+            sql_editor.value = f"SELECT * FROM {tbl_name} LIMIT 100;"
+            refresh_schema_tree()
+            tabs.value = 'Explorer'
+        except Exception as ex:
+            ui.notify(f"Failed to import remote dataset: {ex}", type='negative', duration=7)
+
+    async def trigger_s3_import(s3_uri, format_type, access_key, secret_key, session_token, region, custom_table):
+        if not s3_uri or not s3_uri.strip():
+            ui.notify("Please specify a valid S3 URI (s3://...)", type='warning')
+            return
+            
+        s3_uri = s3_uri.strip()
+        tbl_name = sanitize_table_name(custom_table.strip() if custom_table and custom_table.strip() else "s3_dataset")
+        
+        ui.notify("Connecting and importing S3 dataset...", type='info')
+        try:
+            explorer.conn.execute("INSTALL httpfs; LOAD httpfs;")
+            explorer.conn.execute("RESET s3_region; RESET s3_access_key_id; RESET s3_secret_access_key; RESET s3_session_token;")
+            if region and region.strip():
+                explorer.conn.execute(f"SET s3_region='{region.strip()}';")
+            if access_key and access_key.strip():
+                explorer.conn.execute(f"SET s3_access_key_id='{access_key.strip()}';")
+            if secret_key and secret_key.strip():
+                explorer.conn.execute(f"SET s3_secret_access_key='{secret_key.strip()}';")
+            if session_token and session_token.strip():
+                explorer.conn.execute(f"SET s3_session_token='{session_token.strip()}';")
+                
+            fmt = format_type.upper()
+            if fmt == 'PARQUET':
+                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_parquet('{s3_uri}');"
+            elif fmt == 'JSON':
+                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_json('{s3_uri}', format='auto');"
+            elif fmt == 'CSV':
+                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_csv('{s3_uri}', header=true, auto_detect=true);"
+            else:
+                ext = s3_uri.split('?')[0].split('.')[-1].lower()
+                if ext == 'parquet':
+                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_parquet('{s3_uri}');"
+                elif ext == 'json':
+                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_json('{s3_uri}', format='auto');"
+                else:
+                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_csv('{s3_uri}', header=true, auto_detect=true);"
+                    
+            explorer.conn.execute(sql)
+            ui.notify(f"Successfully imported S3 dataset to table '{tbl_name}'", type='success')
+            
+            sql_editor.value = f"SELECT * FROM {tbl_name} LIMIT 100;"
+            refresh_schema_tree()
+            tabs.value = 'Explorer'
+        except Exception as ex:
+            ui.notify(f"Failed to import S3 dataset: {ex}", type='negative', duration=7)
+
+    def get_system_memory():
+        try:
+            with open('/proc/meminfo', 'r') as f:
+                lines = f.readlines()
+            mem_total = 0
+            mem_free = 0
+            mem_available = 0
+            for line in lines:
+                if line.startswith('MemTotal:'):
+                    mem_total = int(line.split()[1]) * 1024
+                elif line.startswith('MemFree:'):
+                    mem_free = int(line.split()[1]) * 1024
+                elif line.startswith('MemAvailable:'):
+                    mem_available = int(line.split()[1]) * 1024
+            mem_used = mem_total - mem_available if mem_available else mem_total - mem_free
+            return mem_used, mem_total
+        except Exception:
+            return 0, 0
+
+    def get_cpu_load():
+        try:
+            with open('/proc/loadavg', 'r') as f:
+                load = float(f.read().split()[0])
+            import os
+            num_cpus = os.cpu_count() or 1
+            cpu_pct = min(100.0, (load / num_cpus) * 100.0)
+            return cpu_pct
+        except Exception:
+            return 0.0
+
+    def parse_dbt_manifest():
+        import json
+        import os
+        manifest_path = '/app/dbt_project/target/manifest.json'
+        if not os.path.exists(manifest_path):
+            return None, "manifest.json not found. Compile the dbt project first."
+            
+        try:
+            with open(manifest_path, 'r') as f:
+                manifest = json.load(f)
+                
+            nodes = manifest.get('nodes', {})
+            sources = manifest.get('sources', {})
+            
+            dag = {}
+            node_details = {}
+            
+            for node_id, node in nodes.items():
+                if node.get('resource_type') == 'model':
+                    name = node.get('name')
+                    depends_on_nodes = node.get('depends_on', {}).get('nodes', [])
+                    
+                    parents = []
+                    for parent_id in depends_on_nodes:
+                        if parent_id.startswith('model.') or parent_id.startswith('source.'):
+                            parent_name = parent_id.split('.')[-1]
+                            parents.append(parent_name)
+                    
+                    dag[name] = parents
+                    node_details[name] = {
+                        'id': node_id,
+                        'resource_type': 'model',
+                        'materialized': node.get('config', {}).get('materialized', 'table'),
+                        'path': node.get('original_file_path', '')
+                    }
+                    
+            for source_id, source in sources.items():
+                name = source.get('identifier') or source.get('name')
+                dag[name] = []
+                node_details[name] = {
+                    'id': source_id,
+                    'resource_type': 'source',
+                    'materialized': 'source',
+                    'path': source.get('original_file_path', '')
+                }
+                
+            return dag, node_details
+        except Exception as e:
+            return None, f"Error parsing manifest: {str(e)}"
+
+    def generate_dbt_mermaid(dag, node_details):
+        mermaid_lines = ["graph TD"]
+        for node_name, details in node_details.items():
+            res_type = details['resource_type']
+            mat = details['materialized']
+            
+            if res_type == 'source':
+                mermaid_lines.append(f'  {node_name}[("💾 {node_name} (Source)")]')
+                mermaid_lines.append(f'  style {node_name} fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0369a1')
+            elif mat == 'view':
+                mermaid_lines.append(f'  {node_name}["👁️ {node_name} (View)"]')
+                mermaid_lines.append(f'  style {node_name} fill:#f0fdf4,stroke:#16a34a,stroke-width:2px,color:#15803d')
+            else:
+                mermaid_lines.append(f'  {node_name}["📊 {node_name} (Table)"]')
+                mermaid_lines.append(f'  style {node_name} fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#b45309')
+                
+        for child, parents in dag.items():
+            for parent in parents:
+                if parent in node_details:
+                    mermaid_lines.append(f"  {parent} --> {child}")
+                    
+        return "\n".join(mermaid_lines)
+
+    def run_dbt_model_locally(model_name, details):
+        import os
+        proj_name = 'test_project'
+        compiled_path = f"/app/dbt_project/target/compiled/{proj_name}/{details['path']}"
+        
+        if not os.path.exists(compiled_path):
+            return False, f"Compiled SQL not found at {compiled_path}. Run dbt compile first."
+            
+        try:
+            with open(compiled_path, 'r') as f:
+                sql_code = f.read().strip()
+                
+            try:
+                attached = explorer.conn.execute("SELECT database_name FROM duckdb_databases()").fetchall()
+                attached_names = [a[0] for a in attached]
+                if 'test_project_db' not in attached_names:
+                    explorer.conn.execute("ATTACH '/app/dbt_data/test_project.duckdb' AS test_project_db;")
+            except Exception as attach_err:
+                print(f"Error attaching test_project_db: {attach_err}")
+                
+            mat = details.get('materialized', 'table')
+            fq_name = f"test_project_db.main.{model_name}"
+            
+            if mat == 'view':
+                exec_sql = f"CREATE OR REPLACE VIEW {fq_name} AS {sql_code}"
+            else:
+                exec_sql = f"CREATE OR REPLACE TABLE {fq_name} AS {sql_code}"
+                
+            explorer.conn.execute(exec_sql)
+            return True, f"Successfully materialised model {model_name} as {mat.upper()} in test_project_db!"
+        except Exception as e:
+            return False, f"Failed to run model: {str(e)}"
+
+    def open_dbt_lineage_dialog():
+        dag, node_details = parse_dbt_manifest()
+        if dag is None:
+            ui.notify(f"Cannot load lineage: {node_details}", type='negative')
+            return
+            
+        mermaid_code = generate_dbt_mermaid(dag, node_details)
+        
+        with ui.dialog().classes('w-11/12 max-w-5xl') as dialog, ui.card().classes('w-full p-6 dark-bg-panel'):
+            with ui.row().classes('w-full justify-between items-center mb-4'):
+                with ui.row().classes('items-center gap-2'):
+                    ui.icon('lan', color='primary').classes('text-2xl')
+                    ui.label('dbt Model Lineage Dependency Graph').classes('text-xl font-bold text-slate-800 dark:text-white')
+                ui.button(icon='close', on_click=dialog.close).props('flat round dense')
+                
+            ui.separator().classes('mb-4')
+            
+            with ui.row().classes('w-full gap-6 no-wrap items-stretch'):
+                with ui.card().classes('p-4 border rounded-xl flex-grow items-center justify-center overflow-auto bg-slate-50 dark:bg-slate-900').style('min-height: 400px; max-height: 600px;'):
+                    lineage_mermaid = ui.mermaid(mermaid_code).classes('w-full')
+                    
+                with ui.card().classes('w-80 p-4 border rounded-xl flex-col gap-4 flex-none'):
+                    ui.label('Model Information').classes('text-sm font-semibold uppercase text-slate-400')
+                    
+                    model_options = sorted(list(dag.keys()))
+                    info_area = ui.column().classes('w-full gap-3')
+                    
+                    def on_model_select(e):
+                        info_area.clear()
+                        model_name = e.value
+                        if not model_name:
+                            return
+                            
+                        details = node_details[model_name]
+                        with info_area:
+                            ui.label(f"Name: {model_name}").classes('font-bold text-lg text-slate-800 dark:text-white')
+                            ui.label(f"Type: {details['resource_type'].upper()}").classes('text-xs text-slate-400')
+                            ui.label(f"Materialized: {details['materialized'].upper()}").classes('text-xs text-slate-400')
+                            ui.label(f"Path: {details['path']}").classes('text-xs text-slate-500 font-mono break-all')
+                            
+                            if details['resource_type'] == 'model':
+                                proj_name = 'test_project'
+                                compiled_path = f"/app/dbt_project/target/compiled/{proj_name}/{details['path']}"
+                                sql_preview = ""
+                                if os.path.exists(compiled_path):
+                                    with open(compiled_path, 'r') as sf:
+                                        sql_preview = sf.read()
+                                        
+                                if sql_preview:
+                                    with ui.expansion('Compiled SQL Preview', icon='code').classes('w-full border rounded'):
+                                        ui.code(sql_preview, language='sql').classes('text-xs w-full max-h-40 overflow-auto')
+                                        
+                                async def handle_run_model():
+                                    ui.notify(f"Materializing model {model_name} locally...", type='info')
+                                    success, msg = run_dbt_model_locally(model_name, details)
+                                    if success:
+                                        ui.notify(msg, type='success')
+                                    else:
+                                        ui.notify(msg, type='negative')
+                                        
+                                ui.button('Run & Materialize Model', icon='play_arrow', on_click=handle_run_model).props('elevated dense color=primary').classes('w-full py-2')
+                                
+                    model_dropdown = ui.select(options=model_options, label='Select a node to inspect', on_change=on_model_select).props('outlined dense').classes('w-full')
+                    
+            dialog.open()
+
     # Helper function for bytes export
     def get_csv_bytes(columns, rows):
         output = io.StringIO()
@@ -1603,22 +1926,22 @@ def index():
                     mem_time_list = collections.deque(maxlen=15)
                     
                     mem_chart_options = {
-                        'title': {'text': 'DuckDB Memory Footprint (MB)', 'style': {'fontSize': '12px', 'fontWeight': 'bold'}},
-                        'xAxis': {'categories': []},
-                        'yAxis': {'title': {'text': 'Megabytes'}},
-                        'series': [{'name': 'Active Usage', 'data': [], 'color': '#6366f1'}],
-                        'chart': {'height': 220, 'type': 'area'}
+                        'title': {'text': 'DuckDB Memory Footprint (MB)', 'left': 'center'},
+                        'tooltip': {'trigger': 'axis'},
+                        'xAxis': {'type': 'category', 'data': []},
+                        'yAxis': {'type': 'value'},
+                        'series': [{'name': 'Active Usage', 'type': 'line', 'data': [], 'smooth': True, 'areaStyle': {}, 'color': '#6366f1'}]
                     }
                     latency_chart_options = {
-                        'title': {'text': 'Execution Latency History (ms)', 'style': {'fontSize': '12px', 'fontWeight': 'bold'}},
-                        'xAxis': {'categories': []},
-                        'yAxis': {'title': {'text': 'Milliseconds'}},
-                        'series': [{'name': 'Query Time', 'data': [], 'color': '#10b981', 'type': 'column'}],
-                        'chart': {'height': 220}
+                        'title': {'text': 'Execution Latency History (ms)', 'left': 'center'},
+                        'tooltip': {'trigger': 'axis'},
+                        'xAxis': {'type': 'category', 'data': []},
+                        'yAxis': {'type': 'value'},
+                        'series': [{'name': 'Query Time', 'type': 'bar', 'data': [], 'color': '#10b981'}]
                     }
                     
-                    mem_chart = ui.chart(mem_chart_options).classes('w-full border rounded-xl p-2 bg-white dark:bg-slate-950')
-                    latency_chart = ui.chart(latency_chart_options).classes('w-full border rounded-xl p-2 bg-white dark:bg-slate-950')
+                    mem_chart = ui.echart(mem_chart_options).classes('w-full border rounded-xl p-2 bg-white dark:bg-slate-950')
+                    latency_chart = ui.echart(latency_chart_options).classes('w-full border rounded-xl p-2 bg-white dark:bg-slate-950')
                     
                 def update_performance_dashboard():
                     if tabs.value != 'Database Tools':
@@ -1671,7 +1994,7 @@ def index():
                         mem_history_list.append(mem_mb)
                         mem_time_list.append(datetime.datetime.now().strftime('%H:%M:%S'))
                         
-                        mem_chart.options['xAxis']['categories'] = list(mem_time_list)
+                        mem_chart.options['xAxis']['data'] = list(mem_time_list)
                         mem_chart.options['series'][0]['data'] = list(mem_history_list)
                         mem_chart.update()
                     except Exception as ex:
@@ -1681,7 +2004,7 @@ def index():
                         lat_data = [x['latency'] for x in query_latency_history]
                         lat_labels = [x['timestamp'] for x in query_latency_history]
                         
-                        latency_chart.options['xAxis']['categories'] = list(lat_labels)
+                        latency_chart.options['xAxis']['data'] = list(lat_labels)
                         latency_chart.options['series'][0]['data'] = list(lat_data)
                         latency_chart.update()
                     except Exception as ex:
@@ -4364,328 +4687,6 @@ def index():
         except Exception as e:
             ui.notify(f"Error during re-seeding: {e}", type='negative')
 
-    def sanitize_table_name(name):
-        import re
-        cleaned = re.sub(r'[^a-zA-Z0-9_]', '_', name)
-        if not cleaned:
-            cleaned = "imported_table"
-        elif cleaned[0].isdigit():
-            cleaned = "t_" + cleaned
-        return cleaned.lower()
-
-    async def handle_local_file_upload(e):
-        filename = e.name
-        content = e.content.read()
-        target_dir = '/shared'
-        os.makedirs(target_dir, exist_ok=True)
-        target_path = os.path.join(target_dir, filename)
-        
-        try:
-            with open(target_path, 'wb') as f:
-                f.write(content)
-            
-            ext = os.path.splitext(filename)[1].lower()
-            table_name = sanitize_table_name(os.path.splitext(filename)[0])
-            
-            if ext == '.parquet':
-                sql = f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM read_parquet('{target_path}');"
-            elif ext == '.json':
-                sql = f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM read_json('{target_path}', format='auto');"
-            else:
-                sql = f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM read_csv('{target_path}', header=true, auto_detect=true);"
-                
-            explorer.conn.execute(sql)
-            ui.notify(f"Successfully uploaded and imported local file to table '{table_name}'", type='success')
-            
-            sql_editor.value = f"SELECT * FROM {table_name} LIMIT 100;"
-            refresh_schema_tree()
-            tabs.value = 'Explorer'
-        except Exception as ex:
-            ui.notify(f"Failed to import local file: {ex}", type='negative', duration=7)
-
-    async def trigger_url_import(url, format_type, custom_table):
-        if not url or not url.strip():
-            ui.notify("Please specify a remote HTTP/HTTPS URL", type='warning')
-            return
-        
-        url = url.strip()
-        tbl_name = sanitize_table_name(custom_table.strip() if custom_table and custom_table.strip() else "remote_dataset")
-        
-        ui.notify("Connecting and importing remote dataset...", type='info')
-        try:
-            explorer.conn.execute("INSTALL httpfs; LOAD httpfs;")
-            fmt = format_type.upper()
-            if fmt == 'PARQUET':
-                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_parquet('{url}');"
-            elif fmt == 'JSON':
-                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_json('{url}', format='auto');"
-            elif fmt == 'CSV':
-                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_csv('{url}', header=true, auto_detect=true);"
-            else:
-                ext = url.split('?')[0].split('.')[-1].lower()
-                if ext == 'parquet':
-                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_parquet('{url}');"
-                elif ext == 'json':
-                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_json('{url}', format='auto');"
-                else:
-                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_csv('{url}', header=true, auto_detect=true);"
-                    
-            explorer.conn.execute(sql)
-            ui.notify(f"Successfully imported dataset to table '{tbl_name}'", type='success')
-            
-            sql_editor.value = f"SELECT * FROM {tbl_name} LIMIT 100;"
-            refresh_schema_tree()
-            tabs.value = 'Explorer'
-        except Exception as ex:
-            ui.notify(f"Failed to import remote dataset: {ex}", type='negative', duration=7)
-
-    async def trigger_s3_import(s3_uri, format_type, access_key, secret_key, session_token, region, custom_table):
-        if not s3_uri or not s3_uri.strip():
-            ui.notify("Please specify a valid S3 URI (s3://...)", type='warning')
-            return
-            
-        s3_uri = s3_uri.strip()
-        tbl_name = sanitize_table_name(custom_table.strip() if custom_table and custom_table.strip() else "s3_dataset")
-        
-        ui.notify("Connecting and importing S3 dataset...", type='info')
-        try:
-            explorer.conn.execute("INSTALL httpfs; LOAD httpfs;")
-            explorer.conn.execute("RESET s3_region; RESET s3_access_key_id; RESET s3_secret_access_key; RESET s3_session_token;")
-            if region and region.strip():
-                explorer.conn.execute(f"SET s3_region='{region.strip()}';")
-            if access_key and access_key.strip():
-                explorer.conn.execute(f"SET s3_access_key_id='{access_key.strip()}';")
-            if secret_key and secret_key.strip():
-                explorer.conn.execute(f"SET s3_secret_access_key='{secret_key.strip()}';")
-            if session_token and session_token.strip():
-                explorer.conn.execute(f"SET s3_session_token='{session_token.strip()}';")
-                
-            fmt = format_type.upper()
-            if fmt == 'PARQUET':
-                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_parquet('{s3_uri}');"
-            elif fmt == 'JSON':
-                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_json('{s3_uri}', format='auto');"
-            elif fmt == 'CSV':
-                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_csv('{s3_uri}', header=true, auto_detect=true);"
-            else:
-                ext = s3_uri.split('?')[0].split('.')[-1].lower()
-                if ext == 'parquet':
-                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_parquet('{s3_uri}');"
-                elif ext == 'json':
-                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_json('{s3_uri}', format='auto');"
-                else:
-                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_csv('{s3_uri}', header=true, auto_detect=true);"
-                    
-            explorer.conn.execute(sql)
-            ui.notify(f"Successfully imported S3 dataset to table '{tbl_name}'", type='success')
-            
-            sql_editor.value = f"SELECT * FROM {tbl_name} LIMIT 100;"
-            refresh_schema_tree()
-            tabs.value = 'Explorer'
-        except Exception as ex:
-            ui.notify(f"Failed to import S3 dataset: {ex}", type='negative', duration=7)
-
-    def get_system_memory():
-        try:
-            with open('/proc/meminfo', 'r') as f:
-                lines = f.readlines()
-            mem_total = 0
-            mem_free = 0
-            mem_available = 0
-            for line in lines:
-                if line.startswith('MemTotal:'):
-                    mem_total = int(line.split()[1]) * 1024
-                elif line.startswith('MemFree:'):
-                    mem_free = int(line.split()[1]) * 1024
-                elif line.startswith('MemAvailable:'):
-                    mem_available = int(line.split()[1]) * 1024
-            mem_used = mem_total - mem_available if mem_available else mem_total - mem_free
-            return mem_used, mem_total
-        except Exception:
-            return 0, 0
-
-    def get_cpu_load():
-        try:
-            with open('/proc/loadavg', 'r') as f:
-                load = float(f.read().split()[0])
-            import os
-            num_cpus = os.cpu_count() or 1
-            cpu_pct = min(100.0, (load / num_cpus) * 100.0)
-            return cpu_pct
-        except Exception:
-            return 0.0
-
-    def parse_dbt_manifest():
-        import json
-        import os
-        manifest_path = '/app/dbt_project/target/manifest.json'
-        if not os.path.exists(manifest_path):
-            return None, "manifest.json not found. Compile the dbt project first."
-            
-        try:
-            with open(manifest_path, 'r') as f:
-                manifest = json.load(f)
-                
-            nodes = manifest.get('nodes', {})
-            sources = manifest.get('sources', {})
-            
-            dag = {}
-            node_details = {}
-            
-            for node_id, node in nodes.items():
-                if node.get('resource_type') == 'model':
-                    name = node.get('name')
-                    depends_on_nodes = node.get('depends_on', {}).get('nodes', [])
-                    
-                    parents = []
-                    for parent_id in depends_on_nodes:
-                        if parent_id.startswith('model.') or parent_id.startswith('source.'):
-                            parent_name = parent_id.split('.')[-1]
-                            parents.append(parent_name)
-                    
-                    dag[name] = parents
-                    node_details[name] = {
-                        'id': node_id,
-                        'resource_type': 'model',
-                        'materialized': node.get('config', {}).get('materialized', 'table'),
-                        'path': node.get('original_file_path', '')
-                    }
-                    
-            for source_id, source in sources.items():
-                name = source.get('identifier') or source.get('name')
-                dag[name] = []
-                node_details[name] = {
-                    'id': source_id,
-                    'resource_type': 'source',
-                    'materialized': 'source',
-                    'path': source.get('original_file_path', '')
-                }
-                
-            return dag, node_details
-        except Exception as e:
-            return None, f"Error parsing manifest: {str(e)}"
-
-    def generate_dbt_mermaid(dag, node_details):
-        mermaid_lines = ["graph TD"]
-        for node_name, details in node_details.items():
-            res_type = details['resource_type']
-            mat = details['materialized']
-            
-            if res_type == 'source':
-                mermaid_lines.append(f'  {node_name}[("💾 {node_name} (Source)")]')
-                mermaid_lines.append(f'  style {node_name} fill:#e0f2fe,stroke:#0284c7,stroke-width:2px,color:#0369a1')
-            elif mat == 'view':
-                mermaid_lines.append(f'  {node_name}["👁️ {node_name} (View)"]')
-                mermaid_lines.append(f'  style {node_name} fill:#f0fdf4,stroke:#16a34a,stroke-width:2px,color:#15803d')
-            else:
-                mermaid_lines.append(f'  {node_name}["📊 {node_name} (Table)"]')
-                mermaid_lines.append(f'  style {node_name} fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#b45309')
-                
-        for child, parents in dag.items():
-            for parent in parents:
-                if parent in node_details:
-                    mermaid_lines.append(f"  {parent} --> {child}")
-                    
-        return "\n".join(mermaid_lines)
-
-    def run_dbt_model_locally(model_name, details):
-        import os
-        proj_name = 'test_project'
-        compiled_path = f"/app/dbt_project/target/compiled/{proj_name}/{details['path']}"
-        
-        if not os.path.exists(compiled_path):
-            return False, f"Compiled SQL not found at {compiled_path}. Run dbt compile first."
-            
-        try:
-            with open(compiled_path, 'r') as f:
-                sql_code = f.read().strip()
-                
-            try:
-                attached = explorer.conn.execute("SELECT database_name FROM duckdb_databases()").fetchall()
-                attached_names = [a[0] for a in attached]
-                if 'test_project_db' not in attached_names:
-                    explorer.conn.execute("ATTACH '/app/dbt_data/test_project.duckdb' AS test_project_db;")
-            except Exception as attach_err:
-                print(f"Error attaching test_project_db: {attach_err}")
-                
-            mat = details.get('materialized', 'table')
-            fq_name = f"test_project_db.main.{model_name}"
-            
-            if mat == 'view':
-                exec_sql = f"CREATE OR REPLACE VIEW {fq_name} AS {sql_code}"
-            else:
-                exec_sql = f"CREATE OR REPLACE TABLE {fq_name} AS {sql_code}"
-                
-            explorer.conn.execute(exec_sql)
-            return True, f"Successfully materialised model {model_name} as {mat.upper()} in test_project_db!"
-        except Exception as e:
-            return False, f"Failed to run model: {str(e)}"
-
-    def open_dbt_lineage_dialog():
-        dag, node_details = parse_dbt_manifest()
-        if dag is None:
-            ui.notify(f"Cannot load lineage: {node_details}", type='negative')
-            return
-            
-        mermaid_code = generate_dbt_mermaid(dag, node_details)
-        
-        with ui.dialog().classes('w-11/12 max-w-5xl') as dialog, ui.card().classes('w-full p-6 dark-bg-panel'):
-            with ui.row().classes('w-full justify-between items-center mb-4'):
-                with ui.row().classes('items-center gap-2'):
-                    ui.icon('lan', color='primary').classes('text-2xl')
-                    ui.label('dbt Model Lineage Dependency Graph').classes('text-xl font-bold text-slate-800 dark:text-white')
-                ui.button(icon='close', on_click=dialog.close).props('flat round dense')
-                
-            ui.separator().classes('mb-4')
-            
-            with ui.row().classes('w-full gap-6 no-wrap items-stretch'):
-                with ui.card().classes('p-4 border rounded-xl flex-grow items-center justify-center overflow-auto bg-slate-50 dark:bg-slate-900').style('min-height: 400px; max-height: 600px;'):
-                    lineage_mermaid = ui.mermaid(mermaid_code).classes('w-full')
-                    
-                with ui.card().classes('w-80 p-4 border rounded-xl flex-col gap-4 flex-none'):
-                    ui.label('Model Information').classes('text-sm font-semibold uppercase text-slate-400')
-                    
-                    model_options = sorted(list(dag.keys()))
-                    info_area = ui.column().classes('w-full gap-3')
-                    
-                    def on_model_select(e):
-                        info_area.clear()
-                        model_name = e.value
-                        if not model_name:
-                            return
-                            
-                        details = node_details[model_name]
-                        with info_area:
-                            ui.label(f"Name: {model_name}").classes('font-bold text-lg text-slate-800 dark:text-white')
-                            ui.label(f"Type: {details['resource_type'].upper()}").classes('text-xs text-slate-400')
-                            ui.label(f"Materialized: {details['materialized'].upper()}").classes('text-xs text-slate-400')
-                            ui.label(f"Path: {details['path']}").classes('text-xs text-slate-500 font-mono break-all')
-                            
-                            if details['resource_type'] == 'model':
-                                proj_name = 'test_project'
-                                compiled_path = f"/app/dbt_project/target/compiled/{proj_name}/{details['path']}"
-                                sql_preview = ""
-                                if os.path.exists(compiled_path):
-                                    with open(compiled_path, 'r') as sf:
-                                        sql_preview = sf.read()
-                                        
-                                if sql_preview:
-                                    with ui.expansion('Compiled SQL Preview', icon='code').classes('w-full border rounded'):
-                                        ui.code(sql_preview, language='sql').classes('text-xs w-full max-h-40 overflow-auto')
-                                        
-                                async def handle_run_model():
-                                    ui.notify(f"Materializing model {model_name} locally...", type='info')
-                                    success, msg = run_dbt_model_locally(model_name, details)
-                                    if success:
-                                        ui.notify(msg, type='success')
-                                    else:
-                                        ui.notify(msg, type='negative')
-                                        
-                                ui.button('Run & Materialize Model', icon='play_arrow', on_click=handle_run_model).props('elevated dense color=primary').classes('w-full py-2')
-                                
-                    model_dropdown = ui.select(options=model_options, label='Select a node to inspect', on_change=on_model_select).props('outlined dense').classes('w-full')
-                    
-            dialog.open()
 
     def format_sql_query():
         """Apply basic SQL formatting rules to clean up the editor."""
