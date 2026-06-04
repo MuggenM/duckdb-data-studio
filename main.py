@@ -1987,8 +1987,7 @@ def index():
                         threads_rows = explorer.conn.execute("SELECT value FROM duckdb_settings() WHERE name = 'threads'").fetchone()
                         threads_lbl.text = str(threads_rows[0]) if threads_rows else 'N/A'
                         
-                        tx_rows = explorer.conn.execute("SELECT COUNT(*) FROM duckdb_transactions()").fetchone()
-                        tx_lbl.text = str(tx_rows[0]) if tx_rows else '0'
+                        tx_lbl.text = 'Active'
                         
                         import datetime
                         mem_history_list.append(mem_mb)
