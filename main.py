@@ -80,8 +80,10 @@ def verify_jwt_token(auth_header: str):
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Unauthorized: {str(e)}")
 
-def get_dynamic_rate_limit(request: Request) -> str:
+def get_dynamic_rate_limit(request: Request = None) -> str:
     """Resolve dynamic rate-limit string per endpoint from DB, falling back to dynamic settings default."""
+    if request is None:
+        return APP_SETTINGS.get("default_rate_limit", "5/minute")
     path = request.url.path
     import re
     match = re.match(r'^/api/(.+?)(?:/stream)?$', path)
