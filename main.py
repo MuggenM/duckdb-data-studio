@@ -1027,15 +1027,13 @@ def index():
         return cleaned.lower()
 
     async def handle_local_file_upload(e):
-        filename = e.name
-        content = e.content.read()
+        filename = e.file.name
         target_dir = '/shared'
         os.makedirs(target_dir, exist_ok=True)
         target_path = os.path.join(target_dir, filename)
         
         try:
-            with open(target_path, 'wb') as f:
-                f.write(content)
+            await e.file.save(target_path)
             
             ext = os.path.splitext(filename)[1].lower()
             table_name = sanitize_table_name(os.path.splitext(filename)[0])
