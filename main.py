@@ -3354,21 +3354,6 @@ def index():
         def refresh_scheduler_jobs_list():
             scheduler_jobs_list_container.clear()
             try:
-                explorer.conn.execute("""
-                    CREATE TABLE IF NOT EXISTS _duckdb_studio_scheduled_jobs (
-                        id VARCHAR PRIMARY KEY,
-                        name VARCHAR,
-                        sql_code VARCHAR,
-                        interval_str VARCHAR,
-                        export_format VARCHAR,
-                        partition_column VARCHAR,
-                        export_filename VARCHAR,
-                        last_run TIMESTAMP,
-                        next_run TIMESTAMP,
-                        status VARCHAR,
-                        error_message VARCHAR
-                    );
-                """)
                 rows = [(
                     r['id'], r['name'], r['sql_code'], r['interval_str'], r['export_format'],
                     r['partition_column'], r['export_filename'], 
@@ -3528,19 +3513,6 @@ def index():
         def refresh_scheduler_logs_table():
             scheduler_logs_table_container.clear()
             try:
-                explorer.conn.execute("""
-                    CREATE TABLE IF NOT EXISTS _duckdb_studio_scheduler_logs (
-                        id VARCHAR PRIMARY KEY,
-                        job_id VARCHAR,
-                        job_name VARCHAR,
-                        executed_at TIMESTAMP,
-                        duration_ms DOUBLE,
-                        row_count INTEGER,
-                        file_size_bytes INTEGER,
-                        status VARCHAR,
-                        error_message VARCHAR
-                    );
-                """)
                 logs = [(
                     r['job_name'],
                     datetime.fromisoformat(r['executed_at']) if r['executed_at'] else datetime.now(),
