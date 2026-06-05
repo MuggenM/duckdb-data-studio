@@ -3545,7 +3545,7 @@ def index():
                 mem_history_list = collections.deque(maxlen=15)
                 mem_time_list = collections.deque(maxlen=15)
                 
-                 mem_chart_options = {
+                mem_chart_options = {
                     'title': {'text': 'DuckDB Memory Footprint (MB)', 'left': 'center', 'textStyle': {'fontSize': 12}},
                     'grid': {'top': 40, 'bottom': 25, 'left': 45, 'right': 15},
                     'tooltip': {'trigger': 'axis'},
@@ -3553,7 +3553,7 @@ def index():
                     'yAxis': {'type': 'value'},
                     'series': [{'name': 'Active Usage', 'type': 'line', 'data': [], 'smooth': True, 'areaStyle': {}, 'color': '#6366f1'}]
                 }
-                 latency_chart_options = {
+                latency_chart_options = {
                     'title': {'text': 'Execution Latency History (ms)', 'left': 'center', 'textStyle': {'fontSize': 12}},
                     'grid': {'top': 40, 'bottom': 25, 'left': 45, 'right': 15},
                     'tooltip': {'trigger': 'axis'},
