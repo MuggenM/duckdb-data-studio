@@ -3832,30 +3832,32 @@ def index():
             with main_splitter.before:
                 with ui.column().classes('w-full h-full p-4 sidebar-card q-pa-md gap-4 flex-nowrap overflow-hidden').style('background-color: var(--q-slate-50);'):
                     
-                    # Branding Header
-                    with ui.row().classes('items-center w-full justify-between no-wrap'):
-                        with ui.row().classes('items-center gap-2'):
-                            ui.icon('schema', color='primary').classes('text-xl')
-                            ui.label('Schema Explorer').classes('text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400')
+                    # Branding Header & Connection Info grouped with smaller gap
+                    with ui.column().classes('w-full gap-2 flex-nowrap'):
+                        # Branding Header
+                        with ui.row().classes('items-center w-full justify-between no-wrap'):
+                            with ui.row().classes('items-center gap-2'):
+                                ui.icon('schema', color='primary').classes('text-xl')
+                                ui.label('Schema Explorer').classes('text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400')
+                            
+                            # Refresh schema button
+                            ui.button(icon='refresh', on_click=lambda: refresh_schema_tree()).props('flat dense round size=sm').classes('text-slate-600')
                         
-                        # Refresh schema button
-                        ui.button(icon='refresh', on_click=lambda: refresh_schema_tree()).props('flat fab-mini').classes('text-slate-600')
-                    
-                    ui.separator()
-                    
-                    # Active DB File Indicator
-                    with ui.card().classes('w-full p-3 glass-card border-none shadow-none dark-bg-flat'):
-                        with ui.column().classes('w-full gap-2'):
-                            with ui.row().classes('items-center justify-between w-full no-wrap'):
-                                with ui.row().classes('items-center gap-2 no-wrap'):
-                                    ui.icon('folder_open', color='secondary').classes('text-lg')
-                                    ui.label('Database Connection').classes('text-xs text-slate-500 font-semibold uppercase')
-                                ui.button(icon='add', on_click=lambda: attach_db_dialog.open()).props('flat fab-mini dense').classes('text-slate-600').tooltip('Attach external database')
-                            
-                            ui.separator().classes('my-1 opacity-50')
-                            
-                            # Container for attached databases
-                            databases_container = ui.column().classes('w-full gap-1 pl-1')
+                        ui.separator()
+                        
+                        # Active DB File Indicator
+                        with ui.card().classes('w-full p-2.5 glass-card border-none shadow-none dark-bg-flat'):
+                            with ui.column().classes('w-full gap-1.5'):
+                                with ui.row().classes('items-center justify-between w-full no-wrap'):
+                                    with ui.row().classes('items-center gap-2 no-wrap'):
+                                        ui.icon('folder_open', color='secondary').classes('text-lg')
+                                        ui.label('Database Connection').classes('text-xs text-slate-500 font-semibold uppercase')
+                                    ui.button(icon='add', on_click=lambda: attach_db_dialog.open()).props('flat dense round size=sm').classes('text-slate-600').tooltip('Attach external database')
+                                
+                                ui.separator().classes('my-0.5 opacity-50')
+                                
+                                # Container for attached databases
+                                databases_container = ui.column().classes('w-full gap-1 pl-1')
                     
                     # Scrollable container for the expansion panels to prevent pushing actions out of frame
                     with ui.column().classes('w-full flex-grow overflow-y-auto gap-4 pr-1 flex-nowrap'):
