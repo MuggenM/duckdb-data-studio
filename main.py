@@ -3877,7 +3877,7 @@ def index():
                                 analytics_btn.update()
                                 utility_btn.update()
                                 ddl_btn.update()
-                                refresh_saved_queries_list()
+                                asyncio.get_event_loop().call_soon(refresh_saved_queries_list)
 
                             with ui.row().classes('w-full gap-1 justify-between flex-wrap'):
                                 all_btn = ui.button('ALL', on_click=lambda: select_category('All')).props('unelevated dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 12px !important;')
