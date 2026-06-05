@@ -6476,7 +6476,6 @@ def index():
     populate_builder_tables()
     update_query_history_list()
     refresh_saved_queries_list()
-    run_editor_query()
 
 
 @app.get("/dbt_orange.svg")
