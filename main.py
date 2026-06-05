@@ -3876,10 +3876,10 @@ def index():
                                 refresh_saved_queries_list()
 
                             with ui.row().classes('w-full gap-1 justify-between flex-nowrap'):
-                                all_btn = ui.button('ALL', on_click=lambda: select_category('All')).props('unelevated dense size=xs color=primary').classes('text-[10px] font-bold px-1 flex-grow')
-                                analytics_btn = ui.button('ANALYTICS', on_click=lambda: select_category('Analytical')).props('flat dense size=xs color=primary').classes('text-[10px] font-bold px-1 flex-grow')
-                                utility_btn = ui.button('UTILITY', on_click=lambda: select_category('Utility')).props('flat dense size=xs color=primary').classes('text-[10px] font-bold px-1 flex-grow')
-                                ddl_btn = ui.button('DDL/DML', on_click=lambda: select_category('DDL/DML')).props('flat dense size=xs color=primary').classes('text-[10px] font-bold px-1 flex-grow')
+                                all_btn = ui.button('ALL', on_click=lambda: select_category('All')).props('unelevated dense size=xs color=primary').classes('text-[12px] font-bold px-1 flex-grow')
+                                analytics_btn = ui.button('ANALYTICS', on_click=lambda: select_category('Analytical')).props('flat dense size=xs color=primary').classes('text-[12px] font-bold px-1 flex-grow')
+                                utility_btn = ui.button('UTILITY', on_click=lambda: select_category('Utility')).props('flat dense size=xs color=primary').classes('text-[12px] font-bold px-1 flex-grow')
+                                ddl_btn = ui.button('DDL/DML', on_click=lambda: select_category('DDL/DML')).props('flat dense size=xs color=primary').classes('text-[12px] font-bold px-1 flex-grow')
                             saved_queries_container = ui.column().classes('w-full overflow-auto gap-2 text-slate-800 dark:text-slate-100').style('max-height: 260px;')
                     
                     # Seeding Actions
