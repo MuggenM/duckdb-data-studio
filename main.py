@@ -2847,160 +2847,162 @@ def index():
                 # Sub Cards List
                 with ui.column().classes('w-full gap-4'):
                     for ep_id, ep_path, ep_desc, ep_sql, ep_secured in rows:
-                        with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
-                            # Header Row: HTTP Method + Path
-                            with ui.row().classes('w-full items-center justify-between no-wrap'):
-                                with ui.row().classes('items-center gap-2 no-wrap'):
-                                    ui.badge('GET', color='positive').classes('text-xs font-bold px-2 py-1')
+                        with ui.card().classes('w-full p-0 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl overflow-hidden'):
+                            with ui.expansion().classes('w-full').props('header-class="q-py-md q-px-lg" expand-icon-class="text-slate-500"') as exp:
+                                with exp.add_slot('header'):
+                                    with ui.row().classes('w-full items-center justify-between no-wrap pr-4'):
+                                        with ui.row().classes('items-center gap-2 no-wrap'):
+                                            ui.badge('GET', color='positive').classes('text-xs font-bold px-2 py-1')
+                                            if ep_secured:
+                                                ui.icon('lock', color='amber').classes('text-sm').tooltip('Requires JWT Authorization')
+                                            ui.label(f"/api/{ep_path}").classes('text-base font-bold text-slate-800 dark:text-white')
+                                            if ep_secured:
+                                                ui.badge('JWT SECURED', color='amber').classes('text-[9px] font-bold px-1.5 py-0.5')
+                                        ui.label(ep_desc if ep_desc else 'No description provided').classes('text-xs text-slate-400 font-normal italic truncate max-w-[400px]')
+
+                                with ui.column().classes('w-full p-6 gap-4 border-t border-slate-100 dark:border-slate-800'):
+                                    ui.separator().classes('opacity-50')
+                                
+                                import re
+                                placeholders = re.findall(r'\$([a-zA-Z0-9_]+)', ep_sql)
+                                placeholders = list(dict.fromkeys(placeholders))
+                                # Remove limit and offset if present in placeholders to avoid duplicates
+                                placeholders = [p for p in placeholders if p.lower() not in ['limit', 'offset']]
+                                
+                                # Build interactive input fields dictionary
+                                input_fields = {}
+                                
+                                with ui.row().classes('w-full gap-4 items-start flex-wrap'):
+                                    # Authorization Token for Secured APIs
                                     if ep_secured:
-                                        ui.icon('lock', color='amber').classes('text-sm').tooltip('Requires JWT Authorization')
-                                    ui.label(f"/api/{ep_path}").classes('text-base font-bold text-slate-800 dark:text-white')
-                                    if ep_secured:
-                                        ui.badge('JWT SECURED', color='amber').classes('text-[9px] font-bold px-1.5 py-0.5')
-                                ui.label(ep_desc if ep_desc else 'No description provided').classes('text-xs text-slate-400 font-normal italic')
-                                
-                            ui.separator().classes('opacity-50')
-                            
-                            import re
-                            placeholders = re.findall(r'\$([a-zA-Z0-9_]+)', ep_sql)
-                            placeholders = list(dict.fromkeys(placeholders))
-                            # Remove limit and offset if present in placeholders to avoid duplicates
-                            placeholders = [p for p in placeholders if p.lower() not in ['limit', 'offset']]
-                            
-                            # Build interactive input fields dictionary
-                            input_fields = {}
-                            
-                            with ui.row().classes('w-full gap-4 items-start flex-wrap'):
-                                # Authorization Token for Secured APIs
-                                if ep_secured:
-                                    with ui.column().classes('gap-2').style('width: 250px;'):
-                                        ui.label('Authorization Token').classes('text-xs font-bold text-amber-500 dark:text-amber-400')
-                                        input_fields['__jwt__'] = ui.input(placeholder='Bearer <token>').props('outlined dense').classes('w-full font-mono text-xs')
-                                        ui.label('HTTP Bearer Header').classes('text-[10px] text-slate-400 -mt-1')
-                                        
-                                # Standard Paging parameters
-                                with ui.column().classes('gap-2').style('width: 140px;'):
-                                    ui.label('limit').classes('text-xs font-bold text-slate-700 dark:text-slate-300')
-                                    input_fields['limit'] = ui.input(placeholder='e.g., 100').props('outlined dense type=number').classes('w-full')
-                                    ui.label('Query parameter').classes('text-[10px] text-slate-400 -mt-1')
-                                    
-                                with ui.column().classes('gap-2').style('width: 140px;'):
-                                    ui.label('offset').classes('text-xs font-bold text-slate-700 dark:text-slate-300')
-                                    input_fields['offset'] = ui.input(placeholder='e.g., 0').props('outlined dense type=number').classes('w-full')
-                                    ui.label('Query parameter').classes('text-[10px] text-slate-400 -mt-1')
-                                    
-                                # Custom placeholders
-                                for p in placeholders:
-                                    with ui.column().classes('gap-2').style('width: 180px;'):
-                                        ui.label(p).classes('text-xs font-bold text-indigo-500 dark:text-indigo-400')
-                                        input_fields[p] = ui.input(placeholder=f'Value for ${p}').props('outlined dense').classes('w-full')
-                                        ui.label('Dynamic query filter').classes('text-[10px] text-slate-400 -mt-1')
-                                        
-                            # Action Row
-                            with ui.row().classes('w-full justify-end gap-2 pt-2'):
-                                clear_btn = ui.button('Clear', color='grey').props('flat size=sm')
-                                execute_btn = ui.button('Execute Request', icon='bolt', color='primary').props('elevated size=sm').classes('px-4')
-                                
-                            # Response Container (Hidden initially)
-                            response_panel = ui.column().classes('w-full gap-3 mt-4 border border-slate-100 dark:border-slate-800 rounded-xl p-4 bg-slate-50 dark:bg-slate-950').style('display: none;')
-                            
-                            with response_panel:
-                                # Stats row
-                                with ui.row().classes('w-full justify-between items-center no-wrap'):
-                                    with ui.row().classes('items-center gap-2'):
-                                        status_badge = ui.badge('', color='positive').classes('text-xs font-bold px-2 py-0.5')
-                                        latency_label = ui.label('').classes('text-xs font-semibold text-slate-500')
-                                    url_label = ui.label('').classes('text-[10px] font-mono text-slate-400 truncate max-w-[400px] cursor-pointer').tooltip('Click to copy relative API URL')
-                                    
-                                ui.separator().classes('opacity-30')
-                                
-                                # Response body container
-                                response_code_block_wrapper = ui.column().classes('w-full overflow-auto max-h-[300px]')
-                                
-                            # Wire action handlers using helper closures
-                            def make_clear_handler(inputs=input_fields, panel=response_panel):
-                                def handle_clear():
-                                    for inp in inputs.values():
-                                        inp.value = ''
-                                    panel.style('display: none;')
-                                return handle_clear
-                                
-                            def make_execute_handler(path=ep_path, inputs=input_fields, panel=response_panel, s_badge=status_badge, lat_lbl=latency_label, u_lbl=url_label, code_wrapper=response_code_block_wrapper):
-                                async def handle_execute():
-                                    panel.style('display: flex;')
-                                    s_badge.text = "Loading..."
-                                    s_badge.color = "amber"
-                                    lat_lbl.text = ""
-                                    u_lbl.text = ""
-                                    code_wrapper.clear()
-                                    
-                                    # Fetch values
-                                    params = {}
-                                    headers = {}
-                                    for k, inp in inputs.items():
-                                        if inp.value and inp.value.strip():
-                                            if k == '__jwt__':
-                                                val = inp.value.strip()
-                                                if not val.lower().startswith('bearer '):
-                                                    val = f"Bearer {val}"
-                                                headers['Authorization'] = val
-                                            else:
-                                                params[k] = inp.value.strip()
+                                        with ui.column().classes('gap-2').style('width: 250px;'):
+                                            ui.label('Authorization Token').classes('text-xs font-bold text-amber-500 dark:text-amber-400')
+                                            input_fields['__jwt__'] = ui.input(placeholder='Bearer <token>').props('outlined dense').classes('w-full font-mono text-xs')
+                                            ui.label('HTTP Bearer Header').classes('text-[10px] text-slate-400 -mt-1')
                                             
-                                    import time, httpx, json
-                                    start_time = time.perf_counter()
+                                    # Standard Paging parameters
+                                    with ui.column().classes('gap-2').style('width: 140px;'):
+                                        ui.label('limit').classes('text-xs font-bold text-slate-700 dark:text-slate-300')
+                                        input_fields['limit'] = ui.input(placeholder='e.g., 100').props('outlined dense type=number').classes('w-full')
+                                        ui.label('Query parameter').classes('text-[10px] text-slate-400 -mt-1')
+                                        
+                                    with ui.column().classes('gap-2').style('width: 140px;'):
+                                        ui.label('offset').classes('text-xs font-bold text-slate-700 dark:text-slate-300')
+                                        input_fields['offset'] = ui.input(placeholder='e.g., 0').props('outlined dense type=number').classes('w-full')
+                                        ui.label('Query parameter').classes('text-[10px] text-slate-400 -mt-1')
+                                        
+                                    # Custom placeholders
+                                    for p in placeholders:
+                                        with ui.column().classes('gap-2').style('width: 180px;'):
+                                            ui.label(p).classes('text-xs font-bold text-indigo-500 dark:text-indigo-400')
+                                            input_fields[p] = ui.input(placeholder=f'Value for ${p}').props('outlined dense').classes('w-full')
+                                            ui.label('Dynamic query filter').classes('text-[10px] text-slate-400 -mt-1')
+                                            
+                                # Action Row
+                                with ui.row().classes('w-full justify-end gap-2 pt-2'):
+                                    clear_btn = ui.button('Clear', color='grey').props('flat size=sm')
+                                    execute_btn = ui.button('Execute Request', icon='bolt', color='primary').props('elevated size=sm').classes('px-4')
                                     
-                                    # Form target url
-                                    target_url = f"/api/{path}"
-                                    query_str = "&".join([f"{k}={v}" for k, v in params.items()])
-                                    full_url_display = f"{target_url}?{query_str}" if query_str else target_url
+                                # Response Container (Hidden initially)
+                                response_panel = ui.column().classes('w-full gap-3 mt-4 border border-slate-100 dark:border-slate-800 rounded-xl p-4 bg-slate-50 dark:bg-slate-950').style('display: none;')
+                                
+                                with response_panel:
+                                    # Stats row
+                                    with ui.row().classes('w-full justify-between items-center no-wrap'):
+                                        with ui.row().classes('items-center gap-2'):
+                                            status_badge = ui.badge('', color='positive').classes('text-xs font-bold px-2 py-0.5')
+                                            latency_label = ui.label('').classes('text-xs font-semibold text-slate-500')
+                                        url_label = ui.label('').classes('text-[10px] font-mono text-slate-400 truncate max-w-[400px] cursor-pointer').tooltip('Click to copy relative API URL')
+                                        
+                                    ui.separator().classes('opacity-30')
                                     
-                                    try:
-                                        # Execute dynamic endpoint internally on local interface asynchronously
-                                        async with httpx.AsyncClient() as client:
-                                            response = await client.get(f"http://127.0.0.1:8085/api/{path}", params=params, headers=headers, timeout=5.0)
-                                        latency = int((time.perf_counter() - start_time) * 1000)
-                                        status = response.status_code
-                                        
-                                        # Render metered stats
-                                        s_badge.text = f"HTTP {status}"
-                                        if status == 200:
-                                            s_badge.color = "positive"
-                                        else:
-                                            s_badge.color = "negative"
-                                            
-                                        lat_lbl.text = f"Latency: {latency} ms"
-                                        u_lbl.text = f"GET {full_url_display}"
-                                        
-                                        # Bind click to copy relative URL
-                                        def make_copy_url_callback(u=full_url_display):
-                                            return lambda _: [
-                                                ui.run_javascript(f"navigator.clipboard.writeText(window.location.origin + '{u}')"),
-                                                ui.notify('Full API URL copied to clipboard!', type='positive')
-                                            ]
-                                        u_lbl.on('click', make_copy_url_callback())
-                                        
-                                        # Format response body
-                                        try:
-                                            resp_body = json.dumps(response.json(), indent=2)
-                                        except:
-                                            resp_body = response.text
-                                            
-                                        with code_wrapper:
-                                            ui.code(resp_body, language='json').classes('text-[10px] w-full p-2 rounded-lg bg-slate-900 text-slate-100 font-mono')
-                                            
-                                    except Exception as err:
-                                        s_badge.text = "Error"
-                                        s_badge.color = "negative"
+                                    # Response body container
+                                    response_code_block_wrapper = ui.column().classes('w-full overflow-auto max-h-[300px]')
+                                    
+                                # Wire action handlers using helper closures
+                                def make_clear_handler(inputs=input_fields, panel=response_panel):
+                                    def handle_clear():
+                                        for inp in inputs.values():
+                                            inp.value = ''
+                                        panel.style('display: none;')
+                                    return handle_clear
+                                    
+                                def make_execute_handler(path=ep_path, inputs=input_fields, panel=response_panel, s_badge=status_badge, lat_lbl=latency_label, u_lbl=url_label, code_wrapper=response_code_block_wrapper):
+                                    async def handle_execute():
+                                        panel.style('display: flex;')
+                                        s_badge.text = "Loading..."
+                                        s_badge.color = "amber"
                                         lat_lbl.text = ""
-                                        u_lbl.text = f"Failed: GET {full_url_display}"
-                                        with code_wrapper:
-                                            ui.code(f"Connection failed: {err}", language='text').classes('text-[10px] w-full p-2 rounded-lg bg-slate-900 text-red-400 font-mono')
+                                        u_lbl.text = ""
+                                        code_wrapper.clear()
+                                        
+                                        # Fetch values
+                                        params = {}
+                                        headers = {}
+                                        for k, inp in inputs.items():
+                                            if inp.value and inp.value.strip():
+                                                if k == '__jwt__':
+                                                    val = inp.value.strip()
+                                                    if not val.lower().startswith('bearer '):
+                                                        val = f"Bearer {val}"
+                                                    headers['Authorization'] = val
+                                                else:
+                                                    params[k] = inp.value.strip()
+                                                
+                                        import time, httpx, json
+                                        start_time = time.perf_counter()
+                                        
+                                        # Form target url
+                                        target_url = f"/api/{path}"
+                                        query_str = "&".join([f"{k}={v}" for k, v in params.items()])
+                                        full_url_display = f"{target_url}?{query_str}" if query_str else target_url
+                                        
+                                        try:
+                                            # Execute dynamic endpoint internally on local interface asynchronously
+                                            async with httpx.AsyncClient() as client:
+                                                response = await client.get(f"http://127.0.0.1:8085/api/{path}", params=params, headers=headers, timeout=5.0)
+                                            latency = int((time.perf_counter() - start_time) * 1000)
+                                            status = response.status_code
                                             
-                                return handle_execute
-                                
-                            clear_btn.on_click(make_clear_handler())
-                            execute_btn.on_click(make_execute_handler())
+                                            # Render metered stats
+                                            s_badge.text = f"HTTP {status}"
+                                            if status == 200:
+                                                s_badge.color = "positive"
+                                            else:
+                                                s_badge.color = "negative"
+                                                
+                                            lat_lbl.text = f"Latency: {latency} ms"
+                                            u_lbl.text = f"GET {full_url_display}"
+                                            
+                                            # Bind click to copy relative URL
+                                            def make_copy_url_callback(u=full_url_display):
+                                                return lambda _: [
+                                                    ui.run_javascript(f"navigator.clipboard.writeText(window.location.origin + '{u}')"),
+                                                    ui.notify('Full API URL copied to clipboard!', type='positive')
+                                                ]
+                                            u_lbl.on('click', make_copy_url_callback())
+                                            
+                                            # Format response body
+                                            try:
+                                                resp_body = json.dumps(response.json(), indent=2)
+                                            except:
+                                                resp_body = response.text
+                                                
+                                            with code_wrapper:
+                                                ui.code(resp_body, language='json').classes('text-[10px] w-full p-2 rounded-lg bg-slate-900 text-slate-100 font-mono')
+                                                
+                                        except Exception as err:
+                                            s_badge.text = "Error"
+                                            s_badge.color = "negative"
+                                            lat_lbl.text = ""
+                                            u_lbl.text = f"Failed: GET {full_url_display}"
+                                            with code_wrapper:
+                                                ui.code(f"Connection failed: {err}", language='text').classes('text-[10px] w-full p-2 rounded-lg bg-slate-900 text-red-400 font-mono')
+                                                
+                                    return handle_execute
+                                    
+                                clear_btn.on_click(make_clear_handler())
+                                execute_btn.on_click(make_execute_handler())
 
         # Initialize API Endpoints Table & Preseed
         def init_api_endpoints_table():
