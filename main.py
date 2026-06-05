@@ -3873,6 +3873,10 @@ def index():
                                 analytics_btn.props('unelevated' if cat == 'Analytical' else 'flat')
                                 utility_btn.props('unelevated' if cat == 'Utility' else 'flat')
                                 ddl_btn.props('unelevated' if cat == 'DDL/DML' else 'flat')
+                                all_btn.update()
+                                analytics_btn.update()
+                                utility_btn.update()
+                                ddl_btn.update()
                                 refresh_saved_queries_list()
 
                             with ui.row().classes('w-full gap-1 justify-between flex-wrap'):
