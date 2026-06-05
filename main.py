@@ -3560,8 +3560,8 @@ def index():
                     'series': [{'name': 'Query Time', 'type': 'bar', 'data': [], 'color': '#10b981'}]
                 }
                 
-                mem_chart = ui.echart(mem_chart_options).classes('w-full border rounded-xl p-2 bg-white dark:bg-slate-950').style('height: 350px;')
-                latency_chart = ui.echart(latency_chart_options).classes('w-full border rounded-xl p-2 bg-white dark:bg-slate-950').style('height: 350px;')
+                mem_chart = ui.echart(mem_chart_options).classes('w-full border rounded-xl p-2 bg-white dark:bg-slate-950').style('height: 180px;')
+                latency_chart = ui.echart(latency_chart_options).classes('w-full border rounded-xl p-2 bg-white dark:bg-slate-950').style('height: 180px;')
             
             # Performance details analytics card
             analytics_card = ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4 flex-none')
