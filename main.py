@@ -18,6 +18,8 @@ ui.element.text = element_text_patch
 from fastapi import Query, Request
 import duckdb
 from local_file_picker.local_file_picker import local_file_picker
+
+
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -91,11 +93,9 @@ def get_dynamic_rate_limit(request: Request = None) -> str:
         endpoint_path = match.group(1)
         if endpoint_path != "list-endpoints":
             try:
-                db_conn = duckdb.connect(DB_NAME)
-                res = db_conn.execute("SELECT rate_limit FROM _duckdb_studio_api_endpoints WHERE path = ?;", [endpoint_path]).fetchone()
-                db_conn.close()
-                if res and res[0] and res[0].strip():
-                    return res[0].strip()
+                res = config_db.query_one("SELECT rate_limit FROM _duckdb_studio_api_endpoints WHERE path = ?;", [endpoint_path])
+                if res and res['rate_limit'] and res['rate_limit'].strip():
+                    return res['rate_limit'].strip()
             except Exception as e:
                 print(f"WARNING: Dynamic rate limit lookup failed for {endpoint_path}: {e}", flush=True)
             
@@ -195,11 +195,10 @@ class DuckDBExplorer:
         import uuid
         q_id = str(uuid.uuid4())
         try:
-            self.conn.execute("""
+            config_db.execute("""
                 INSERT INTO _duckdb_studio_saved_queries (id, name, description, sql_code, created_at, category)
                 VALUES (?, ?, ?, ?, ?, ?)
-            """, (q_id, name, description, sql_code, datetime.now(), category))
-            self.conn.commit()
+            """, (q_id, name, description, sql_code, datetime.now().isoformat(), category))
             return True
         except Exception as e:
             print(f"Error saving custom query: {e}")
@@ -207,23 +206,31 @@ class DuckDBExplorer:
 
     def list_saved_queries(self):
         try:
-            rows = self.conn.execute("SELECT id, name, description, sql_code, created_at, category FROM _duckdb_studio_saved_queries ORDER BY created_at DESC").fetchall()
-            return [{
-                'id': row[0],
-                'name': row[1],
-                'description': row[2],
-                'sql_code': row[3],
-                'created_at': row[4],
-                'category': row[5] if row[5] else 'Analytical'
-            } for row in rows]
+            rows = config_db.query_all("SELECT id, name, description, sql_code, created_at, category FROM _duckdb_studio_saved_queries ORDER BY created_at DESC")
+            res = []
+            for row in rows:
+                created_at_val = row['created_at']
+                if isinstance(created_at_val, str):
+                    try:
+                        created_at_val = datetime.fromisoformat(created_at_val)
+                    except Exception:
+                        created_at_val = datetime.now()
+                res.append({
+                    'id': row['id'],
+                    'name': row['name'],
+                    'description': row['description'],
+                    'sql_code': row['sql_code'],
+                    'created_at': created_at_val,
+                    'category': row['category'] if row['category'] else 'Analytical'
+                })
+            return res
         except Exception as e:
             print(f"Error listing saved queries: {e}")
             return []
 
     def delete_saved_query(self, q_id):
         try:
-            self.conn.execute("DELETE FROM _duckdb_studio_saved_queries WHERE id = ?", (q_id,))
-            self.conn.commit()
+            config_db.execute("DELETE FROM _duckdb_studio_saved_queries WHERE id = ?", (q_id,))
             return True
         except Exception as e:
             print(f"Error deleting saved query: {e}")
@@ -374,40 +381,8 @@ def run_background_scheduler():
 
 
 def init_saved_queries_table(db_file):
-    """Ensure the custom queries persistence table exists."""
-    conn = duckdb.connect(db_file)
-    try:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS _duckdb_studio_saved_queries (
-                id VARCHAR PRIMARY KEY,
-                name VARCHAR,
-                description VARCHAR,
-                sql_code VARCHAR,
-                created_at TIMESTAMP
-            );
-        """)
-        # Dynamic schema evolution: add category column if missing
-        conn.execute("ALTER TABLE _duckdb_studio_saved_queries ADD COLUMN IF NOT EXISTS category VARCHAR;")
-        
-        # Pre-seed with some default saved queries if it's empty
-        res = conn.execute("SELECT count(*) FROM _duckdb_studio_saved_queries").fetchone()
-        if res and res[0] == 0:
-            import uuid
-            default_queries = [
-                (str(uuid.uuid4()), "Active High-Value Transactions", "Finds transactions exceeding $300 sorted by amount", "SELECT * FROM sales_transactions WHERE total_amount > 300 ORDER BY total_amount DESC LIMIT 50;", datetime.now(), "Analytical"),
-                (str(uuid.uuid4()), "Low Stock Alert", "Finds product categories with low inventory (< 50 items in stock)", "SELECT category, name, stock, price FROM product_inventory WHERE stock < 50 ORDER BY stock ASC;", datetime.now(), "Utility"),
-                (str(uuid.uuid4()), "Customer Value Segmentation", "Calculates lifetime value and order frequency per loyalty tier", "SELECT loyalty_tier, COUNT(DISTINCT c.customer_id) AS customer_count, SUM(total_amount) AS total_revenue, AVG(total_amount) AS avg_order_value FROM customer_profiles c JOIN sales_transactions s ON c.customer_id = s.customer_id GROUP BY loyalty_tier ORDER BY total_revenue DESC;", datetime.now(), "Analytical")
-            ]
-            conn.executemany("INSERT INTO _duckdb_studio_saved_queries VALUES (?, ?, ?, ?, ?, ?)", default_queries)
-            conn.commit()
-            
-        # Migrate any legacy saved queries with null categories to default 'Analytical'
-        conn.execute("UPDATE _duckdb_studio_saved_queries SET category = 'Analytical' WHERE category IS NULL;")
-        conn.commit()
-    except Exception as e:
-        print(f"Error initializing saved queries table: {e}")
-    finally:
-        conn.close()
+    # Initialized automatically by SQLiteConfigManager
+    pass
 
 def seed_database(db_file, force=False, num_customers=400, num_transactions=6500):
     """Seed the database with realistic synthetic data using Faker if empty or forced."""
@@ -836,6 +811,240 @@ def get_main_db_path():
     return 'databases/your_duckdb_file.duckdb'
 
 DB_NAME = get_main_db_path()
+
+import sqlite3
+
+class SQLiteConfigManager:
+    def __init__(self, db_path=None):
+        if db_path is None:
+            db_path = get_config_db_path()
+        self.db_path = db_path
+        self._init_db()
+
+    def get_connection(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _init_db(self):
+        with self.get_connection() as conn:
+            # 1. Saved queries table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS _duckdb_studio_saved_queries (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    description TEXT,
+                    sql_code TEXT,
+                    created_at TIMESTAMP,
+                    category TEXT DEFAULT 'Analytical'
+                );
+            """)
+            
+            # 2. Scheduled jobs table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS _duckdb_studio_scheduled_jobs (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    sql_code TEXT,
+                    interval_str TEXT,
+                    export_format TEXT,
+                    partition_column TEXT,
+                    export_filename TEXT,
+                    last_run TIMESTAMP,
+                    next_run TIMESTAMP,
+                    status TEXT,
+                    error_message TEXT
+                );
+            """)
+
+            # 3. Scheduler logs table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS _duckdb_studio_scheduler_logs (
+                    id TEXT PRIMARY KEY,
+                    job_id TEXT,
+                    job_name TEXT,
+                    executed_at TIMESTAMP,
+                    duration_ms REAL,
+                    row_count INTEGER,
+                    file_size_bytes INTEGER,
+                    status TEXT,
+                    error_message TEXT
+                );
+            """)
+
+            # 4. API Endpoints table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS _duckdb_studio_api_endpoints (
+                    id TEXT PRIMARY KEY,
+                    path TEXT UNIQUE,
+                    description TEXT,
+                    sql_code TEXT,
+                    created_at TIMESTAMP,
+                    security_enabled INTEGER DEFAULT 0,
+                    rate_limit TEXT
+                );
+            """)
+
+            # 5. API Metrics table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS _duckdb_studio_api_metrics (
+                    endpoint_path TEXT,
+                    timestamp TIMESTAMP,
+                    latency_ms REAL,
+                    status_code INTEGER,
+                    error_message TEXT
+                );
+            """)
+            conn.commit()
+
+            # Pre-seed default queries if empty
+            res = conn.execute("SELECT count(*) FROM _duckdb_studio_saved_queries").fetchone()
+            if res and res[0] == 0:
+                import uuid
+                default_queries = [
+                    (str(uuid.uuid4()), "Active High-Value Transactions", "Finds transactions exceeding $300 sorted by amount", "SELECT * FROM sales_transactions WHERE total_amount > 300 ORDER BY total_amount DESC LIMIT 50;", datetime.now().isoformat(), "Analytical"),
+                    (str(uuid.uuid4()), "Low Stock Alert", "Finds product categories with low inventory (< 50 items in stock)", "SELECT category, name, stock, price FROM product_inventory WHERE stock < 50 ORDER BY stock ASC;", datetime.now().isoformat(), "Utility"),
+                    (str(uuid.uuid4()), "Customer Value Segmentation", "Calculates lifetime value and order frequency per loyalty tier", "SELECT loyalty_tier, COUNT(DISTINCT c.customer_id) AS customer_count, SUM(total_amount) AS total_revenue, AVG(total_amount) AS avg_order_value FROM customer_profiles c JOIN sales_transactions s ON c.customer_id = s.customer_id GROUP BY loyalty_tier ORDER BY total_revenue DESC;", datetime.now().isoformat(), "Analytical")
+                ]
+                conn.executemany("INSERT INTO _duckdb_studio_saved_queries VALUES (?, ?, ?, ?, ?, ?)", default_queries)
+                conn.commit()
+
+            # Pre-seed top-products endpoint if empty
+            res_api = conn.execute("SELECT COUNT(*) FROM _duckdb_studio_api_endpoints;").fetchone()
+            if res_api and res_api[0] == 0:
+                import uuid
+                conn.execute("""
+                    INSERT INTO _duckdb_studio_api_endpoints (id, path, description, sql_code, created_at)
+                    VALUES (?, ?, ?, ?, ?);
+                """, [
+                    str(uuid.uuid4()),
+                    'top-products',
+                    'Returns list of items in product inventory filtered by minimum stock density.',
+                    'SELECT name, category, price, stock FROM product_inventory WHERE stock >= $min_stock ORDER BY price DESC;',
+                    datetime.now().isoformat()
+                ])
+                conn.execute("""
+                    INSERT INTO _duckdb_studio_api_endpoints (id, path, description, sql_code, created_at)
+                    VALUES (?, ?, ?, ?, ?);
+                """, [
+                    str(uuid.uuid4()),
+                    'test2',
+                    'Dummy endpoint for testing parameters',
+                    'SELECT 1 WHERE ($p1 IS NULL AND $p2 IS NULL AND $p3 IS NULL AND $p4 IS NULL AND $p5 IS NULL AND $p6 IS NULL AND $p7 IS NULL AND $p8 IS NULL AND $p9 IS NULL AND $p10 IS NULL AND $p11 IS NULL AND $p12 IS NULL);',
+                    datetime.now().isoformat()
+                ])
+                conn.commit()
+
+        # Run migration from DuckDB to SQLite if needed
+        try:
+            self.migrate_from_duckdb()
+        except Exception as e:
+            print(f"ERROR: Exception during database migration: {e}")
+
+    def migrate_from_duckdb(self):
+        duckdb_path = get_main_db_path()
+        if not os.path.exists(duckdb_path):
+            return
+        
+        ddb_conn = duckdb.connect(duckdb_path)
+        
+        # Check if a table exists in DuckDB
+        def table_exists_in_duckdb(table_name):
+            try:
+                res = ddb_conn.execute("SELECT 1 FROM information_schema.tables WHERE table_name = ?;", [table_name]).fetchone()
+                return res is not None
+            except Exception:
+                return False
+        
+        tables_to_migrate = [
+            ('_duckdb_studio_saved_queries', [
+                ('id', str), ('name', str), ('description', str), 
+                ('sql_code', str), ('created_at', datetime), ('category', str)
+            ]),
+            ('_duckdb_studio_api_endpoints', [
+                ('id', str), ('path', str), ('description', str), 
+                ('sql_code', str), ('created_at', datetime), 
+                ('security_enabled', bool), ('rate_limit', str)
+            ]),
+            ('_duckdb_studio_api_metrics', [
+                ('endpoint_path', str), ('timestamp', datetime), 
+                ('latency_ms', float), ('status_code', int), ('error_message', str)
+            ]),
+            ('_duckdb_studio_scheduled_jobs', [
+                ('id', str), ('name', str), ('sql_code', str), ('interval_str', str), 
+                ('export_format', str), ('partition_column', str), ('export_filename', str), 
+                ('last_run', datetime), ('next_run', datetime), ('status', str), ('error_message', str)
+            ]),
+            ('_duckdb_studio_scheduler_logs', [
+                ('id', str), ('job_id', str), ('job_name', str), ('executed_at', datetime), 
+                ('duration_ms', float), ('row_count', int), ('file_size_bytes', int), 
+                ('status', str), ('error_message', str)
+            ])
+        ]
+        
+        for table_name, cols in tables_to_migrate:
+            if table_exists_in_duckdb(table_name):
+                print(f"INFO: Migrating table {table_name} from DuckDB to SQLite...", flush=True)
+                col_names = [c[0] for c in cols]
+                col_types = [c[1] for c in cols]
+                
+                # Read from DuckDB
+                query = f"SELECT {', '.join(col_names)} FROM {table_name};"
+                rows = ddb_conn.execute(query).fetchall()
+                
+                if rows:
+                    with self.get_connection() as sqlite_conn:
+                        placeholders = ', '.join(['?'] * len(col_names))
+                        insert_query = f"INSERT OR IGNORE INTO {table_name} ({', '.join(col_names)}) VALUES ({placeholders});"
+                        
+                        normalized_rows = []
+                        for row in rows:
+                            norm_row = []
+                            for val, col_type in zip(row, col_types):
+                                if isinstance(val, bool) or col_type == bool:
+                                    norm_row.append(1 if val else 0)
+                                elif isinstance(val, datetime) or col_type == datetime:
+                                    norm_row.append(val.isoformat() if val else None)
+                                else:
+                                    norm_row.append(val)
+                            normalized_rows.append(tuple(norm_row))
+                            
+                        sqlite_conn.executemany(insert_query, normalized_rows)
+                        sqlite_conn.commit()
+                
+                # Drop table from DuckDB
+                ddb_conn.execute(f"DROP TABLE IF EXISTS {table_name};")
+                print(f"INFO: Successfully migrated and dropped table {table_name} from DuckDB.", flush=True)
+        
+        ddb_conn.close()
+
+    def query_one(self, sql, params=()):
+        with self.get_connection() as conn:
+            res = conn.execute(sql, params).fetchone()
+            return dict(res) if res else None
+
+    def query_all(self, sql, params=()):
+        with self.get_connection() as conn:
+            rows = conn.execute(sql, params).fetchall()
+            return [dict(r) for r in rows]
+
+    def execute(self, sql, params=()):
+        with self.get_connection() as conn:
+            cursor = conn.execute(sql, params)
+            conn.commit()
+            return cursor.lastrowid
+
+def get_config_db_path():
+    """Get the path to the config SQLite file, using /config if running in Docker, otherwise config/app_config.db."""
+    if os.path.exists('/config') and os.path.isdir('/config'):
+        return '/config/app_config.db'
+    if not os.path.exists('config'):
+        os.makedirs('config', exist_ok=True)
+    return 'config/app_config.db'
+
+config_db = SQLiteConfigManager()
+
 
 @ui.page('/')
 def index():
@@ -2310,14 +2519,14 @@ def index():
             try:
                 import uuid, datetime
                 # Check duplicate path
-                dup = explorer.conn.execute("SELECT 1 FROM _duckdb_studio_api_endpoints WHERE path = ?", [endpoint_path]).fetchone()
+                dup = config_db.query_one("SELECT 1 FROM _duckdb_studio_api_endpoints WHERE path = ?", [endpoint_path])
                 if dup:
                     ui.notify(f"Endpoint path '/api/{endpoint_path}' already exists. Please use a unique path.", type='negative')
                     return
                     
                 rl_value = rate_limit.strip() if rate_limit and rate_limit.strip() else None
                 
-                explorer.conn.execute("""
+                config_db.execute("""
                     INSERT INTO _duckdb_studio_api_endpoints (id, path, description, sql_code, created_at, security_enabled, rate_limit)
                     VALUES (?, ?, ?, ?, ?, ?, ?);
                 """, [
@@ -2325,8 +2534,8 @@ def index():
                     endpoint_path,
                     description.strip() if description else '',
                     sql_code.strip(),
-                    datetime.datetime.now(),
-                    security_enabled,
+                    datetime.datetime.now().isoformat(),
+                    1 if security_enabled else 0,
                     rl_value
                 ])
                 ui.notify(f"API Endpoint '/api/{endpoint_path}' created successfully!", type='success')
@@ -2347,7 +2556,7 @@ def index():
 
         def delete_api_endpoint(endpoint_id, endpoint_path):
             try:
-                explorer.conn.execute("DELETE FROM _duckdb_studio_api_endpoints WHERE id = ?", [endpoint_id])
+                config_db.execute("DELETE FROM _duckdb_studio_api_endpoints WHERE id = ?", [endpoint_id])
                 ui.notify(f"API Endpoint '/api/{endpoint_path}' deleted successfully.", type='success')
                 refresh_api_endpoints_grid()
             except Exception as err:
@@ -2359,16 +2568,7 @@ def index():
             # Query aggregate metrics for endpoints
             metrics_map = {}
             try:
-                explorer.conn.execute("""
-                    CREATE TABLE IF NOT EXISTS _duckdb_studio_api_metrics (
-                        endpoint_path VARCHAR,
-                        timestamp TIMESTAMP,
-                        latency_ms DOUBLE,
-                        status_code INTEGER,
-                        error_message VARCHAR
-                    );
-                """)
-                m_rows = explorer.conn.execute("""
+                m_rows = config_db.query_all("""
                     SELECT 
                         endpoint_path,
                         COUNT(*) as total_calls,
@@ -2378,21 +2578,27 @@ def index():
                         SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as total_errors
                     FROM _duckdb_studio_api_metrics
                     GROUP BY endpoint_path;
-                """).fetchall()
-                for m_path, m_calls, m_avg, m_min, m_max, m_errs in m_rows:
+                """)
+                for row in m_rows:
+                    m_path = row['endpoint_path']
+                    m_calls = row['total_calls']
+                    m_avg = row['avg_latency']
+                    m_min = row['min_latency']
+                    m_max = row['max_latency']
+                    m_errs = row['total_errors']
                     metrics_map[m_path] = {
                         'calls': m_calls,
-                        'avg': m_avg,
-                        'min': m_min,
-                        'max': m_max,
-                        'errors': m_errs,
-                        'error_rate': (m_errs * 100.0 / m_calls) if m_calls > 0 else 0.0
+                        'avg': m_avg if m_avg else 0.0,
+                        'min': m_min if m_min else 0.0,
+                        'max': m_max if m_max else 0.0,
+                        'errors': m_errs if m_errs else 0,
+                        'error_rate': (m_errs * 100.0 / m_calls) if m_calls and m_calls > 0 else 0.0
                     }
             except Exception as e:
                 print(f"DEBUG: Failed to query API metrics: {e}", flush=True)
             
             try:
-                rows = explorer.conn.execute("SELECT id, path, description, sql_code, COALESCE(security_enabled, FALSE), rate_limit FROM _duckdb_studio_api_endpoints ORDER BY created_at DESC;").fetchall()
+                rows = [(r['id'], r['path'], r['description'], r['sql_code'], bool(r['security_enabled']), r['rate_limit']) for r in config_db.query_all("SELECT id, path, description, sql_code, security_enabled, rate_limit FROM _duckdb_studio_api_endpoints ORDER BY created_at DESC;")]
             except Exception as e:
                 with api_endpoints_list_container:
                     ui.label(f"Failed to load endpoints: {e}").classes('text-xs text-negative')
@@ -2681,14 +2887,14 @@ def index():
             try:
                 import uuid, datetime
                 # Check duplicate path
-                dup = explorer.conn.execute("SELECT 1 FROM _duckdb_studio_api_endpoints WHERE path = ?", [endpoint_path]).fetchone()
+                dup = config_db.query_one("SELECT 1 FROM _duckdb_studio_api_endpoints WHERE path = ?", [endpoint_path])
                 if dup:
                     ui.notify(f"Endpoint path '/api/{endpoint_path}' already exists. Please use a unique path.", type='negative')
                     return
                     
                 rl_value = rate_limit.strip() if rate_limit and rate_limit.strip() else None
                 
-                explorer.conn.execute("""
+                config_db.execute("""
                     INSERT INTO _duckdb_studio_api_endpoints (id, path, description, sql_code, created_at, security_enabled, rate_limit)
                     VALUES (?, ?, ?, ?, ?, ?, ?);
                 """, [
@@ -2696,8 +2902,8 @@ def index():
                     endpoint_path,
                     description.strip() if description else '',
                     sql_code.strip(),
-                    datetime.datetime.now(),
-                    security_enabled,
+                    datetime.datetime.now().isoformat(),
+                    1 if security_enabled else 0,
                     rl_value
                 ])
                 ui.notify(f"API Endpoint '/api/{endpoint_path}' created successfully!", type='success')
@@ -2718,7 +2924,7 @@ def index():
 
         def delete_api_endpoint(endpoint_id, endpoint_path):
             try:
-                explorer.conn.execute("DELETE FROM _duckdb_studio_api_endpoints WHERE id = ?", [endpoint_id])
+                config_db.execute("DELETE FROM _duckdb_studio_api_endpoints WHERE id = ?", [endpoint_id])
                 ui.notify(f"API Endpoint '/api/{endpoint_path}' deleted successfully.", type='success')
                 refresh_api_endpoints_grid()
             except Exception as err:
@@ -2730,16 +2936,7 @@ def index():
             # Query aggregate metrics for endpoints
             metrics_map = {}
             try:
-                explorer.conn.execute("""
-                    CREATE TABLE IF NOT EXISTS _duckdb_studio_api_metrics (
-                        endpoint_path VARCHAR,
-                        timestamp TIMESTAMP,
-                        latency_ms DOUBLE,
-                        status_code INTEGER,
-                        error_message VARCHAR
-                    );
-                """)
-                m_rows = explorer.conn.execute("""
+                m_rows = config_db.query_all("""
                     SELECT 
                         endpoint_path,
                         COUNT(*) as total_calls,
@@ -2749,21 +2946,27 @@ def index():
                         SUM(CASE WHEN status_code >= 400 THEN 1 ELSE 0 END) as total_errors
                     FROM _duckdb_studio_api_metrics
                     GROUP BY endpoint_path;
-                """).fetchall()
-                for m_path, m_calls, m_avg, m_min, m_max, m_errs in m_rows:
+                """)
+                for row in m_rows:
+                    m_path = row['endpoint_path']
+                    m_calls = row['total_calls']
+                    m_avg = row['avg_latency']
+                    m_min = row['min_latency']
+                    m_max = row['max_latency']
+                    m_errs = row['total_errors']
                     metrics_map[m_path] = {
                         'calls': m_calls,
-                        'avg': m_avg,
-                        'min': m_min,
-                        'max': m_max,
-                        'errors': m_errs,
-                        'error_rate': (m_errs * 100.0 / m_calls) if m_calls > 0 else 0.0
+                        'avg': m_avg if m_avg else 0.0,
+                        'min': m_min if m_min else 0.0,
+                        'max': m_max if m_max else 0.0,
+                        'errors': m_errs if m_errs else 0,
+                        'error_rate': (m_errs * 100.0 / m_calls) if m_calls and m_calls > 0 else 0.0
                     }
             except Exception as e:
                 print(f"DEBUG: Failed to query API metrics: {e}", flush=True)
             
             try:
-                rows = explorer.conn.execute("SELECT id, path, description, sql_code, COALESCE(security_enabled, FALSE), rate_limit FROM _duckdb_studio_api_endpoints ORDER BY created_at DESC;").fetchall()
+                rows = [(r['id'], r['path'], r['description'], r['sql_code'], bool(r['security_enabled']), r['rate_limit']) for r in config_db.query_all("SELECT id, path, description, sql_code, security_enabled, rate_limit FROM _duckdb_studio_api_endpoints ORDER BY created_at DESC;")]
             except Exception as e:
                 with api_endpoints_list_container:
                     ui.label(f"Failed to load endpoints: {e}").classes('text-xs text-negative')
@@ -3012,68 +3215,7 @@ def index():
                                     execute_btn.on_click(make_execute_handler())
         # Initialize API Endpoints Table & Preseed
         def init_api_endpoints_table():
-            try:
-                explorer.conn.execute("""
-                    CREATE TABLE IF NOT EXISTS _duckdb_studio_api_endpoints (
-                        id VARCHAR PRIMARY KEY,
-                        path VARCHAR UNIQUE,
-                        description VARCHAR,
-                        sql_code VARCHAR,
-                        created_at TIMESTAMP,
-                        security_enabled BOOLEAN DEFAULT FALSE,
-                        rate_limit VARCHAR DEFAULT NULL
-                    );
-                """)
-                # Ensure the columns exist for existing databases
-                try:
-                    explorer.conn.execute("ALTER TABLE _duckdb_studio_api_endpoints ADD COLUMN security_enabled BOOLEAN DEFAULT FALSE;")
-                except Exception:
-                    pass
-                try:
-                    explorer.conn.execute("ALTER TABLE _duckdb_studio_api_endpoints ADD COLUMN rate_limit VARCHAR DEFAULT NULL;")
-                except Exception:
-                    pass
-                explorer.conn.execute("""
-                    CREATE TABLE IF NOT EXISTS _duckdb_studio_api_metrics (
-                        endpoint_path VARCHAR,
-                        timestamp TIMESTAMP,
-                        latency_ms DOUBLE,
-                        status_code INTEGER,
-                        error_message VARCHAR
-                    );
-                """)
-                existing = explorer.conn.execute("SELECT COUNT(*) FROM _duckdb_studio_api_endpoints;").fetchone()[0]
-                if existing == 0:
-                    import uuid, datetime
-                    explorer.conn.execute("""
-                        INSERT INTO _duckdb_studio_api_endpoints (id, path, description, sql_code, created_at)
-                        VALUES (?, ?, ?, ?, ?);
-                    """, [
-                        str(uuid.uuid4()),
-                        'top-products',
-                        'Returns list of items in product inventory filtered by minimum stock density.',
-                        'SELECT name, category, price, stock FROM product_inventory WHERE stock >= $min_stock ORDER BY price DESC;',
-                        datetime.datetime.now()
-                    ])
-                
-                # Check and insert test2 endpoint
-                explorer.conn.execute("DELETE FROM _duckdb_studio_api_endpoints WHERE path = 'test2';")
-                test2_exists = explorer.conn.execute("SELECT COUNT(*) FROM _duckdb_studio_api_endpoints WHERE path = 'test2';").fetchone()[0]
-                if test2_exists == 0:
-                    import uuid, datetime
-                    explorer.conn.execute("""
-                        INSERT INTO _duckdb_studio_api_endpoints (id, path, description, sql_code, created_at)
-                        VALUES (?, ?, ?, ?, ?);
-                    """, [
-                        str(uuid.uuid4()),
-                        'test2',
-                        'Dummy endpoint for testing parameters',
-                        'SELECT 1 WHERE ($p1 IS NULL AND $p2 IS NULL AND $p3 IS NULL AND $p4 IS NULL AND $p5 IS NULL AND $p6 IS NULL AND $p7 IS NULL AND $p8 IS NULL AND $p9 IS NULL AND $p10 IS NULL AND $p11 IS NULL AND $p12 IS NULL);',
-                        datetime.datetime.now()
-                    ])
-            except Exception as e:
-                print(f"DEBUG: Failed to initialize _duckdb_studio_api_endpoints table: {e}", flush=True)
-
+            pass
         init_api_endpoints_table()
         refresh_api_endpoints_grid()
 
@@ -3203,7 +3345,7 @@ def index():
         # Scheduler Helpers
         def handle_clear_scheduler_logs():
             try:
-                explorer.conn.execute("DELETE FROM _duckdb_studio_scheduler_logs;")
+                config_db.execute("DELETE FROM _duckdb_studio_scheduler_logs;")
                 ui.notify('Scheduled query logs cleared successfully!', type='positive')
                 refresh_scheduler_logs_table()
             except Exception as ex:
@@ -3227,7 +3369,13 @@ def index():
                         error_message VARCHAR
                     );
                 """)
-                rows = explorer.conn.execute("SELECT id, name, sql_code, interval_str, export_format, partition_column, export_filename, last_run, next_run, status, error_message FROM _duckdb_studio_scheduled_jobs ORDER BY name ASC;").fetchall()
+                rows = [(
+                    r['id'], r['name'], r['sql_code'], r['interval_str'], r['export_format'],
+                    r['partition_column'], r['export_filename'], 
+                    datetime.fromisoformat(r['last_run']) if r['last_run'] else None,
+                    datetime.fromisoformat(r['next_run']) if r['next_run'] else None,
+                    r['status'], r['error_message']
+                ) for r in config_db.query_all("SELECT id, name, sql_code, interval_str, export_format, partition_column, export_filename, last_run, next_run, status, error_message FROM _duckdb_studio_scheduled_jobs ORDER BY name ASC;")]
             except Exception as e:
                 with scheduler_jobs_list_container:
                     ui.label(f"Failed to load scheduled jobs: {e}").classes('text-xs text-negative')
@@ -3257,7 +3405,7 @@ def index():
                                     def toggle_status():
                                         new_status = 'Active' if curr_status == 'Inactive' else 'Inactive'
                                         try:
-                                            explorer.conn.execute("UPDATE _duckdb_studio_scheduled_jobs SET status = ? WHERE id = ?;", [new_status, job_id])
+                                            config_db.execute("UPDATE _duckdb_studio_scheduled_jobs SET status = ? WHERE id = ?;", [new_status, job_id])
                                             ui.notify(f"Job status changed to {new_status}!", type='success')
                                             refresh_scheduler_jobs_list()
                                         except Exception as e:
@@ -3316,7 +3464,7 @@ def index():
                                         
                                         try:
                                             # Update last_run
-                                            explorer.conn.execute("UPDATE _duckdb_studio_scheduled_jobs SET last_run = ? WHERE id = ?;", [now, job_id])
+                                            config_db.execute("UPDATE _duckdb_studio_scheduled_jobs SET last_run = ? WHERE id = ?;", [now.isoformat(), job_id])
                                             # Log execution
                                             explorer.conn.execute("""
                                                 INSERT INTO _duckdb_studio_scheduler_logs (id, job_id, job_name, executed_at, duration_ms, row_count, file_size_bytes, status, error_message)
@@ -3334,7 +3482,7 @@ def index():
                                 def make_delete_handler(job_id=j_id, name=j_name):
                                     def delete_job():
                                         try:
-                                            explorer.conn.execute("DELETE FROM _duckdb_studio_scheduled_jobs WHERE id = ?;", [job_id])
+                                            config_db.execute("DELETE FROM _duckdb_studio_scheduled_jobs WHERE id = ?;", [job_id])
                                             ui.notify(f"Scheduled job '{name}' deleted.", type='success')
                                             refresh_scheduler_jobs_list()
                                         except Exception as e:
@@ -3393,7 +3541,11 @@ def index():
                         error_message VARCHAR
                     );
                 """)
-                logs = explorer.conn.execute("SELECT job_name, executed_at, duration_ms, row_count, file_size_bytes, status, error_message FROM _duckdb_studio_scheduler_logs ORDER BY executed_at DESC LIMIT 50;").fetchall()
+                logs = [(
+                    r['job_name'],
+                    datetime.fromisoformat(r['executed_at']) if r['executed_at'] else datetime.now(),
+                    r['duration_ms'], r['row_count'], r['file_size_bytes'], r['status'], r['error_message']
+                ) for r in config_db.query_all("SELECT job_name, executed_at, duration_ms, row_count, file_size_bytes, status, error_message FROM _duckdb_studio_scheduler_logs ORDER BY executed_at DESC LIMIT 50;")]
             except Exception as e:
                 with scheduler_logs_table_container:
                     ui.label(f"Failed to load logs: {e}").classes('text-xs text-negative')
@@ -3474,7 +3626,7 @@ def index():
                     # Reset / Clear metrics button
                     def handle_clear_telemetry():
                         try:
-                            explorer.conn.execute("DELETE FROM _duckdb_studio_api_metrics;")
+                            config_db.execute("DELETE FROM _duckdb_studio_api_metrics;")
                             ui.notify('Telemetry logs cleared successfully!', type='positive')
                             update_telemetry_dashboard()
                         except Exception as ex:
@@ -6662,11 +6814,11 @@ def handle_streaming_endpoint(endpoint_path: str, request: Request):
         conn = duckdb.connect(db_path)
         load_attached_databases_for_connection(conn)
         
-        # Load the endpoint query from database, including the security flag
-        res = conn.execute(
-            "SELECT sql_code, COALESCE(security_enabled, FALSE) FROM _duckdb_studio_api_endpoints WHERE path = ?;",
+        # Load the endpoint query from SQLite database
+        res = config_db.query_one(
+            "SELECT sql_code, security_enabled FROM _duckdb_studio_api_endpoints WHERE path = ?;",
             [endpoint_path]
-        ).fetchone()
+        )
         
         if not res:
             from fastapi import HTTPException
@@ -6674,7 +6826,7 @@ def handle_streaming_endpoint(endpoint_path: str, request: Request):
             error_message = f"API Endpoint '/api/{endpoint_path}' not found"
             raise HTTPException(status_code=404, detail=error_message)
             
-        sql_code, security_enabled = res
+        sql_code, security_enabled = res['sql_code'], bool(res['security_enabled'])
         
         # Enforce JWT Authorization if enabled for this endpoint
         if security_enabled:
@@ -6744,24 +6896,13 @@ def handle_streaming_endpoint(endpoint_path: str, request: Request):
         error_message = str(e)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        # Log telemetry metrics
+        # Log telemetry metrics to SQLite
         try:
-            conn_metric = duckdb.connect(db_path)
             latency_ms = (time.time() - start_time) * 1000.0
-            conn_metric.execute("""
-                CREATE TABLE IF NOT EXISTS _duckdb_studio_api_metrics (
-                    endpoint_path VARCHAR,
-                    timestamp TIMESTAMP,
-                    latency_ms DOUBLE,
-                    status_code INTEGER,
-                    error_message VARCHAR
-                );
-            """)
-            conn_metric.execute("""
+            config_db.execute("""
                 INSERT INTO _duckdb_studio_api_metrics (endpoint_path, timestamp, latency_ms, status_code, error_message)
                 VALUES (?, ?, ?, ?, ?);
-            """, [endpoint_path + "/stream", datetime.datetime.now(), latency_ms, status_code, error_message])
-            conn_metric.close()
+            """, [endpoint_path + "/stream", datetime.datetime.now().isoformat(), latency_ms, status_code, error_message])
         except Exception as log_err:
             print(f"ERROR logging API streaming telemetry metrics: {log_err}", flush=True)
 
@@ -6781,11 +6922,11 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
         # Load and attach configured databases so the query can access them if needed
         load_attached_databases_for_connection(conn)
         
-        # Load the endpoint query from database
-        res = conn.execute(
-            "SELECT sql_code, COALESCE(security_enabled, FALSE) FROM _duckdb_studio_api_endpoints WHERE path = ?;",
+        # Load the endpoint query from SQLite database
+        res = config_db.query_one(
+            "SELECT sql_code, security_enabled FROM _duckdb_studio_api_endpoints WHERE path = ?;",
             [endpoint_path]
-        ).fetchone()
+        )
         
         if not res:
             from fastapi import HTTPException
@@ -6793,7 +6934,7 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
             error_message = f"API Endpoint '/api/{endpoint_path}' not found"
             raise HTTPException(status_code=404, detail=error_message)
             
-        sql_code, security_enabled = res
+        sql_code, security_enabled = res['sql_code'], bool(res['security_enabled'])
         
         # Enforce JWT Authorization if enabled for this endpoint
         if security_enabled:
@@ -6916,27 +7057,21 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
         error_message = str(e)
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        if conn is not None:
-            try:
-                # Log telemetry metrics
-                latency_ms = (time.time() - start_time) * 1000.0
-                conn.execute("""
-                    CREATE TABLE IF NOT EXISTS _duckdb_studio_api_metrics (
-                        endpoint_path VARCHAR,
-                        timestamp TIMESTAMP,
-                        latency_ms DOUBLE,
-                        status_code INTEGER,
-                        error_message VARCHAR
-                    );
-                """)
-                conn.execute("""
-                    INSERT INTO _duckdb_studio_api_metrics (endpoint_path, timestamp, latency_ms, status_code, error_message)
-                    VALUES (?, ?, ?, ?, ?);
-                """, [endpoint_path, datetime.datetime.now(), latency_ms, status_code, error_message])
-            except Exception as log_err:
-                print(f"ERROR logging API telemetry metrics: {log_err}", flush=True)
-            finally:
-                conn.close()
+        # Log telemetry metrics to SQLite
+        try:
+            latency_ms = (time.time() - start_time) * 1000.0
+            config_db.execute("""
+                INSERT INTO _duckdb_studio_api_metrics (endpoint_path, timestamp, latency_ms, status_code, error_message)
+                VALUES (?, ?, ?, ?, ?);
+            """, [endpoint_path, datetime.datetime.now().isoformat(), latency_ms, status_code, error_message])
+        except Exception as log_err:
+            print(f"ERROR logging API telemetry metrics: {log_err}", flush=True)
+        finally:
+            if conn is not None:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
 
 # --- INITIALIZE AND SEED DATABASE ON STARTUP ---
