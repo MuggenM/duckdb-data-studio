@@ -3570,7 +3570,9 @@ def index():
                 ui.separator().classes('opacity-50')
                 table_container = ui.column().classes('w-full')
                 
+            last_detail_rows = None
             def update_telemetry_dashboard():
+                nonlocal last_detail_rows
                 if tabs.value != 'Telemetry':
                     return
                 
@@ -3680,35 +3682,37 @@ def index():
                     print(f"Failed to query detail api rows: {ex}")
                     detail_rows = []
                     
-                table_container.clear()
-                with table_container:
-                    if not detail_rows:
-                        with ui.column().classes('w-full items-center justify-center py-8 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-900/20'):
-                            ui.icon('hourglass_empty', color='grey').classes('text-3xl')
-                            ui.label('No performance data logged yet.').classes('text-xs text-slate-400 font-medium mt-1')
-                            ui.label('Hit your exposed API endpoints to see live stats populate here in real-time.').classes('text-[10px] text-slate-500')
-                    else:
-                        with ui.element('div').classes('w-full max-h-80 overflow-auto border border-slate-100 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-950'):
-                            with ui.element('table').classes('w-full text-left border-collapse text-xs'):
-                                with ui.element('thead').classes('sticky top-0 bg-slate-100 dark:bg-slate-900 text-slate-500 font-bold uppercase tracking-wider text-[10px] z-10'):
-                                    with ui.element('tr'):
-                                        ui.element('th').classes('p-3').text('Endpoint Route')
-                                        ui.element('th').classes('p-3 text-center').text('Invocations')
-                                        ui.element('th').classes('p-3 text-center').text('Avg Latency')
-                                        ui.element('th').classes('p-3 text-center').text('Min / Max')
-                                        ui.element('th').classes('p-3 text-center').text('Success Ratio')
-                                        ui.element('th').classes('p-3 text-right').text('Last Triggered')
-                                        
-                                with ui.element('tbody').classes('divide-y divide-slate-100 dark:divide-slate-800'):
-                                    for path, calls, avg_lat, min_lat, max_lat, success_rate, last_called in detail_rows:
-                                        with ui.element('tr').classes('hover:bg-slate-50/50 dark:hover:bg-slate-900/10'):
-                                            ui.element('td').classes('p-3 font-semibold text-slate-700 dark:text-slate-350').text(f"/api/{path}")
-                                            ui.element('td').classes('p-3 text-center').text(str(calls))
-                                            ui.element('td').classes('p-3 text-center').text(f"{avg_lat:.1f}ms")
-                                            ui.element('td').classes('p-3 text-center text-slate-400').text(f"{min_lat:.1f} / {max_lat:.1f}ms")
-                                            color_ind = 'text-emerald-500' if success_rate >= 95 else ('text-amber-500' if success_rate >= 80 else 'text-rose-500')
-                                            ui.element('td').classes(f'p-3 text-center font-bold {color_ind}').text(f"{success_rate:.1f}%")
-                                            ui.element('td').classes('p-3 text-right text-slate-400').text(str(last_called)[:19] if last_called else 'N/A')
+                if detail_rows != last_detail_rows:
+                    last_detail_rows = detail_rows
+                    table_container.clear()
+                    with table_container:
+                        if not detail_rows:
+                            with ui.column().classes('w-full items-center justify-center py-8 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50/50 dark:bg-slate-900/20'):
+                                ui.icon('hourglass_empty', color='grey').classes('text-3xl')
+                                ui.label('No performance data logged yet.').classes('text-xs text-slate-400 font-medium mt-1')
+                                ui.label('Hit your exposed API endpoints to see live stats populate here in real-time.').classes('text-[10px] text-slate-500')
+                        else:
+                            with ui.element('div').classes('w-full max-h-80 overflow-auto border border-slate-100 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-950'):
+                                with ui.element('table').classes('w-full text-left border-collapse text-xs'):
+                                    with ui.element('thead').classes('sticky top-0 bg-slate-100 dark:bg-slate-900 text-slate-500 font-bold uppercase tracking-wider text-[10px] z-10'):
+                                        with ui.element('tr'):
+                                            ui.element('th').classes('p-3').text('Endpoint Route')
+                                            ui.element('th').classes('p-3 text-center').text('Invocations')
+                                            ui.element('th').classes('p-3 text-center').text('Avg Latency')
+                                            ui.element('th').classes('p-3 text-center').text('Min / Max')
+                                            ui.element('th').classes('p-3 text-center').text('Success Ratio')
+                                            ui.element('th').classes('p-3 text-right').text('Last Triggered')
+                                            
+                                    with ui.element('tbody').classes('divide-y divide-slate-100 dark:divide-slate-800'):
+                                        for path, calls, avg_lat, min_lat, max_lat, success_rate, last_called in detail_rows:
+                                            with ui.element('tr').classes('hover:bg-slate-50/50 dark:hover:bg-slate-900/10'):
+                                                ui.element('td').classes('p-3 font-semibold text-slate-700 dark:text-slate-350').text(f"/api/{path}")
+                                                ui.element('td').classes('p-3 text-center').text(str(calls))
+                                                ui.element('td').classes('p-3 text-center').text(f"{avg_lat:.1f}ms")
+                                                ui.element('td').classes('p-3 text-center text-slate-400').text(f"{min_lat:.1f} / {max_lat:.1f}ms")
+                                                color_ind = 'text-emerald-500' if success_rate >= 95 else ('text-amber-500' if success_rate >= 80 else 'text-rose-500')
+                                                ui.element('td').classes(f'p-3 text-center font-bold {color_ind}').text(f"{success_rate:.1f}%")
+                                                ui.element('td').classes('p-3 text-right text-slate-400').text(str(last_called)[:19] if last_called else 'N/A')
             
             ui.timer(2.0, update_telemetry_dashboard)
 
