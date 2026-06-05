@@ -3869,10 +3869,10 @@ def index():
                             def select_category(cat):
                                 nonlocal current_snippet_category
                                 current_snippet_category = cat
-                                all_btn.props('unelevated' if cat == 'All' else 'flat')
-                                analytics_btn.props('unelevated' if cat == 'Analytical' else 'flat')
-                                utility_btn.props('unelevated' if cat == 'Utility' else 'flat')
-                                ddl_btn.props('unelevated' if cat == 'DDL/DML' else 'flat')
+                                all_btn.props('unelevated', remove='flat') if cat == 'All' else all_btn.props('flat', remove='unelevated')
+                                analytics_btn.props('unelevated', remove='flat') if cat == 'Analytical' else analytics_btn.props('flat', remove='unelevated')
+                                utility_btn.props('unelevated', remove='flat') if cat == 'Utility' else utility_btn.props('flat', remove='unelevated')
+                                ddl_btn.props('unelevated', remove='flat') if cat == 'DDL/DML' else ddl_btn.props('flat', remove='unelevated')
                                 all_btn.update()
                                 analytics_btn.update()
                                 utility_btn.update()
