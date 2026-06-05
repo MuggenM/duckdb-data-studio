@@ -3876,10 +3876,10 @@ def index():
                                 refresh_saved_queries_list()
 
                             with ui.row().classes('w-full gap-1 justify-between flex-wrap'):
-                                all_btn = ui.button('ALL', on_click=lambda: select_category('All')).props('unelevated dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 15px !important;')
-                                analytics_btn = ui.button('ANALYTICS', on_click=lambda: select_category('Analytical')).props('flat dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 15px !important;')
-                                utility_btn = ui.button('UTILITY', on_click=lambda: select_category('Utility')).props('flat dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 15px !important;')
-                                ddl_btn = ui.button('DDL/DML', on_click=lambda: select_category('DDL/DML')).props('flat dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 15px !important;')
+                                all_btn = ui.button('ALL', on_click=lambda: select_category('All')).props('unelevated dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 12px !important;')
+                                analytics_btn = ui.button('ANALYTICS', on_click=lambda: select_category('Analytical')).props('flat dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 12px !important;')
+                                utility_btn = ui.button('UTILITY', on_click=lambda: select_category('Utility')).props('flat dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 12px !important;')
+                                ddl_btn = ui.button('DDL/DML', on_click=lambda: select_category('DDL/DML')).props('flat dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 12px !important;')
                             saved_queries_container = ui.column().classes('w-full overflow-auto gap-2 text-slate-800 dark:text-slate-100').style('max-height: 260px;')
                     
                     # Seeding Actions
