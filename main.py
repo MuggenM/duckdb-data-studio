@@ -5679,7 +5679,7 @@ def index():
                 elif "projection" in name_lower:
                     cls = "projClass"
                     
-                nodes.append(f'{node_id}["{label}"]::: {cls}')
+                nodes.append(f'{node_id}["{label}"]:::{cls}')
                 
                 if parent_id:
                     connections.append(f"{parent_id} --> {node_id}")
