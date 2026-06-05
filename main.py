@@ -3862,13 +3862,13 @@ def index():
                     # Scrollable container for the expansion panels to prevent pushing actions out of frame
                     with ui.column().classes('w-full flex-grow overflow-y-auto gap-4 pr-1 flex-nowrap'):
                         # Database Schema Explorer & Saved Queries Library
-                        with ui.expansion('🌳 Schema Browser', icon='account_tree', value=True).classes('w-full border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel text-xs text-slate-700 dark:text-slate-300 font-bold'):
-                            with ui.column().classes('w-full gap-2 p-2'):
+                        with ui.expansion('🌳 Schema Browser', icon='account_tree', value=True).classes('w-full border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel text-xs text-slate-700 dark:text-slate-300 font-bold').props('header-class="q-py-xs q-px-sm min-h-[28px]"'):
+                            with ui.column().classes('w-full gap-1.5 pt-1 px-2 pb-2'):
                                 schema_filter_input = ui.input(placeholder='Filter tables, views, columns...', on_change=lambda _: refresh_schema_tree()).props('outlined dense clearable').classes('w-full font-normal text-xs').style('font-size: 11px;')
                                 schema_container = ui.column().classes('w-full overflow-auto gap-0 text-slate-800 dark:text-slate-100').style('max-height: 340px;')
 
-                        with ui.expansion('💾 SQL Snippets Library', icon='bookmark', value=True).classes('w-full border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel text-xs text-slate-700 dark:text-slate-300 font-bold'):
-                            with ui.column().classes('w-full gap-2 p-2'):
+                        with ui.expansion('💾 SQL Snippets Library', icon='bookmark', value=True).classes('w-full border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel text-xs text-slate-700 dark:text-slate-300 font-bold').props('header-class="q-py-xs q-px-sm min-h-[28px]"'):
+                            with ui.column().classes('w-full gap-1.5 pt-1 px-2 pb-2'):
                                 saved_queries_filter = ui.input(placeholder='Filter snippets...', on_change=lambda _: refresh_saved_queries_list()).props('outlined dense clearable').classes('w-full font-normal text-xs').style('font-size: 11px;')
                                 def select_category(cat):
                                     nonlocal current_snippet_category
