@@ -843,7 +843,7 @@ def index():
     ui.query('.nicegui-content').classes('p-0 gap-0')
     # Scoping variables for sidebar explorers
     schema_filter_input = None
-    snippet_category_toggle = None
+    current_snippet_category = 'All'
     save_query_category_select = None
     export_db_select = None
     
@@ -1472,7 +1472,7 @@ def index():
                 
             # Filter the queries based on the user search keyword and category toggle
             filter_text = saved_queries_filter.value.strip().lower() if saved_queries_filter and saved_queries_filter.value else ""
-            selected_cat = snippet_category_toggle.value if snippet_category_toggle else "All"
+            selected_cat = current_snippet_category
             
             if filter_text or selected_cat != 'All':
                 queries = [
@@ -1502,31 +1502,38 @@ def index():
                 else:
                     cat_color = 'teal'
                 
-                with ui.card().classes('w-full p-2.5 border rounded shadow-none hover:bg-slate-50 dark:hover:bg-slate-900 transition gap-1.5 flex-none').style('border-color: var(--q-slate-200);'):
-                    # Top section: Category Badge, Name and Description (Full width)
-                    with ui.column().classes('w-full gap-0.5'):
-                        with ui.row().classes('w-full items-center gap-1.5 no-wrap'):
-                            ui.badge(q_cat, color=cat_color).classes('text-[8px] py-0.5 px-1 flex-none')
-                            ui.label(q_name).classes('text-xs font-bold text-slate-800 dark:text-slate-200 break-words whitespace-normal')
-                        if q_desc:
-                            ui.label(q_desc).classes('text-[10px] text-slate-400 font-normal break-words whitespace-normal')
-                    
-                    # Handlers and Bottom Action row
-                    def make_load_handler(code=q_sql):
-                        return lambda _: load_history_query(code)
-                    def make_run_handler(code=q_sql):
-                        return lambda _: run_snippet_immediately(code)
-                    def make_copy_handler(code=q_sql):
-                        return lambda _: copy_snippet_to_clipboard(code)
-                    def make_delete_handler(query_id=q_id, query_name=q_name):
-                        return lambda _: confirm_delete_query(query_id, query_name)
+                with ui.card().classes('w-full p-0 border rounded shadow-none dark-bg-panel overflow-hidden transition flex-none').style('border-color: var(--q-slate-200);') as snippet_card:
+                    if q_desc:
+                        snippet_card.tooltip(q_desc)
                         
-                    with ui.row().classes('w-full justify-between items-center mt-1 pt-1.5 border-t border-slate-100 dark:border-slate-800/50'):
-                        with ui.row().classes('items-center gap-1'):
-                            ui.button(icon='play_arrow', on_click=make_run_handler()).props('flat dense size=sm color=positive').classes('p-0.5').tooltip('Execute snippet')
-                            ui.button(icon='arrow_forward', on_click=make_load_handler()).props('flat dense size=sm color=primary').classes('p-0.5').tooltip('Load to editor')
-                            ui.button(icon='content_copy', on_click=make_copy_handler()).props('flat dense size=sm color=secondary').classes('p-0.5').tooltip('Copy SQL')
-                        ui.button(icon='delete', on_click=make_delete_handler()).props('flat dense size=sm color=negative').classes('p-0.5').tooltip('Delete snippet')
+                    with ui.expansion().classes('w-full').props('header-class="q-py-xs q-px-sm min-h-[28px]" expand-icon-class="text-slate-500"') as exp:
+                        with exp.add_slot('header'):
+                            with ui.row().classes('w-full items-center gap-1.5 no-wrap'):
+                                ui.badge(q_cat, color=cat_color).classes('text-[8px] py-0.5 px-1 flex-none')
+                                ui.label(q_name).classes('text-xs font-bold text-slate-800 dark:text-slate-200 truncate')
+                        
+                        with ui.column().classes('w-full p-2.5 gap-2 border-t border-slate-100 dark:border-slate-850'):
+                            if q_desc:
+                                ui.label(q_desc).classes('text-[10px] text-slate-400 font-normal break-words whitespace-normal')
+                                
+                            ui.code(q_sql, language='sql').classes('text-[9px] w-full p-1.5 rounded bg-slate-900 text-slate-100 font-mono max-h-24 overflow-auto')
+                            
+                            # Handlers and Bottom Action row
+                            def make_load_handler(code=q_sql):
+                                return lambda _: load_history_query(code)
+                            def make_run_handler(code=q_sql):
+                                return lambda _: run_snippet_immediately(code)
+                            def make_copy_handler(code=q_sql):
+                                return lambda _: copy_snippet_to_clipboard(code)
+                            def make_delete_handler(query_id=q_id, query_name=q_name):
+                                return lambda _: confirm_delete_query(query_id, query_name)
+                                
+                            with ui.row().classes('w-full justify-between items-center mt-1 pt-1.5 border-t border-slate-100 dark:border-slate-800/50'):
+                                with ui.row().classes('items-center gap-1'):
+                                    ui.button(icon='play_arrow', on_click=make_run_handler()).props('flat dense size=sm color=positive').classes('p-0.5').tooltip('Execute snippet')
+                                    ui.button(icon='arrow_forward', on_click=make_load_handler()).props('flat dense size=sm color=primary').classes('p-0.5').tooltip('Load to editor')
+                                    ui.button(icon='content_copy', on_click=make_copy_handler()).props('flat dense size=sm color=secondary').classes('p-0.5').tooltip('Copy SQL')
+                                ui.button(icon='delete', on_click=make_delete_handler()).props('flat dense size=sm color=negative').classes('p-0.5').tooltip('Delete snippet')
 
     def confirm_delete_query(query_id, query_name):
         with ui.dialog() as dialog, ui.card():
@@ -3859,11 +3866,20 @@ def index():
                     with ui.expansion('💾 SQL Snippets Library', icon='bookmark', value=True).classes('w-full border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel text-xs text-slate-700 dark:text-slate-300 font-bold'):
                         with ui.column().classes('w-full gap-2 p-2'):
                             saved_queries_filter = ui.input(placeholder='Filter snippets...', on_change=lambda _: refresh_saved_queries_list()).props('outlined dense clearable').classes('w-full font-normal text-xs').style('font-size: 11px;')
-                            snippet_category_toggle = ui.toggle(
-                                options={'All': 'All', 'Analytical': 'Analytics', 'Utility': 'Utility', 'DDL/DML': 'DDL/DML'},
-                                value='All',
-                                on_change=lambda _: refresh_saved_queries_list()
-                            ).props('dense unelevated').classes('w-full text-xs font-normal').style('font-size: 10px;')
+                            def select_category(cat):
+                                nonlocal current_snippet_category
+                                current_snippet_category = cat
+                                all_btn.props('unelevated' if cat == 'All' else 'flat')
+                                analytics_btn.props('unelevated' if cat == 'Analytical' else 'flat')
+                                utility_btn.props('unelevated' if cat == 'Utility' else 'flat')
+                                ddl_btn.props('unelevated' if cat == 'DDL/DML' else 'flat')
+                                refresh_saved_queries_list()
+
+                            with ui.row().classes('w-full gap-1 justify-between flex-nowrap'):
+                                all_btn = ui.button('ALL', on_click=lambda: select_category('All')).props('unelevated dense size=xs color=primary').classes('text-[9px] font-bold px-1.5 flex-grow')
+                                analytics_btn = ui.button('ANALYTICS', on_click=lambda: select_category('Analytical')).props('flat dense size=xs color=primary').classes('text-[9px] font-bold px-1.5 flex-grow')
+                                utility_btn = ui.button('UTILITY', on_click=lambda: select_category('Utility')).props('flat dense size=xs color=primary').classes('text-[9px] font-bold px-1.5 flex-grow')
+                                ddl_btn = ui.button('DDL/DML', on_click=lambda: select_category('DDL/DML')).props('flat dense size=xs color=primary').classes('text-[9px] font-bold px-1.5 flex-grow')
                             saved_queries_container = ui.column().classes('w-full overflow-auto gap-2 text-slate-800 dark:text-slate-100').style('max-height: 260px;')
                     
                     # Seeding Actions
