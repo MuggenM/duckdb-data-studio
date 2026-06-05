@@ -2772,62 +2772,64 @@ def index():
                 
             with api_endpoints_list_container:
                 for ep_id, ep_path, ep_desc, ep_sql, ep_secured, ep_rate_limit in rows:
-                    with ui.card().classes('w-full p-4 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-3'):
-                        # Top Row: GET Badge + Path
-                        with ui.row().classes('w-full items-center justify-between no-wrap'):
-                            with ui.row().classes('items-center gap-2 no-wrap'):
-                                ui.badge('GET', color='positive').classes('text-[10px] font-bold px-2 py-0.5')
-                                if ep_secured:
-                                    ui.icon('lock', color='amber').classes('text-xs').tooltip('Requires JWT Authorization')
-                                ui.label(f"/api/{ep_path}").classes('text-sm font-bold text-slate-800 dark:text-white truncate')
-                                limit_str = ep_rate_limit if ep_rate_limit else f"{APP_SETTINGS.get('default_rate_limit', '5/minute')} (default)"
-                                ui.badge(limit_str, color='info').classes('text-[10px] px-2 py-0.5').tooltip('Rate Limit')
+                    with ui.card().classes('w-full p-0 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl overflow-hidden'):
+                        with ui.expansion().classes('w-full').props('header-class="q-py-sm q-px-md" expand-icon-class="text-slate-500"') as exp:
+                            with exp.add_slot('header'):
+                                with ui.row().classes('w-full items-center justify-between no-wrap pr-4'):
+                                    with ui.row().classes('items-center gap-2 no-wrap'):
+                                        ui.badge('GET', color='positive').classes('text-[10px] font-bold px-2 py-0.5')
+                                        if ep_secured:
+                                            ui.icon('lock', color='amber').classes('text-xs').tooltip('Requires JWT Authorization')
+                                        ui.label(f"/api/{ep_path}").classes('text-sm font-bold text-slate-800 dark:text-white truncate')
+                                        limit_str = ep_rate_limit if ep_rate_limit else f"{APP_SETTINGS.get('default_rate_limit', '5/minute')} (default)"
+                                        ui.badge(limit_str, color='info').classes('text-[10px] px-2 py-0.5').tooltip('Rate Limit')
+                                    
+                                    with ui.row().classes('items-center gap-1'):
+                                        ui.button(icon='edit', on_click=lambda _, i=ep_id, p=ep_path, d=ep_desc, s=ep_sql, sec=ep_secured, rl=ep_rate_limit: open_edit_api_dialog(i, p, d, s, sec, rl)).props('flat dense size=sm color=primary').classes('p-1').tooltip('Edit Endpoint')
+                                        ui.button(icon='delete', on_click=lambda _, i=ep_id, p=ep_path: delete_api_endpoint(i, p)).props('flat dense size=sm color=negative').classes('p-1').tooltip('Delete Endpoint')
                             
-                            with ui.row().classes('items-center gap-1'):
-                                ui.button(icon='edit', on_click=lambda _, i=ep_id, p=ep_path, d=ep_desc, s=ep_sql, sec=ep_secured, rl=ep_rate_limit: open_edit_api_dialog(i, p, d, s, sec, rl)).props('flat dense size=sm color=primary').classes('p-1').tooltip('Edit Endpoint')
-                                ui.button(icon='delete', on_click=lambda _, i=ep_id, p=ep_path: delete_api_endpoint(i, p)).props('flat dense size=sm color=negative').classes('p-1').tooltip('Delete Endpoint')
-                            
-                        # Middle Row: Description
-                        if ep_desc:
-                            ui.label(ep_desc).classes('text-xs text-slate-400 font-normal leading-relaxed')
-                            
-                        # Telemetry Stats Badge/Bar
-                        stats = metrics_map.get(ep_path, {
-                            'calls': 0,
-                            'avg': 0.0,
-                            'min': 0.0,
-                            'max': 0.0,
-                            'errors': 0,
-                            'error_rate': 0.0
-                        })
-                        with ui.row().classes('w-full items-center gap-4 text-[11px] bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-850'):
-                            with ui.row().classes('items-center gap-1'):
-                                ui.icon('analytics', color='primary', size='xs')
-                                ui.label('Telemetry:').classes('font-bold text-slate-500')
-                            with ui.row().classes('items-center gap-1'):
-                                ui.label('Calls:').classes('text-slate-400')
-                                ui.label(str(stats['calls'])).classes('font-bold text-slate-700 dark:text-slate-350')
-                            with ui.row().classes('items-center gap-1'):
-                                ui.label('Avg Latency:').classes('text-slate-400')
-                                ui.label(f"{stats['avg']:.1f}ms").classes('font-bold text-slate-700 dark:text-slate-350')
-                            with ui.row().classes('items-center gap-1'):
-                                ui.label('Error Rate:').classes('text-slate-400')
-                                err_color = 'rose-500' if stats['error_rate'] > 0 else 'emerald-500'
-                                ui.label(f"{stats['error_rate']:.1f}%").classes(f'font-bold text-{err_color}')
-                            
-                        # Code Snippet: Monospace SQL code
-                        with ui.expansion('Source Query SQL', icon='code').classes('w-full border border-slate-100 dark:border-slate-900 rounded-lg text-xs'):
-                            ui.code(ep_sql, language='sql').classes('w-full text-[10px] rounded-lg p-2 dark:bg-slate-950')
-                            
-                        # Action row: Test / Copy full url
-                        with ui.row().classes('w-full items-center justify-between border-t border-slate-100 dark:border-slate-900 pt-2 mt-1 flex-wrap gap-2'):
-                            full_relative_path = f"/api/{ep_path}"
-                            ui.label(full_relative_path).classes('text-[10px] font-semibold text-slate-400 truncate max-w-[200px]')
-                            
-                            with ui.row().classes('items-center gap-2'):
-                                with ui.link(target=f'/api/{ep_path}', new_tab=True).style('text-decoration: none'):
-                                    ui.button('Test Endpoint', icon='open_in_new').props('flat dense size=sm color=primary').classes('text-xs')
-                                ui.button('Copy Path', icon='content_copy', on_click=lambda _, p=full_relative_path: ui.run_javascript(f"navigator.clipboard.writeText(window.location.origin + '{p}')")).props('flat dense size=sm color=secondary').classes('text-xs')
+                            with ui.column().classes('w-full p-4 gap-3 border-t border-slate-100 dark:border-slate-800'):
+                                # Middle Row: Description
+                                if ep_desc:
+                                    ui.label(ep_desc).classes('text-xs text-slate-400 font-normal leading-relaxed')
+                                    
+                                # Telemetry Stats Badge/Bar
+                                stats = metrics_map.get(ep_path, {
+                                    'calls': 0,
+                                    'avg': 0.0,
+                                    'min': 0.0,
+                                    'max': 0.0,
+                                    'errors': 0,
+                                    'error_rate': 0.0
+                                })
+                                with ui.row().classes('w-full items-center gap-4 text-[11px] bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-100 dark:border-slate-850'):
+                                    with ui.row().classes('items-center gap-1'):
+                                        ui.icon('analytics', color='primary', size='xs')
+                                        ui.label('Telemetry:').classes('font-bold text-slate-500')
+                                    with ui.row().classes('items-center gap-1'):
+                                        ui.label('Calls:').classes('text-slate-400')
+                                        ui.label(str(stats['calls'])).classes('font-bold text-slate-700 dark:text-slate-350')
+                                    with ui.row().classes('items-center gap-1'):
+                                        ui.label('Avg Latency:').classes('text-slate-400')
+                                        ui.label(f"{stats['avg']:.1f}ms").classes('font-bold text-slate-700 dark:text-slate-350')
+                                    with ui.row().classes('items-center gap-1'):
+                                        ui.label('Error Rate:').classes('text-slate-400')
+                                        err_color = 'rose-500' if stats['error_rate'] > 0 else 'emerald-500'
+                                        ui.label(f"{stats['error_rate']:.1f}%").classes(f'font-bold text-{err_color}')
+                                    
+                                # Code Snippet: Monospace SQL code
+                                with ui.expansion('Source Query SQL', icon='code').classes('w-full border border-slate-100 dark:border-slate-900 rounded-lg text-xs'):
+                                    ui.code(ep_sql, language='sql').classes('w-full text-[10px] rounded-lg p-2 dark:bg-slate-950')
+                                    
+                                # Action row: Test / Copy full url
+                                with ui.row().classes('w-full items-center justify-between border-t border-slate-100 dark:border-slate-900 pt-2 mt-1 flex-wrap gap-2'):
+                                    full_relative_path = f"/api/{ep_path}"
+                                    ui.label(full_relative_path).classes('text-[10px] font-semibold text-slate-400 truncate max-w-[200px]')
+                                    
+                                    with ui.row().classes('items-center gap-2'):
+                                        with ui.link(target=f'/api/{ep_path}', new_tab=True).style('text-decoration: none'):
+                                            ui.button('Test Endpoint', icon='open_in_new').props('flat dense size=sm color=primary').classes('text-xs')
+                                        ui.button('Copy Path', icon='content_copy', on_click=lambda _, p=full_relative_path: ui.run_javascript(f"navigator.clipboard.writeText(window.location.origin + '{p}')")).props('flat dense size=sm color=secondary').classes('text-xs')
             
             # Keep API Docs explorer in perfect sync!
             refresh_api_docs_explorer()
