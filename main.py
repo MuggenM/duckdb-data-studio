@@ -3646,9 +3646,10 @@ def index():
                     global_stats = explorer.conn.execute("""
                         SELECT 
                             COUNT(*),
-                            AVG(latency_ms),
-                            SUM(CASE WHEN status_code < 400 THEN 1 ELSE 0 END)
-                        FROM _duckdb_studio_api_metrics;
+                            AVG(m.latency_ms),
+                            SUM(CASE WHEN m.status_code < 400 THEN 1 ELSE 0 END)
+                        FROM _duckdb_studio_api_metrics m
+                        INNER JOIN _duckdb_studio_api_endpoints e ON m.endpoint_path = e.path;
                     """).fetchone()
                     
                     total_calls = global_stats[0] if global_stats[0] is not None else 0
@@ -3677,6 +3678,7 @@ def index():
                             SUM(CASE WHEN m.status_code < 400 THEN 1 ELSE 0 END) * 100.0 / COUNT(*) as success_rate,
                             MAX(m.timestamp) as last_called
                         FROM _duckdb_studio_api_metrics m
+                        INNER JOIN _duckdb_studio_api_endpoints e ON m.endpoint_path = e.path
                         GROUP BY m.endpoint_path
                         ORDER BY calls DESC;
                     """).fetchall()
