@@ -4458,23 +4458,23 @@ def index():
                     is_main = db_name == 'main'
                     badge_color = 'indigo' if is_main else 'emerald'
                     
-                    with ui.row().classes('w-full items-center justify-between no-wrap gap-1 py-1 px-1.5 rounded hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition'):
-                        with ui.row().classes('items-center gap-2 no-wrap truncate'):
+                    with ui.row().classes('w-full items-center justify-between no-wrap gap-1 py-0.5 px-1 rounded hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition'):
+                        with ui.row().classes('items-center gap-1.5 no-wrap truncate'):
                             db_icon = 'storage' if is_main else 'cloud_queue'
-                            ui.icon(db_icon, color=badge_color).classes('text-sm')
+                            ui.icon(db_icon, color=badge_color).classes('text-xs')
                             with ui.column().classes('gap-0 truncate'):
-                                ui.label(db_name).classes('text-xs font-bold text-slate-800 dark:text-slate-100')
+                                ui.label(db_name).classes('text-[11px] font-bold text-slate-800 dark:text-slate-100')
                                 if db_path:
                                     # Show filename or path
                                     path_display = os.path.basename(db_path) if not db_path.startswith('ducklake:') else db_path
-                                    ui.label(path_display).classes('text-[10px] font-mono text-slate-400 truncate').style('max-width: 130px;')
+                                    ui.label(path_display).classes('text-[9px] font-mono text-slate-400 truncate').style('max-width: 130px;')
                                 else:
-                                    ui.label('In-Memory').classes('text-[10px] text-slate-400 font-mono')
+                                    ui.label('In-Memory').classes('text-[9px] text-slate-400 font-mono')
                         
                         if not is_main:
-                            ui.button(icon='delete', on_click=lambda db=db_name: detach_database_action(db)).props('flat fab-mini dense').classes('text-slate-400 hover:text-rose-500').tooltip('Detach database')
+                            ui.button(icon='delete', on_click=lambda db=db_name: detach_database_action(db)).props('flat dense round size=sm').classes('text-slate-400 hover:text-rose-500').tooltip('Detach database')
                         else:
-                            ui.badge('Active', color=badge_color).classes('text-[8px] py-0.5 px-1.5')
+                            ui.badge('Active', color=badge_color).classes('text-[8px] py-0.5 px-1')
         except Exception as e:
             print(f"Error refreshing databases list: {e}")
 
