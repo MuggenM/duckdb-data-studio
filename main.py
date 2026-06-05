@@ -876,7 +876,12 @@ class SQLiteConfigManager:
                 default_queries = [
                     (str(uuid.uuid4()), "Active High-Value Transactions", "Finds transactions exceeding $300 sorted by amount", "SELECT * FROM sales_transactions WHERE total_amount > 300 ORDER BY total_amount DESC LIMIT 50;", datetime.now().isoformat(), "Analytical"),
                     (str(uuid.uuid4()), "Low Stock Alert", "Finds product categories with low inventory (< 50 items in stock)", "SELECT category, name, stock, price FROM product_inventory WHERE stock < 50 ORDER BY stock ASC;", datetime.now().isoformat(), "Utility"),
-                    (str(uuid.uuid4()), "Customer Value Segmentation", "Calculates lifetime value and order frequency per loyalty tier", "SELECT loyalty_tier, COUNT(DISTINCT c.customer_id) AS customer_count, SUM(total_amount) AS total_revenue, AVG(total_amount) AS avg_order_value FROM customer_profiles c JOIN sales_transactions s ON c.customer_id = s.customer_id GROUP BY loyalty_tier ORDER BY total_revenue DESC;", datetime.now().isoformat(), "Analytical")
+                    (str(uuid.uuid4()), "Customer Value Segmentation", "Calculates lifetime value and order frequency per loyalty tier", "SELECT loyalty_tier, COUNT(DISTINCT c.customer_id) AS customer_count, SUM(total_amount) AS total_revenue, AVG(total_amount) AS avg_order_value FROM customer_profiles c JOIN sales_transactions s ON c.customer_id = s.customer_id GROUP BY loyalty_tier ORDER BY total_revenue DESC;", datetime.now().isoformat(), "Analytical"),
+                    (str(uuid.uuid4()), "Revenue by Product Category", "Calculates aggregate revenue and transaction count grouped by product category", "SELECT category, SUM(total_amount) AS revenue, COUNT(*) AS count FROM sales_transactions s JOIN product_inventory p ON s.product_id = p.product_id GROUP BY category ORDER BY revenue DESC;", datetime.now().isoformat(), "Analytical"),
+                    (str(uuid.uuid4()), "Payment Method Breakdown", "Aggregates total revenue and transaction counts by payment method (e.g. credit card, cash)", "SELECT payment_method, COUNT(*) AS count, SUM(total_amount) AS total_revenue FROM sales_transactions GROUP BY payment_method ORDER BY total_revenue DESC;", datetime.now().isoformat(), "Analytical"),
+                    (str(uuid.uuid4()), "Average Customer Spend by Loyalty Tier", "Calculates average transaction value grouped by customer loyalty tiers", "SELECT loyalty_tier, AVG(total_amount) AS avg_spent FROM sales_transactions t JOIN customer_profiles c ON t.customer_id = c.customer_id GROUP BY loyalty_tier ORDER BY avg_spent DESC;", datetime.now().isoformat(), "Analytical"),
+                    (str(uuid.uuid4()), "Monthly Revenue Trend", "Calculates total revenue aggregated by month to show growth trends", "SELECT DATE_TRUNC('month', transaction_date)::DATE AS month, SUM(total_amount) AS total_revenue FROM sales_transactions GROUP BY 1 ORDER BY 1;", datetime.now().isoformat(), "Analytical"),
+                    (str(uuid.uuid4()), "Attach & Query DuckLake Database", "Template query showing how to attach an external DuckLake data lake catalog and query its parquet tables", "-- 🦆 Attach a DuckLake table format database\n-- Replace the paths below with your metadata DB file and Parquet data folder:\nATTACH 'ducklake:path/to/metadata.db' AS my_lakehouse (DATA_PATH 'path/to/data_parquet/');\n\n-- Now you can query tables in your lakehouse as usual:\n-- SELECT * FROM my_lakehouse.my_table LIMIT 10;", datetime.now().isoformat(), "Utility")
                 ]
                 conn.executemany("INSERT INTO _duckdb_studio_saved_queries VALUES (?, ?, ?, ?, ?, ?)", default_queries)
                 conn.commit()
@@ -4062,27 +4067,7 @@ def index():
                             with ui.row().classes('items-center gap-2'):
                                 ui.icon('code', color='primary').classes('text-xl')
                                 ui.label('SQL Query Editor').classes('font-semibold text-slate-700 dark:text-slate-300')
-                            
-                            # Templates Selector
-                            templates_options = {
-                                "SELECT * FROM sales_transactions ORDER BY transaction_date DESC LIMIT 100;": "Select Top 100 Transactions",
-                                "SELECT category, SUM(total_amount) AS revenue, COUNT(*) AS count FROM sales_transactions s JOIN product_inventory p ON s.product_id = p.product_id GROUP BY category ORDER BY revenue DESC;": "Revenue by Product Category",
-                                "SELECT payment_method, COUNT(*) AS count, SUM(total_amount) AS total_revenue FROM sales_transactions GROUP BY payment_method ORDER BY total_revenue DESC;": "Payment Method Breakdown",
-                                "SELECT loyalty_tier, AVG(total_amount) AS avg_spent FROM sales_transactions t JOIN customer_profiles c ON t.customer_id = c.customer_id GROUP BY loyalty_tier ORDER BY avg_spent DESC;": "Average Customer Spend by Loyalty Tier",
-                                "SELECT DATE_TRUNC('month', transaction_date)::DATE AS month, SUM(total_amount) AS total_revenue FROM sales_transactions GROUP BY 1 ORDER BY 1;": "Monthly Revenue Trend",
-                                "-- 🦆 Attach a DuckLake table format database\n-- Replace the paths below with your metadata DB file and Parquet data folder:\nATTACH 'ducklake:path/to/metadata.db' AS my_lakehouse (DATA_PATH 'path/to/data_parquet/');\n\n-- Now you can query tables in your lakehouse as usual:\n-- SELECT * FROM my_lakehouse.my_table LIMIT 10;": "Attach & Query DuckLake Database"
-                            }
-                            
-                            def handle_template_select(e):
-                                if e.value:
-                                    sql_editor.value = e.value
-                                    sql_select.value = None # reset selector
-                            
-                            sql_select = ui.select(
-                                options=templates_options, 
-                                label='Query Templates', 
-                                on_change=handle_template_select
-                            ).props('dense outlined color=indigo').style('width: 280px; font-size: 13px;')
+                        
                         
                         # SQL Code Editor itself (using NiceGUI CodeMirror component with linter bound)
                         initial_query = app.storage.user.get('last_query', query_history[0])
