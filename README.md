@@ -6,6 +6,18 @@ With DuckDB Studio, you can seamlessly write ad-hoc analytical SQL queries, inst
 
 ---
 
+## 📋 Table of Contents
+
+* [💡 The Value Proposition & Developer Pain Points Solved](#-the-value-proposition--developer-pain-points-solved)
+* [🚀 Key Architectural Pillars & Feature Set](#-key-architectural-pillars--feature-set)
+* [🛠️ Technology Stack & Dependencies](#%EF%B8%8F-technology-stack--dependencies)
+* [📦 Deployment & Container Settings](#-deployment--container-settings)
+* [📂 Project Structure](#-project-structure)
+* [🤖 AI Code Development Proof of Concept](#-ai-code-development-proof-of-concept)
+* [🤝 Acknowledgments & Integrations](#-acknowledgments--integrations)
+
+---
+
 ## 💡 The Value Proposition & Developer Pain Points Solved
 
 Traditional analytical workflows are highly fragmented:
@@ -103,3 +115,19 @@ docker compose up -d --build
 * [main.py](file:///home/martin/volumes/duckdb-studio/main.py): Primary codebase containing the web application core, NiceGUI layouts, background scheduler daemon, and FastAPI routing handlers.
 * [exports/](file:///home/martin/volumes/duckdb-studio/exports): Target directory for automated background query files.
 * [databases/](file:///home/martin/volumes/duckdb-studio/databases): Mounted database folder containing the DuckDB databases.
+* [config/app_config.db](file:///home/martin/volumes/duckdb-studio/config/app_config.db): Separate SQLite database containing all app settings, configurations, schedules, and metrics.
+
+---
+
+## 🤖 AI Code Development Proof of Concept
+
+This application is a **Proof of Concept (PoC)** built using advanced agentic AI coding assistants. All layout design systems, API dynamics, container structures, and SQLite state integrations were designed, implemented, and refactored through iterative AI pair programming. It serves as a demonstration of building complex, production-ready, full-stack database exploration and API deployment tooling purely via AI agents.
+
+---
+
+## 🤝 Acknowledgments & Integrations
+
+DuckDB Studio integrates several powerful open-source cloud-native projects to create a unified data workspace:
+* **[Garage S3](https://garagehq.nz/)**: A lightweight, high-performance distributed object storage service implementing the Amazon S3 API. Garage allows DuckDB Studio to model, test, and run S3 data lake queries locally using standard S3 connection strings.
+* **[dbt Workbench](https://github.com/dbt-labs/dbt-core)**: An integrated interface and runtime explorer to build, test, and run dbt (data build tool) pipelines and compile data lineage DAGs directly inside the workspace.
+* **[JupyterLab](https://jupyter.org/)**: Enables embedded Python notebook workspaces directly integrated alongside the DuckDB database layers.
