@@ -975,6 +975,20 @@ def index():
                  background-color: #0f172a !important;
                  color: #cbd5e1 !important;
              }
+
+             /* --- Super Dense Inputs for API Docs --- */
+             .super-dense-input .q-field__control,
+             .super-dense-input .q-field__marginal {
+                 height: 26px !important;
+                 min-height: 26px !important;
+             }
+             .super-dense-input .q-field__native,
+             .super-dense-input .q-field__input {
+                 font-size: 10px !important;
+                 height: 26px !important;
+                 min-height: 26px !important;
+                 padding: 0 4px !important;
+             }
          </style>
         <script>
             document.addEventListener('keydown', function(e) {
@@ -2869,29 +2883,29 @@ def index():
                                     
                                     input_fields = {}
                                     
-                                    # Parameter container limited to exactly 2 rows of height (~115px), scrolls beyond
-                                    with ui.column().classes('w-full max-h-[115px] overflow-y-auto pr-1 gap-2 flex-nowrap'):
-                                        with ui.row().classes('w-full gap-x-4 gap-y-2 items-start flex-wrap'):
+                                    # Parameter container limited to exactly 2 rows of height (~95px), scrolls beyond
+                                    with ui.column().classes('w-full max-h-[95px] overflow-y-auto pr-1 gap-1.5 flex-nowrap'):
+                                        with ui.row().classes('w-full gap-x-3 gap-y-1.5 items-start flex-wrap'):
                                             # Authorization Token for Secured APIs
                                             if ep_secured:
-                                                with ui.column().classes('gap-1').style('width: 250px;'):
-                                                    ui.label('Authorization Token').classes('text-[11px] font-bold text-amber-500 dark:text-amber-400')
-                                                    input_fields['__jwt__'] = ui.input(placeholder='Bearer <token>').props('outlined dense').classes('w-full font-mono text-xs')
+                                                with ui.column().classes('gap-0.5').style('width: 180px;'):
+                                                    ui.label('Authorization Token').classes('text-[10px] font-bold text-amber-500 dark:text-amber-400')
+                                                    input_fields['__jwt__'] = ui.input(placeholder='Bearer <token>').props('outlined dense').classes('w-full super-dense-input font-mono text-[10px]')
                                                     
                                             # Standard Paging parameters
-                                            with ui.column().classes('gap-1').style('width: 140px;'):
-                                                ui.label('limit').classes('text-[11px] font-bold text-slate-700 dark:text-slate-300')
-                                                input_fields['limit'] = ui.input(placeholder='e.g., 100').props('outlined dense type=number').classes('w-full')
+                                            with ui.column().classes('gap-0.5').style('width: 90px;'):
+                                                ui.label('limit').classes('text-[10px] font-bold text-slate-700 dark:text-slate-300')
+                                                input_fields['limit'] = ui.input(placeholder='e.g., 100').props('outlined dense type=number').classes('w-full super-dense-input text-[10px]')
                                                 
-                                            with ui.column().classes('gap-1').style('width: 140px;'):
-                                                ui.label('offset').classes('text-[11px] font-bold text-slate-700 dark:text-slate-300')
-                                                input_fields['offset'] = ui.input(placeholder='e.g., 0').props('outlined dense type=number').classes('w-full')
+                                            with ui.column().classes('gap-0.5').style('width: 90px;'):
+                                                ui.label('offset').classes('text-[10px] font-bold text-slate-700 dark:text-slate-300')
+                                                input_fields['offset'] = ui.input(placeholder='e.g., 0').props('outlined dense type=number').classes('w-full super-dense-input text-[10px]')
                                                 
                                             # Custom placeholders
                                             for p in placeholders:
-                                                with ui.column().classes('gap-1').style('width: 180px;'):
-                                                    ui.label(p).classes('text-[11px] font-bold text-indigo-500 dark:text-indigo-400')
-                                                    input_fields[p] = ui.input(placeholder=f'Value for ${p}').props('outlined dense').classes('w-full')
+                                                with ui.column().classes('gap-0.5').style('width: 130px;'):
+                                                    ui.label(p).classes('text-[10px] font-bold text-indigo-500 dark:text-indigo-400')
+                                                    input_fields[p] = ui.input(placeholder=f'Value for ${p}').props('outlined dense').classes('w-full super-dense-input text-[10px]')
                                                     
                                     # Action Row
                                     with ui.row().classes('w-full justify-end gap-2 pt-1'):
