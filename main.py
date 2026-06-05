@@ -3830,7 +3830,7 @@ def index():
             
             # --- LEFT SIDEBAR (DATABASE METADATA & HISTORY) ---
             with main_splitter.before:
-                with ui.column().classes('w-full h-full p-4 sidebar-card q-pa-md gap-4 flex-nowrap').style('background-color: var(--q-slate-50);'):
+                with ui.column().classes('w-full h-full p-4 sidebar-card q-pa-md gap-4 flex-nowrap overflow-hidden').style('background-color: var(--q-slate-50);'):
                     
                     # Branding Header
                     with ui.row().classes('items-center w-full justify-between no-wrap'):
@@ -3857,34 +3857,36 @@ def index():
                             # Container for attached databases
                             databases_container = ui.column().classes('w-full gap-1 pl-1')
                     
-                    # Database Schema Explorer & Saved Queries Library
-                    with ui.expansion('🌳 Schema Browser', icon='account_tree', value=True).classes('w-full border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel text-xs text-slate-700 dark:text-slate-300 font-bold'):
-                        with ui.column().classes('w-full gap-2 p-2'):
-                            schema_filter_input = ui.input(placeholder='Filter tables, views, columns...', on_change=lambda _: refresh_schema_tree()).props('outlined dense clearable').classes('w-full font-normal text-xs').style('font-size: 11px;')
-                            schema_container = ui.column().classes('w-full overflow-auto gap-0 text-slate-800 dark:text-slate-100').style('max-height: 340px;')
+                    # Scrollable container for the expansion panels to prevent pushing actions out of frame
+                    with ui.column().classes('w-full flex-grow overflow-y-auto gap-4 pr-1 flex-nowrap'):
+                        # Database Schema Explorer & Saved Queries Library
+                        with ui.expansion('🌳 Schema Browser', icon='account_tree', value=True).classes('w-full border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel text-xs text-slate-700 dark:text-slate-300 font-bold'):
+                            with ui.column().classes('w-full gap-2 p-2'):
+                                schema_filter_input = ui.input(placeholder='Filter tables, views, columns...', on_change=lambda _: refresh_schema_tree()).props('outlined dense clearable').classes('w-full font-normal text-xs').style('font-size: 11px;')
+                                schema_container = ui.column().classes('w-full overflow-auto gap-0 text-slate-800 dark:text-slate-100').style('max-height: 340px;')
 
-                    with ui.expansion('💾 SQL Snippets Library', icon='bookmark', value=True).classes('w-full border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel text-xs text-slate-700 dark:text-slate-300 font-bold'):
-                        with ui.column().classes('w-full gap-2 p-2'):
-                            saved_queries_filter = ui.input(placeholder='Filter snippets...', on_change=lambda _: refresh_saved_queries_list()).props('outlined dense clearable').classes('w-full font-normal text-xs').style('font-size: 11px;')
-                            def select_category(cat):
-                                nonlocal current_snippet_category
-                                current_snippet_category = cat
-                                all_btn.props('unelevated', remove='flat') if cat == 'All' else all_btn.props('flat', remove='unelevated')
-                                analytics_btn.props('unelevated', remove='flat') if cat == 'Analytical' else analytics_btn.props('flat', remove='unelevated')
-                                utility_btn.props('unelevated', remove='flat') if cat == 'Utility' else utility_btn.props('flat', remove='unelevated')
-                                ddl_btn.props('unelevated', remove='flat') if cat == 'DDL/DML' else ddl_btn.props('flat', remove='unelevated')
-                                all_btn.update()
-                                analytics_btn.update()
-                                utility_btn.update()
-                                ddl_btn.update()
-                                asyncio.get_event_loop().call_soon(refresh_saved_queries_list)
+                        with ui.expansion('💾 SQL Snippets Library', icon='bookmark', value=True).classes('w-full border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-panel text-xs text-slate-700 dark:text-slate-300 font-bold'):
+                            with ui.column().classes('w-full gap-2 p-2'):
+                                saved_queries_filter = ui.input(placeholder='Filter snippets...', on_change=lambda _: refresh_saved_queries_list()).props('outlined dense clearable').classes('w-full font-normal text-xs').style('font-size: 11px;')
+                                def select_category(cat):
+                                    nonlocal current_snippet_category
+                                    current_snippet_category = cat
+                                    all_btn.props('unelevated', remove='flat') if cat == 'All' else all_btn.props('flat', remove='unelevated')
+                                    analytics_btn.props('unelevated', remove='flat') if cat == 'Analytical' else analytics_btn.props('flat', remove='unelevated')
+                                    utility_btn.props('unelevated', remove='flat') if cat == 'Utility' else utility_btn.props('flat', remove='unelevated')
+                                    ddl_btn.props('unelevated', remove='flat') if cat == 'DDL/DML' else ddl_btn.props('flat', remove='unelevated')
+                                    all_btn.update()
+                                    analytics_btn.update()
+                                    utility_btn.update()
+                                    ddl_btn.update()
+                                    asyncio.get_event_loop().call_soon(refresh_saved_queries_list)
 
-                            with ui.row().classes('w-full gap-1 justify-between flex-wrap'):
-                                all_btn = ui.button('ALL', on_click=lambda: select_category('All')).props('unelevated dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 12px !important;')
-                                analytics_btn = ui.button('ANALYTICS', on_click=lambda: select_category('Analytical')).props('flat dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 12px !important;')
-                                utility_btn = ui.button('UTILITY', on_click=lambda: select_category('Utility')).props('flat dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 12px !important;')
-                                ddl_btn = ui.button('DDL/DML', on_click=lambda: select_category('DDL/DML')).props('flat dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 12px !important;')
-                            saved_queries_container = ui.column().classes('w-full overflow-auto gap-2 text-slate-800 dark:text-slate-100').style('max-height: 260px;')
+                                with ui.row().classes('w-full gap-1 justify-between flex-wrap'):
+                                    all_btn = ui.button('ALL', on_click=lambda: select_category('All')).props('unelevated dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 12px !important;')
+                                    analytics_btn = ui.button('ANALYTICS', on_click=lambda: select_category('Analytical')).props('flat dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 12px !important;')
+                                    utility_btn = ui.button('UTILITY', on_click=lambda: select_category('Utility')).props('flat dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 12px !important;')
+                                    ddl_btn = ui.button('DDL/DML', on_click=lambda: select_category('DDL/DML')).props('flat dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 12px !important;')
+                                saved_queries_container = ui.column().classes('w-full overflow-auto gap-2 text-slate-800 dark:text-slate-100').style('max-height: 260px;')
                     
                     # Seeding Actions
                     with ui.row().classes('w-full mt-auto pt-2 justify-between gap-1 no-wrap'):
