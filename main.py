@@ -4529,14 +4529,19 @@ def index():
         databases_container.clear()
         try:
             db_rows = explorer.conn.execute("SELECT database_name, path FROM duckdb_databases ORDER BY database_name").fetchall()
-            
+            active_db = 'main'
+            try:
+                active_db = explorer.conn.execute("SELECT current_database();").fetchone()[0]
+            except Exception:
+                pass
+                
             with databases_container:
                 for db_name, db_path in db_rows:
                     if db_name in ('system', 'temp') or db_name.startswith('__'):
                         continue
                         
                     is_main = False
-                    if db_name in ('main', 'memory'):
+                    if db_name == active_db or db_name in ('main', 'memory'):
                         is_main = True
                     elif db_path and explorer.db_file:
                         try:
@@ -6457,9 +6462,21 @@ def index():
             except Exception as ex:
                 ui.notify(f"Failed to rename database: {str(ex)}", type='negative', duration=7)
                 
-        with ui.row().classes('w-full justify-end gap-2 pt-2'):
-            ui.button('Cancel', on_click=rename_db_dialog.close).props('flat')
-            ui.button('Rename', icon='edit', color='primary', on_click=handle_rename_db).props('elevated')
+        async def handle_set_active():
+            nonlocal rename_target_old_name
+            try:
+                explorer.conn.execute(f"USE {rename_target_old_name};")
+                ui.notify(f"Successfully set '{rename_target_old_name}' as the active database!", type='success')
+                rename_db_dialog.close()
+                refresh_schema_tree()
+            except Exception as ex:
+                ui.notify(f"Failed to set active database: {str(ex)}", type='negative')
+
+        with ui.row().classes('w-full justify-between items-center pt-2 no-wrap'):
+            ui.button('Set as Active', icon='star', color='secondary', on_click=handle_set_active).props('flat dense').classes('text-xs text-secondary')
+            with ui.row().classes('gap-2 no-wrap'):
+                ui.button('Cancel', on_click=rename_db_dialog.close).props('flat')
+                ui.button('Rename', icon='edit', color='primary', on_click=handle_rename_db).props('elevated')
 
     def open_rename_dialog(old_name, db_path):
         nonlocal rename_target_old_name, rename_target_path
