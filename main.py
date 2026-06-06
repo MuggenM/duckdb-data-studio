@@ -4182,11 +4182,11 @@ def index():
                                     ui.label('Execute a SELECT query with coordinates to plot a map.').classes('text-slate-400')
 
                             # QUERY PROFILER TAB
-                            with ui.tab_panel(profile_tab).classes('p-0 pt-4 gap-4 flex-col h-full min-h-0 overflow-auto'):
+                            with ui.tab_panel(profile_tab).classes('p-0 pt-2 gap-2 flex-col h-full min-h-0 overflow-auto'):
                                 # Profiler Controls
-                                with ui.card().classes('w-full p-4 border-none shadow-none dark-bg-flat'):
-                                    with ui.row().classes('w-full items-center gap-4 flex-wrap justify-between'):
-                                        with ui.row().classes('items-center gap-3 flex-wrap'):
+                                with ui.card().classes('w-full p-2 border-none shadow-none dark-bg-flat'):
+                                    with ui.row().classes('w-full items-center gap-2 flex-wrap justify-between'):
+                                        with ui.row().classes('items-center gap-2 flex-wrap'):
                                             profile_mode_select = ui.select(
                                                 options=['Logical Plan (EXPLAIN)', 'Execution Profile (EXPLAIN ANALYZE)'],
                                                 value='Logical Plan (EXPLAIN)',
@@ -4197,7 +4197,7 @@ def index():
                                                   on_click=lambda: run_profiler_query()).props('dense elevated').classes('px-3')
                                 
                                 # Dynamic Profiler Container
-                                profiler_container = ui.column().classes('w-full gap-4 flex-nowrap flex-grow min-h-0 h-full overflow-auto')
+                                profiler_container = ui.column().classes('w-full gap-2 flex-nowrap flex-grow min-h-0 h-full overflow-auto')
                                 with profiler_container:
                                     ui.label('Click "Profile Query" or use "Explain Query" to analyze execution plan.').classes('text-slate-400')
 
@@ -5799,47 +5799,47 @@ def index():
         
         with profiler_container:
             # Metrics Cards Row
-            with ui.row().classes('w-full gap-4 flex-nowrap justify-between'):
+            with ui.row().classes('w-full gap-2 flex-nowrap justify-between'):
                 # Card 1: Mode
-                with ui.card().classes('flex-grow p-4 border border-slate-100 dark:border-slate-800 shadow-none dark-bg-panel items-center gap-1'):
-                    ui.icon('settings', color='primary').classes('text-2xl')
-                    ui.label('Execution Mode').classes('text-xs text-slate-400 font-semibold uppercase')
+                with ui.card().classes('flex-grow p-2.5 border border-slate-100 dark:border-slate-800 shadow-none dark-bg-panel items-center gap-1'):
+                    ui.icon('settings', color='primary').classes('text-lg')
+                    ui.label('Execution Mode').classes('text-[10px] text-slate-400 font-semibold uppercase')
                     mode_str = "Execution Profile" if is_analyze else "Logical Plan"
-                    ui.label(mode_str).classes('text-sm font-bold text-slate-800 dark:text-white text-center')
+                    ui.label(mode_str).classes('text-xs font-bold text-slate-800 dark:text-white text-center')
                 
                 # Card 2: Duration
-                with ui.card().classes('flex-grow p-4 border border-slate-100 dark:border-slate-800 shadow-none dark-bg-panel items-center gap-1'):
-                    ui.icon('timer', color='secondary').classes('text-2xl')
-                    ui.label('Total Time').classes('text-xs text-slate-400 font-semibold uppercase')
+                with ui.card().classes('flex-grow p-2.5 border border-slate-100 dark:border-slate-800 shadow-none dark-bg-panel items-center gap-1'):
+                    ui.icon('timer', color='secondary').classes('text-lg')
+                    ui.label('Total Time').classes('text-[10px] text-slate-400 font-semibold uppercase')
                     time_str = total_time if total_time else "N/A"
-                    ui.label(time_str).classes('text-sm font-bold text-slate-800 dark:text-white')
+                    ui.label(time_str).classes('text-xs font-bold text-slate-800 dark:text-white')
                     
                 # Card 3: Key Operators Count
-                with ui.card().classes('flex-grow p-4 border border-slate-100 dark:border-slate-800 shadow-none dark-bg-panel items-center gap-1'):
-                    ui.icon('analytics', color='positive').classes('text-2xl')
-                    ui.label('Operators Detected').classes('text-xs text-slate-400 font-semibold uppercase')
+                with ui.card().classes('flex-grow p-2.5 border border-slate-100 dark:border-slate-800 shadow-none dark-bg-panel items-center gap-1'):
+                    ui.icon('analytics', color='positive').classes('text-lg')
+                    ui.label('Operators Detected').classes('text-[10px] text-slate-400 font-semibold uppercase')
                     op_list = []
                     if seq_scans: op_list.append(f"Scans: {seq_scans}")
                     if hash_joins: op_list.append(f"Joins: {hash_joins}")
                     if sorts: op_list.append(f"Sorts: {sorts}")
                     op_str = ", ".join(op_list) if op_list else "None"
-                    ui.label(op_str).classes('text-sm font-bold text-slate-800 dark:text-white text-center')
+                    ui.label(op_str).classes('text-xs font-bold text-slate-800 dark:text-white text-center')
             
             # Suggestions Section
             if suggestions:
-                with ui.card().classes('w-full p-4 border border-indigo-100 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/20 shadow-none gap-2'):
-                    with ui.row().classes('items-center gap-2 text-indigo-600 dark:text-indigo-400'):
-                        ui.icon('lightbulb', size='sm')
-                        ui.label('Optimization Insights & Tips').classes('font-bold text-sm')
+                with ui.card().classes('w-full p-2.5 border border-indigo-100 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/20 shadow-none gap-1'):
+                    with ui.row().classes('items-center gap-1.5 text-indigo-600 dark:text-indigo-400'):
+                        ui.icon('lightbulb', size='xs')
+                        ui.label('Optimization Insights & Tips').classes('font-bold text-xs')
                     ui.separator().classes('opacity-50')
                     for op_type, text in suggestions:
-                        with ui.row().classes('items-start gap-2 py-1 no-wrap'):
-                            ui.icon('chevron_right', size='xs', color='indigo').classes('mt-1')
-                            ui.markdown(f"**{op_type}**: {text}").classes('text-xs text-slate-700 dark:text-slate-300')
+                        with ui.row().classes('items-start gap-1.5 py-0.5 no-wrap'):
+                            ui.icon('chevron_right', size='xs', color='indigo').classes('mt-0.5')
+                            ui.markdown(f"**{op_type}**: {text}").classes('text-[11px] text-slate-700 dark:text-slate-300')
                             
             # Visual Tree Section Header
-            with ui.row().classes('w-full justify-between items-center px-1 pt-2'):
-                ui.label('Visual Execution Plan:').classes('text-sm font-bold text-slate-700 dark:text-slate-300')
+            with ui.row().classes('w-full justify-between items-center px-1 pt-1'):
+                ui.label('Visual Execution Plan:').classes('text-xs font-bold text-slate-700 dark:text-slate-300')
                 ui.button('Copy Plan', icon='content_copy', color='primary',
                           on_click=lambda: copy_plan_to_clipboard(explain_value)).props('flat dense').classes('text-xs')
                           
