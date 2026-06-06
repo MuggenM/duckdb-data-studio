@@ -3998,13 +3998,13 @@ def index():
 
             # --- RIGHT WORKSPACE (SQL EDITOR, ACTIONS, GRAPHICS, GRID) ---
             with main_splitter.after:
-                with ui.column().classes('w-full h-full p-6 gap-4 flex-nowrap overflow-hidden'):
+                with ui.column().classes('w-full h-full p-3 gap-2 flex-nowrap overflow-hidden'):
                     
                     # Top Workspace Bar
                     with ui.row().classes('w-full items-center justify-between no-wrap'):
                         with ui.column().classes('gap-0'):
-                            ui.label('SQL Workspace').classes('text-2xl font-extrabold text-slate-800 dark:text-white')
-                            ui.label('Write queries, inspect results, and plot live analytics dashboards').classes('text-sm text-slate-500')
+                            ui.label('SQL Workspace').classes('text-lg font-extrabold text-slate-800 dark:text-white')
+                            ui.label('Write queries, inspect results, and plot live analytics dashboards').classes('text-xs text-slate-500')
                         
                         # Mode switches
                         with ui.row().classes('items-center gap-3'):
@@ -4019,11 +4019,11 @@ def index():
                             ui.icon('dark_mode', color='indigo').classes('text-lg')
                     
                     # SQL Editor Card Container
-                    with ui.card().classes('w-full p-4 shadow-sm border-slate-200 dark:border-slate-800'):
+                    with ui.card().classes('w-full p-2.5 shadow-sm border-slate-200 dark:border-slate-800'):
                         
                         # 🧱 INTERACTIVE VISUAL QUERY BUILDER
-                        with ui.expansion('🧱 Interactive Visual Query Builder', icon='auto_awesome', value=False).classes('w-full border border-dashed border-indigo-200 dark:border-indigo-900 rounded-lg p-2 dark-bg-panel mb-3 text-xs text-indigo-600 dark:text-indigo-400 font-bold') as query_builder_expansion:
-                            with ui.column().classes('w-full gap-3 p-2'):
+                        with ui.expansion('🧱 Interactive Visual Query Builder', icon='auto_awesome', value=False).classes('w-full border border-dashed border-indigo-200 dark:border-indigo-900 rounded-lg p-1.5 dark-bg-panel mb-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-bold') as query_builder_expansion:
+                            with ui.column().classes('w-full gap-2 p-1.5'):
                                 ui.label('Select table and fields to construct standard SQL queries automatically:').classes('text-xs text-slate-500 font-normal')
                                 
                                 # Grid for Dropdowns
@@ -4033,14 +4033,14 @@ def index():
                                     qb_order_select = ui.select(options=[], label='3. Order By (Optional)').props('dense outlined').style('width: 200px;')
                                     qb_dir_select = ui.select(options={'ASC': 'Ascending', 'DESC': 'Descending'}, value='ASC', label='Direction').props('dense outlined').style('width: 120px;')
                                     qb_limit_input = ui.number(value=100, label='4. Limit Rows', min=1).props('dense outlined').style('width: 100px;')
-
+ 
                                 # Columns multi-select checkbox list
-                                with ui.column().classes('w-full gap-1 border border-slate-200 dark:border-slate-800 rounded p-3 dark-bg-flat'):
+                                with ui.column().classes('w-full gap-1 border border-slate-200 dark:border-slate-800 rounded p-2 dark-bg-flat'):
                                     ui.label('2. Select Columns').classes('text-xs font-bold text-slate-600 dark:text-slate-400')
-                                    qb_columns_container = ui.row().classes('w-full gap-3 flex-wrap items-center max-h-32 overflow-y-auto pr-1')
+                                    qb_columns_container = ui.row().classes('w-full gap-2 flex-wrap items-center max-h-24 overflow-y-auto pr-1')
                                 
                                 # Filter (WHERE) Conditions
-                                with ui.row().classes('w-full items-center gap-3 flex-wrap border border-slate-200 dark:border-slate-800 rounded p-3 dark-bg-flat'):
+                                with ui.row().classes('w-full items-center gap-2 flex-wrap border border-slate-200 dark:border-slate-800 rounded p-2 dark-bg-flat'):
                                     ui.label('5. Add Filter (WHERE)').classes('text-xs font-bold text-slate-600 dark:text-slate-400 w-full')
                                     qb_filter_col = ui.select(options=[], label='Filter Column').props('dense outlined').style('width: 180px;')
                                     qb_filter_op = ui.select(options={
@@ -4056,15 +4056,15 @@ def index():
                                     qb_filter_val = ui.input(label='Filter Value', placeholder='e.g., Electronics or 250').props('dense outlined').style('width: 180px;')
                                 
                                 # Builder Actions
-                                with ui.row().classes('w-full justify-end gap-2 mt-2'):
+                                with ui.row().classes('w-full justify-end gap-2 mt-1'):
                                     ui.button('Reset Builder', icon='restart_alt', color='warning', on_click=lambda: reset_query_builder()).props('outline dense')
                                     ui.button('Generate SQL', icon='code', color='secondary', on_click=lambda: generate_builder_sql(run_query=False)).props('dense')
                                     ui.button('Generate & Execute', icon='flash_on', color='primary', on_click=lambda: generate_builder_sql(run_query=True)).props('dense')
-
+ 
                         # SQL Quick actions toolbar
-                        with ui.row().classes('w-full justify-between items-center no-wrap gap-2 pb-2'):
+                        with ui.row().classes('w-full justify-between items-center no-wrap gap-2 pb-1'):
                             with ui.row().classes('items-center gap-2'):
-                                ui.icon('code', color='primary').classes('text-xl')
+                                ui.icon('code', color='primary').classes('text-lg')
                                 ui.label('SQL Query Editor').classes('font-semibold text-slate-700 dark:text-slate-300')
                         
                         
@@ -4077,31 +4077,30 @@ def index():
                             language='sql', 
                             theme=initial_theme,
                             on_change=validate_sql_on_change
-                        ).classes('w-full border rounded shadow-inner').style('height: 160px; font-size: 14px;')
+                        ).classes('w-full border rounded shadow-inner').style('height: 110px; font-size: 13px;')
                         
                         # Live Linter Status Strip
-                        with ui.row().classes('w-full items-center no-wrap gap-2 px-3 py-1.5 -mt-2 rounded bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800') as linter_strip:
-                            linter_icon = ui.icon('check_circle', color='emerald').classes('text-base')
-                            linter_label = ui.label('SQL Syntax Valid').classes('text-xs font-mono text-emerald-600 dark:text-emerald-400')
-
+                        with ui.row().classes('w-full items-center no-wrap gap-2 px-3 py-0.5 -mt-1 rounded bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800') as linter_strip:
+                            linter_icon = ui.icon('check_circle', color='emerald').classes('text-sm')
+                            linter_label = ui.label('SQL Syntax Valid').classes('text-[11px] font-mono text-emerald-600 dark:text-emerald-400')
+ 
                         # Control Buttons
-                        with ui.row().classes('w-full justify-between items-center pt-3 no-wrap'):
+                        with ui.row().classes('w-full justify-between items-center pt-1.5 no-wrap'):
                             with ui.row().classes('gap-2'):
                                 ui.button('Execute Query', icon='play_arrow', color='primary', 
-                                          on_click=lambda: run_editor_query()).props('elevated').classes('px-4')
+                                          on_click=lambda: run_editor_query()).props('elevated dense').classes('px-3 text-xs')
                                 ui.button('Explain Query', icon='troubleshoot', color='secondary', 
-                                          on_click=lambda: trigger_explain_query()).props('elevated').classes('px-3')
+                                          on_click=lambda: trigger_explain_query()).props('elevated dense').classes('px-2.5 text-xs')
                                 ui.button('Save Query', icon='bookmark_add', color='positive',
-                                          on_click=lambda: open_save_query_dialog()).props('elevated')
+                                          on_click=lambda: open_save_query_dialog()).props('elevated dense').classes('text-xs')
                                 ui.button('Format SQL', icon='format_align_left', color='secondary',
-                                          on_click=lambda: format_sql_query()).props('outline')
+                                          on_click=lambda: format_sql_query()).props('outline dense').classes('text-xs')
                                 ui.button('Clear', icon='delete_sweep', color='negative',
-                                          on_click=lambda: sql_editor.set_value('')).props('flat')
+                                          on_click=lambda: sql_editor.set_value('')).props('flat dense').classes('text-xs')
                             
-                            ui.label('Press Ctrl+Enter inside workspace to run').classes('text-xs text-slate-400 font-mono hidden md:block')
+                            ui.label('Press Ctrl+Enter inside workspace to run').classes('text-[10px] text-slate-400 font-mono hidden md:block')
                     
-                    # --- RESULTS COMPONENT PANELS ---
-                    with ui.card().classes('w-full flex-grow p-4 shadow-sm border-slate-200 dark:border-slate-800 overflow-hidden min-h-0 flex-nowrap'):
+                    with ui.card().classes('w-full flex-grow p-2.5 shadow-sm border-slate-200 dark:border-slate-800 overflow-hidden min-h-0 flex-nowrap'):
                         
                         # Result Status Banner
                         with ui.row().classes('w-full justify-between items-center no-wrap border-b pb-2'):
