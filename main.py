@@ -4549,18 +4549,9 @@ def index():
                     if db_name in ('system', 'temp') or db_name.startswith('__'):
                         continue
                         
-                    is_primary = False
-                    if db_name in ('main', 'memory'):
-                        is_primary = True
-                    elif db_path and explorer.db_file:
-                        try:
-                            if os.path.abspath(db_path) == os.path.abspath(explorer.db_file):
-                                is_primary = True
-                        except Exception:
-                            pass
-                            
                     is_active = (db_name == active_db)
-                    badge_color = 'indigo' if is_primary else 'emerald'
+                    is_primary = is_active
+                    badge_color = 'indigo' if is_active else 'emerald'
                     
                     with ui.row().classes('w-full items-center justify-between no-wrap gap-1 py-0.5 px-1 rounded hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition'):
                         with ui.row().classes('items-center gap-1 no-wrap truncate'):
@@ -4586,7 +4577,7 @@ def index():
                                 ui.button(icon='edit', on_click=lambda db=db_name, path=db_path: open_rename_dialog(db, path)).props('flat dense round size=sm').classes('text-slate-400 hover:text-primary').tooltip('Rename connection alias')
                                 ui.button(icon='delete', on_click=lambda db=db_name: detach_database_action(db)).props('flat dense round size=sm').classes('text-slate-400 hover:text-rose-500').tooltip('Detach database')
                         else:
-                            ui.badge('Primary', color=badge_color).classes('text-[8px] py-0.5 px-1')
+                            ui.badge('Active', color=badge_color).classes('text-[8px] py-0.5 px-1')
         except Exception as e:
             print(f"Error refreshing databases list: {e}")
 
