@@ -4526,6 +4526,15 @@ def index():
             except Exception as e:
                 ui.notify(f"Failed to detach database: {str(e)}", type='negative', duration=5)
 
+        def set_active_database_action(db_name):
+            try:
+                explorer.conn.execute(f"USE {db_name};")
+                app.storage.user['active_database'] = db_name
+                ui.notify(f"Database context switched to '{db_name}'", type='success')
+                refresh_schema_tree()
+            except Exception as e:
+                ui.notify(f"Failed to set active database: {str(e)}", type='negative')
+
         databases_container.clear()
         try:
             db_rows = explorer.conn.execute("SELECT database_name, path FROM duckdb_databases ORDER BY database_name").fetchall()
@@ -4540,37 +4549,44 @@ def index():
                     if db_name in ('system', 'temp') or db_name.startswith('__'):
                         continue
                         
-                    is_main = False
-                    if db_name == active_db or db_name in ('main', 'memory'):
-                        is_main = True
+                    is_primary = False
+                    if db_name in ('main', 'memory'):
+                        is_primary = True
                     elif db_path and explorer.db_file:
                         try:
                             if os.path.abspath(db_path) == os.path.abspath(explorer.db_file):
-                                is_main = True
+                                is_primary = True
                         except Exception:
                             pass
-                    
-                    badge_color = 'indigo' if is_main else 'emerald'
+                            
+                    is_active = (db_name == active_db)
+                    badge_color = 'indigo' if is_primary else 'emerald'
                     
                     with ui.row().classes('w-full items-center justify-between no-wrap gap-1 py-0.5 px-1 rounded hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition'):
-                        with ui.row().classes('items-center gap-1.5 no-wrap truncate'):
-                            db_icon = 'storage' if is_main else 'cloud_queue'
+                        with ui.row().classes('items-center gap-1 no-wrap truncate'):
+                            # Star active context toggle button
+                            if is_active:
+                                ui.button(icon='star', on_click=lambda db=db_name: set_active_database_action(db)).props('flat dense round size=xs color=amber').tooltip('Active database context')
+                            else:
+                                ui.button(icon='star_border', on_click=lambda db=db_name: set_active_database_action(db)).props('flat dense round size=xs').classes('text-slate-400 hover:text-amber-500').tooltip('Set as active database context')
+                                
+                            db_icon = 'storage' if is_primary else 'cloud_queue'
                             ui.icon(db_icon, color=badge_color).classes('text-xs')
                             with ui.column().classes('gap-0 truncate'):
                                 ui.label(db_name).classes('text-[11px] font-bold text-slate-800 dark:text-slate-100')
                                 if db_path:
                                     # Show filename or path
                                     path_display = os.path.basename(db_path) if not db_path.startswith('ducklake:') else db_path
-                                    ui.label(path_display).classes('text-[9px] font-mono text-slate-400 truncate').style('max-width: 130px;')
+                                    ui.label(path_display).classes('text-[9px] font-mono text-slate-400 truncate').style('max-width: 120px;')
                                 else:
                                     ui.label('In-Memory').classes('text-[9px] text-slate-400 font-mono')
                         
-                        if not is_main:
+                        if not is_primary:
                             with ui.row().classes('items-center gap-0 no-wrap'):
                                 ui.button(icon='edit', on_click=lambda db=db_name, path=db_path: open_rename_dialog(db, path)).props('flat dense round size=sm').classes('text-slate-400 hover:text-primary').tooltip('Rename connection alias')
                                 ui.button(icon='delete', on_click=lambda db=db_name: detach_database_action(db)).props('flat dense round size=sm').classes('text-slate-400 hover:text-rose-500').tooltip('Detach database')
                         else:
-                            ui.badge('Active', color=badge_color).classes('text-[8px] py-0.5 px-1')
+                            ui.badge('Primary', color=badge_color).classes('text-[8px] py-0.5 px-1')
         except Exception as e:
             print(f"Error refreshing databases list: {e}")
 
@@ -6462,21 +6478,9 @@ def index():
             except Exception as ex:
                 ui.notify(f"Failed to rename database: {str(ex)}", type='negative', duration=7)
                 
-        async def handle_set_active():
-            nonlocal rename_target_old_name
-            try:
-                explorer.conn.execute(f"USE {rename_target_old_name};")
-                ui.notify(f"Successfully set '{rename_target_old_name}' as the active database!", type='success')
-                rename_db_dialog.close()
-                refresh_schema_tree()
-            except Exception as ex:
-                ui.notify(f"Failed to set active database: {str(ex)}", type='negative')
-
-        with ui.row().classes('w-full justify-between items-center pt-2 no-wrap'):
-            ui.button('Set as Active', icon='star', color='secondary', on_click=handle_set_active).props('flat dense').classes('text-xs text-secondary')
-            with ui.row().classes('gap-2 no-wrap'):
-                ui.button('Cancel', on_click=rename_db_dialog.close).props('flat')
-                ui.button('Rename', icon='edit', color='primary', on_click=handle_rename_db).props('elevated')
+        with ui.row().classes('w-full justify-end gap-2 pt-2'):
+            ui.button('Cancel', on_click=rename_db_dialog.close).props('flat')
+            ui.button('Rename', icon='edit', color='primary', on_click=handle_rename_db).props('elevated')
 
     def open_rename_dialog(old_name, db_path):
         nonlocal rename_target_old_name, rename_target_path
@@ -6700,6 +6704,14 @@ def index():
             run_editor_query()
             
     ui.keyboard(on_key=handle_keyboard)
+
+    # Restore saved active database context
+    saved_active = app.storage.user.get('active_database')
+    if saved_active:
+        try:
+            explorer.conn.execute(f"USE {saved_active};")
+        except Exception:
+            pass
 
     # --- INITIAL RUN ON CLIENT BROWSER CONNECT ---
     refresh_schema_tree()
