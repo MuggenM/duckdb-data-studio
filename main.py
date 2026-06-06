@@ -1028,6 +1028,8 @@ def index():
     current_snippet_category = 'All'
     save_query_category_select = None
     export_db_select = None
+    rename_target_old_name = ''
+    rename_target_path = ''
     
     # Enable Tailwind glassmorphism and general layout styling
     ui.add_head_html("""
@@ -4549,7 +4551,9 @@ def index():
                                     ui.label('In-Memory').classes('text-[9px] text-slate-400 font-mono')
                         
                         if not is_main:
-                            ui.button(icon='delete', on_click=lambda db=db_name: detach_database_action(db)).props('flat dense round size=sm').classes('text-slate-400 hover:text-rose-500').tooltip('Detach database')
+                            with ui.row().classes('items-center gap-0 no-wrap'):
+                                ui.button(icon='edit', on_click=lambda db=db_name, path=db_path: open_rename_dialog(db, path)).props('flat dense round size=sm').classes('text-slate-400 hover:text-primary').tooltip('Rename connection alias')
+                                ui.button(icon='delete', on_click=lambda db=db_name: detach_database_action(db)).props('flat dense round size=sm').classes('text-slate-400 hover:text-rose-500').tooltip('Detach database')
                         else:
                             ui.badge('Active', color=badge_color).classes('text-[8px] py-0.5 px-1')
         except Exception as e:
@@ -6365,6 +6369,93 @@ def index():
         with ui.row().classes('w-full justify-end gap-2 pt-2'):
             ui.button('Cancel', on_click=attach_db_dialog.close).props('flat')
             ui.button('Attach Database', icon='link', color='primary', on_click=handle_attach_db).props('elevated')
+
+    # Build Rename Database Dialog
+    with ui.dialog() as rename_db_dialog, ui.card().classes('w-96 p-6 gap-4'):
+        ui.label('✏️ Rename Connection Alias').classes('text-lg font-bold text-slate-800 dark:text-white')
+        ui.label('This will detach the database and re-attach it under the new name.').classes('text-xs text-slate-500 -mt-2')
+        
+        rename_alias_input = ui.input('New Database Alias', placeholder='e.g., new_alias_name').props('outlined dense').classes('w-full')
+        
+        async def handle_rename_db():
+            nonlocal rename_target_old_name, rename_target_path
+            new_alias = rename_alias_input.value.strip()
+            if not new_alias:
+                ui.notify('Please provide a new alias!', type='warning')
+                return
+                
+            # Clean alias
+            new_alias = "".join([c if c.isalnum() else "_" for c in new_alias]).strip("_").lower()
+            if not new_alias:
+                ui.notify('Please provide a valid alphanumeric alias!', type='warning')
+                return
+                
+            if new_alias == rename_target_old_name:
+                ui.notify('New alias is the same as the old alias!', type='warning')
+                return
+                
+            try:
+                # 1. Look up the database type in attached_databases.yaml
+                config_path = get_config_path()
+                db_type = 'duckdb'
+                data_path = None
+                
+                if os.path.exists(config_path):
+                    import yaml
+                    try:
+                        with open(config_path, 'r') as f:
+                            cfg = yaml.safe_load(f)
+                            if cfg and 'databases' in cfg:
+                                for db in cfg['databases']:
+                                    if db.get('name') == rename_target_old_name:
+                                        db_type = db.get('type', 'duckdb')
+                                        if db_type == 'ducklake' and 'options' in db:
+                                            data_path = db['options'].get('data_path')
+                                        break
+                    except Exception as e:
+                        print(f"Error reading config during rename lookup: {e}")
+                
+                # 2. Detach old database
+                explorer.conn.execute(f"DETACH {rename_target_old_name};")
+                remove_attached_database(rename_target_old_name)
+                
+                # 3. Construct ATTACH command under new alias
+                if db_type == 'ducklake':
+                    sql = f"ATTACH 'ducklake:{rename_target_path}' AS {new_alias}"
+                    if data_path:
+                        sql += f" (DATA_PATH '{data_path}')"
+                    sql += ";"
+                elif db_type == 'sqlite':
+                    sql = f"ATTACH '{rename_target_path}' AS {new_alias} (TYPE sqlite);"
+                elif db_type == 'postgres':
+                    sql = f"ATTACH '{rename_target_path}' AS {new_alias} (TYPE postgres);"
+                elif db_type == 'mysql':
+                    sql = f"ATTACH '{rename_target_path}' AS {new_alias} (TYPE mysql);"
+                else: # duckdb
+                    sql = f"ATTACH '{rename_target_path}' AS {new_alias};"
+                    
+                # 4. Execute ATTACH
+                explorer.conn.execute(sql)
+                
+                # 5. Save to YAML config
+                save_attached_database(new_alias, db_type, rename_target_path, data_path)
+                
+                ui.notify(f"Successfully renamed database connection to '{new_alias}'!", type='success')
+                rename_db_dialog.close()
+                refresh_schema_tree()
+            except Exception as ex:
+                ui.notify(f"Failed to rename database: {str(ex)}", type='negative', duration=7)
+                
+        with ui.row().classes('w-full justify-end gap-2 pt-2'):
+            ui.button('Cancel', on_click=rename_db_dialog.close).props('flat')
+            ui.button('Rename', icon='edit', color='primary', on_click=handle_rename_db).props('elevated')
+
+    def open_rename_dialog(old_name, db_path):
+        nonlocal rename_target_old_name, rename_target_path
+        rename_target_old_name = old_name
+        rename_target_path = db_path
+        rename_alias_input.value = old_name
+        rename_db_dialog.open()
 
     # --- EDIT API ENDPOINT MODAL DIALOG ---
     edit_columns_checkboxes = {}
