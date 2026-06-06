@@ -4518,6 +4518,7 @@ def index():
         """Fetch all attached databases from duckdb_databases and render them beautifully."""
         def detach_database_action(db_name):
             try:
+                explorer.conn.execute("USE main;")
                 explorer.conn.execute(f"DETACH {db_name};")
                 remove_attached_database(db_name)
                 ui.notify(f"Successfully detached database '{db_name}'", type='success')
@@ -6416,6 +6417,7 @@ def index():
                         print(f"Error reading config during rename lookup: {e}")
                 
                 # 2. Detach old database
+                explorer.conn.execute("USE main;")
                 explorer.conn.execute(f"DETACH {rename_target_old_name};")
                 remove_attached_database(rename_target_old_name)
                 
