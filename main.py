@@ -4535,7 +4535,16 @@ def index():
                     if db_name in ('system', 'temp') or db_name.startswith('__'):
                         continue
                         
-                    is_main = db_name == 'main'
+                    is_main = False
+                    if db_name in ('main', 'memory'):
+                        is_main = True
+                    elif db_path and explorer.db_file:
+                        try:
+                            if os.path.abspath(db_path) == os.path.abspath(explorer.db_file):
+                                is_main = True
+                        except Exception:
+                            pass
+                    
                     badge_color = 'indigo' if is_main else 'emerald'
                     
                     with ui.row().classes('w-full items-center justify-between no-wrap gap-1 py-0.5 px-1 rounded hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition'):
