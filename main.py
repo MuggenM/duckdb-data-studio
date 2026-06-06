@@ -874,7 +874,7 @@ class SQLiteConfigManager:
             if res and res[0] == 0:
                 import uuid
                 default_queries = [
-                    (str(uuid.uuid4()), "Show Attached Databases", "Lists all attached databases, paths, and configurations", "SELECT database_name, path, read_only FROM duckdb_databases();", datetime.now().isoformat(), "Utility"),
+                    (str(uuid.uuid4()), "Show Attached Databases", "Lists all attached databases, paths, and configurations", "SELECT database_name, path, readonly FROM duckdb_databases();", datetime.now().isoformat(), "Utility"),
                     (str(uuid.uuid4()), "List Tables and Views", "Lists all tables, views, and types in the current database", "SELECT database_name, schema_name, table_name, internal FROM duckdb_tables ORDER BY database_name, schema_name, table_name;", datetime.now().isoformat(), "Utility"),
                     (str(uuid.uuid4()), "Show Settings", "Lists all configuration settings of the DuckDB instance", "SELECT name, value, description FROM duckdb_settings() ORDER BY name;", datetime.now().isoformat(), "Utility"),
                     (str(uuid.uuid4()), "List Extensions", "Shows all loaded and installed DuckDB extensions and status", "SELECT extension_name, loaded, installed FROM duckdb_extensions() ORDER BY extension_name;", datetime.now().isoformat(), "Utility"),
