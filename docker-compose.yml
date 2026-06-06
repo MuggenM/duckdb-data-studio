@@ -23,7 +23,7 @@ services:
       - studio_jupyter_net
     restart: unless-stopped
 
-  duckdb-studio:
+  duckdb-data-studio:
     build: .
     container_name: duckdb-studio
     ports:
@@ -151,6 +151,7 @@ services:
     volumes:
       - ./dbt_project:/home/coder/project
       - ./profiles:/home/coder/.dbt
+      - code-server-extensions:/home/coder/.local/share/code-server
     command: ["--auth", "none", "/home/coder/project"]
     networks:
       - studio_jupyter_net
@@ -161,5 +162,42 @@ services:
       - "traefik.http.routers.editor.entrypoints=web"
       - "traefik.http.services.editor.loadbalancer.server.port=8080"
 
+  garage:
+    image: dxflrs/garage:v2.0.0
+    container_name: duckdb-studio-garage
+    volumes:
+      - ./config/garage.toml:/etc/garage.toml:ro
+      - ./shared/garage/meta:/var/lib/garage/meta
+      - ./shared/garage/data:/var/lib/garage/data
+    networks:
+      - studio_jupyter_net
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.garage-api.rule=Host(`s3.localhost`)"
+      - "traefik.http.routers.garage-api.entrypoints=web"
+      - "traefik.http.services.garage-api.loadbalancer.server.port=3900"
+
+  garage-webui:
+    image: khairul169/garage-webui:latest
+    container_name: garage-webui
+    environment:
+      - API_BASE_URL=http://garage:3903
+      - S3_ENDPOINT_URL=http://s3.localhost:8880
+    depends_on:
+      - garage
+    volumes:
+      - ./config/garage.toml:/etc/garage.toml:ro
+    networks:
+      - studio_jupyter_net
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.garage-webui.rule=Host(`garage.localhost`)"
+      - "traefik.http.routers.garage-webui.entrypoints=web"
+      - "traefik.http.services.garage-webui.loadbalancer.server.port=3909"
+
 volumes:
   dbt_postgres_data:
+  code-server-extensions:
+
