@@ -28,20 +28,67 @@ limiter = Limiter(key_func=get_remote_address)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-def split_sql_trailing_clauses(sql):
-    # Parse top-level ORDER BY, LIMIT, or OFFSET to prevent placing WHERE after them
+def split_sql_trailing_clauses(sql, keywords=None):
+    if keywords is None:
+        keywords = ['ORDER BY', 'LIMIT', 'OFFSET']
     sql_upper = sql.upper()
-    keywords = ['ORDER BY', 'LIMIT', 'OFFSET']
-    
     depth = 0
+    in_single_quote = False
+    in_double_quote = False
+    in_comment = False
+    in_block_comment = False
     keyword_idx = -1
     i = 0
     n = len(sql)
     while i < n:
-        char = sql[i]
-        if char == '(':
+        if in_comment:
+            if sql[i] == '\n':
+                in_comment = False
+            i += 1
+            continue
+        if in_block_comment:
+            if i + 1 < n and sql[i:i+2] == '*/':
+                in_block_comment = False
+                i += 2
+            else:
+                i += 1
+            continue
+        if in_single_quote:
+            if sql[i] == "'":
+                if i + 1 < n and sql[i+1] == "'":
+                    i += 2
+                else:
+                    in_single_quote = False
+                    i += 1
+            else:
+                i += 1
+            continue
+        if in_double_quote:
+            if sql[i] == '"':
+                in_double_quote = False
+            i += 1
+            continue
+            
+        if i + 1 < n and sql[i:i+2] == '--':
+            in_comment = True
+            i += 2
+            continue
+        if i + 1 < n and sql[i:i+2] == '/*':
+            in_block_comment = True
+            i += 2
+            continue
+        if sql[i] == "'":
+            in_single_quote = True
+            i += 1
+            continue
+        if sql[i] == '"':
+            in_double_quote = True
+            i += 1
+            continue
+
+        if sql[i] == '(':
             depth += 1
-        elif char == ')':
+        elif sql[i] == ')':
             depth -= 1
         elif depth == 0:
             for kw in keywords:
@@ -59,6 +106,74 @@ def split_sql_trailing_clauses(sql):
     if keyword_idx != -1:
         return sql[:keyword_idx].rstrip(), " " + sql[keyword_idx:].strip()
     return sql, ""
+
+def has_top_level_where(sql):
+    sql_upper = sql.upper()
+    depth = 0
+    in_single_quote = False
+    in_double_quote = False
+    in_comment = False
+    in_block_comment = False
+    i = 0
+    n = len(sql)
+    while i < n:
+        if in_comment:
+            if sql[i] == '\n':
+                in_comment = False
+            i += 1
+            continue
+        if in_block_comment:
+            if i + 1 < n and sql[i:i+2] == '*/':
+                in_block_comment = False
+                i += 2
+            else:
+                i += 1
+            continue
+        if in_single_quote:
+            if sql[i] == "'":
+                if i + 1 < n and sql[i+1] == "'":
+                    i += 2
+                else:
+                    in_single_quote = False
+                    i += 1
+            else:
+                i += 1
+            continue
+        if in_double_quote:
+            if sql[i] == '"':
+                in_double_quote = False
+            i += 1
+            continue
+            
+        if i + 1 < n and sql[i:i+2] == '--':
+            in_comment = True
+            i += 2
+            continue
+        if i + 1 < n and sql[i:i+2] == '/*':
+            in_block_comment = True
+            i += 2
+            continue
+        if sql[i] == "'":
+            in_single_quote = True
+            i += 1
+            continue
+        if sql[i] == '"':
+            in_double_quote = True
+            i += 1
+            continue
+
+        if sql[i] == '(':
+            depth += 1
+        elif sql[i] == ')':
+            depth -= 1
+        elif depth == 0:
+            if i + 5 <= n and sql_upper[i:i+5] == 'WHERE':
+                prev_char_ok = (i == 0 or not sql_upper[i-1].isalnum() and sql_upper[i-1] != '_')
+                next_char_ok = (i + 5 == n or not sql_upper[i+5].isalnum() and sql_upper[i+5] != '_')
+                if prev_char_ok and next_char_ok:
+                    return True
+        i += 1
+    return False
 
 def verify_jwt_token(auth_header: str):
     """Verify standard Bearer JWT token optionally requiring pyjwt."""
@@ -105,6 +220,10 @@ def get_dynamic_rate_limit(request: Request = None) -> str:
 
 # --- DATABASE ENGINE & SEEDER ---
 
+DB_CONFIG = {
+    'custom_user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+}
+
 class DuckDBExplorer:
     def __init__(self, db_file):
         self.db_file = db_file
@@ -114,7 +233,7 @@ class DuckDBExplorer:
     @property
     def conn(self):
         if self._conn is None:
-            self._conn = duckdb.connect(self.db_file)
+            self._conn = duckdb.connect(self.db_file, config=DB_CONFIG)
         return self._conn
         
     @property
@@ -236,6 +355,25 @@ class DuckDBExplorer:
             print(f"Error deleting saved query: {e}")
             return False
 
+    def update_saved_query(self, q_id, sql_code, name=None, description=None, category=None):
+        try:
+            if name is not None:
+                config_db.execute("""
+                    UPDATE _duckdb_studio_saved_queries 
+                    SET sql_code = ?, name = ?, description = ?, category = ? 
+                    WHERE id = ?
+                """, (sql_code, name, description, category, q_id))
+            else:
+                config_db.execute("""
+                    UPDATE _duckdb_studio_saved_queries 
+                    SET sql_code = ? 
+                    WHERE id = ?
+                """, (sql_code, q_id))
+            return True
+        except Exception as e:
+            print(f"Error updating saved query: {e}")
+            return False
+
 def calculate_next_run(interval: str, now=None):
     import datetime
     if now is None:
@@ -282,7 +420,7 @@ def run_background_scheduler():
             """, [now.isoformat()])
             
             if jobs:
-                ddb_conn = duckdb.connect(db_path)
+                ddb_conn = duckdb.connect(db_path, config=DB_CONFIG)
                 try:
                     for job in jobs:
                         j_id = job['id']
@@ -357,7 +495,7 @@ def init_saved_queries_table(db_file):
 
 def seed_database(db_file, force=False, num_customers=400, num_transactions=6500):
     """Seed the database with realistic synthetic data using Faker if empty or forced."""
-    conn = duckdb.connect(db_file)
+    conn = duckdb.connect(db_file, config=DB_CONFIG)
     cursor = conn.cursor()
     
     try:
@@ -747,6 +885,37 @@ def format_column_projection_query(cols, fq_name, limit=100):
     
     return "\n".join(lines)
 
+def detect_parameters(sql: str) -> list:
+    import re
+    if not sql:
+        return []
+    matches = re.findall(r'\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}', sql)
+    seen = set()
+    unique_params = []
+    for m in matches:
+        if m not in seen:
+            seen.add(m)
+            unique_params.append(m)
+    return unique_params
+
+def substitute_sql_parameters(sql: str, param_values: dict) -> str:
+    import re
+    if not sql:
+        return sql
+    
+    def replacer(match):
+        param_name = match.group(1)
+        val = param_values.get(param_name, "")
+        if val is None:
+            val = ""
+        val_str = str(val)
+        if re.match(r'^-?\d+(\.\d+)?$', val_str):
+            return val_str
+        escaped_val = val_str.replace("'", "''")
+        return f"'{escaped_val}'"
+        
+    return re.sub(r'\{\{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}', replacer, sql)
+
 def list_json_unnesting_templates():
     """
     Scans /templates and templates folders for valid JSON unnesting template files (*.yaml, *.yml, *.json).
@@ -772,14 +941,38 @@ def list_json_unnesting_templates():
                 pass
     return templates
 
+def list_seeding_templates():
+    """
+    Scans /templates and templates folders for SQL files starting with 'seed_'.
+    Returns a dictionary of {file_path: display_name}.
+    """
+    templates = {}
+    dirs = ['/templates', 'templates']
+    for d in dirs:
+        if os.path.exists(d) and os.path.isdir(d):
+            try:
+                for file_name in os.listdir(d):
+                    if file_name.startswith('seed_') and file_name.endswith('.sql'):
+                        full_path = os.path.join(d, file_name)
+                        # Pretty name: e.g. seed_CarRental.sql -> Car Rental
+                        display = file_name[5:-4].replace('_', ' ').replace('-', ' ')
+                        # CamelCase to spaces
+                        import re
+                        display = re.sub(r'(?<!^)(?=[A-Z])', ' ', display)
+                        display = ' '.join(display.split())
+                        templates[full_path] = f"🌱 {display} ({file_name})"
+            except Exception:
+                pass
+    return templates
+
 # --- APPLICATION PAGE DEFINITION ---
 def get_main_db_path():
-    """Get the path to the main DuckDB file, using /databases if running in Docker, otherwise databases/your_duckdb_file.duckdb."""
+    """Get the path to the main DuckDB file, using /databases if running in Docker, otherwise databases/starter.duckdb."""
     if os.path.exists('/databases') and os.path.isdir('/databases'):
-        return '/databases/your_duckdb_file.duckdb'
+        return '/databases/starter.duckdb'
     if not os.path.exists('databases'):
         os.makedirs('databases', exist_ok=True)
-    return 'databases/your_duckdb_file.duckdb'
+    return 'databases/starter.duckdb'
 
 DB_NAME = get_main_db_path()
 
@@ -883,10 +1076,12 @@ class SQLiteConfigManager:
                 conn.executemany("INSERT INTO _duckdb_studio_saved_queries VALUES (?, ?, ?, ?, ?, ?)", default_queries)
                 conn.commit()
 
-            # Pre-seed settings endpoint if empty
-            res_api = conn.execute("SELECT COUNT(*) FROM _duckdb_studio_api_endpoints;").fetchone()
-            if res_api and res_api[0] == 0:
-                import uuid
+            # Pre-seed settings/test2/products endpoints individually if they don't exist
+            import uuid
+            
+            # 1. settings
+            res_settings = conn.execute("SELECT 1 FROM _duckdb_studio_api_endpoints WHERE path = 'settings';").fetchone()
+            if not res_settings:
                 conn.execute("""
                     INSERT INTO _duckdb_studio_api_endpoints (id, path, description, sql_code, created_at)
                     VALUES (?, ?, ?, ?, ?);
@@ -897,6 +1092,11 @@ class SQLiteConfigManager:
                     'SELECT name, value, description FROM duckdb_settings() WHERE name LIKE $pattern ORDER BY name;',
                     datetime.now().isoformat()
                 ])
+                conn.commit()
+                
+            # 2. test2
+            res_test2 = conn.execute("SELECT 1 FROM _duckdb_studio_api_endpoints WHERE path = 'test2';").fetchone()
+            if not res_test2:
                 conn.execute("""
                     INSERT INTO _duckdb_studio_api_endpoints (id, path, description, sql_code, created_at)
                     VALUES (?, ?, ?, ?, ?);
@@ -905,6 +1105,21 @@ class SQLiteConfigManager:
                     'test2',
                     'Dummy endpoint for testing parameters',
                     'SELECT 1 WHERE ($p1 IS NULL AND $p2 IS NULL AND $p3 IS NULL AND $p4 IS NULL AND $p5 IS NULL AND $p6 IS NULL AND $p7 IS NULL AND $p8 IS NULL AND $p9 IS NULL AND $p10 IS NULL AND $p11 IS NULL AND $p12 IS NULL);',
+                    datetime.now().isoformat()
+                ])
+                conn.commit()
+                
+            # 3. products
+            res_products = conn.execute("SELECT 1 FROM _duckdb_studio_api_endpoints WHERE path = 'products';").fetchone()
+            if not res_products:
+                conn.execute("""
+                    INSERT INTO _duckdb_studio_api_endpoints (id, path, description, sql_code, created_at)
+                    VALUES (?, ?, ?, ?, ?);
+                """, [
+                    str(uuid.uuid4()),
+                    'products',
+                    'Returns a filtered list of product inventory matching category, price, and stock parameters.',
+                    'SELECT product_id, name, category, price, stock FROM product_inventory WHERE 1=1 AND ($category IS NULL OR category = $category) AND ($min_price IS NULL OR price >= $min_price) AND ($max_price IS NULL OR price <= $max_price) AND ($min_stock IS NULL OR stock >= $min_stock) ORDER BY product_id;',
                     datetime.now().isoformat()
                 ])
                 conn.commit()
@@ -920,7 +1135,7 @@ class SQLiteConfigManager:
         if not os.path.exists(duckdb_path):
             return
         
-        ddb_conn = duckdb.connect(duckdb_path)
+        ddb_conn = duckdb.connect(duckdb_path, config=DB_CONFIG)
         
         # Check if a table exists in DuckDB
         def table_exists_in_duckdb(table_name):
@@ -1028,12 +1243,19 @@ def index():
     current_snippet_category = 'All'
     save_query_category_select = None
     export_db_select = None
+    import_db_select = None
+    import_schema_select = None
     rename_target_old_name = ''
     rename_target_path = ''
     
     # Enable Tailwind glassmorphism and general layout styling
     ui.add_head_html("""
         <style>
+            .q-tab[name="Apache Superset"] .q-tab__icon img,
+            .q-tab[name="Telemetry"] .q-tab__icon img {
+                width: 30px !important;
+                height: 30px !important;
+            }
             body, html {
                 margin: 0 !important;
                 padding: 0 !important;
@@ -1174,6 +1396,10 @@ def index():
                  padding: 0 4px !important;
              }
          </style>
+        <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+        <script>
+            mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'dark' });
+        </script>
         <script>
             document.addEventListener('keydown', function(e) {
                 if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
@@ -1224,6 +1450,39 @@ def index():
             cleaned = "t_" + cleaned
         return cleaned.lower()
 
+    def update_import_schemas_for_wizard(db_name):
+        try:
+            schema_rows = explorer.conn.execute(f"SELECT schema_name FROM duckdb_schemas WHERE database_name = '{db_name}' AND schema_name NOT IN ('information_schema', 'pg_catalog') ORDER BY schema_name").fetchall()
+            schemas = [row[0] for row in schema_rows]
+            if not schemas:
+                schemas = ['main']
+            import_schema_select.options = {s: s for s in schemas}
+            import_schema_select.value = 'main' if 'main' in schemas else schemas[0]
+            import_schema_select.update()
+        except Exception as e:
+            print(f"Error loading schemas for wizard: {e}")
+            import_schema_select.options = {'main': 'main'}
+            import_schema_select.value = 'main'
+            import_schema_select.update()
+
+    def populate_wizard_databases():
+        try:
+            db_rows = explorer.conn.execute("SELECT database_name FROM duckdb_databases").fetchall()
+            dbs = [row[0] for row in db_rows if row[0] not in ('system', 'temp') and not row[0].startswith('__')]
+            options = {db: db for db in dbs}
+            import_db_select.options = options
+            
+            current_active = explorer.conn.execute("SELECT current_database()").fetchone()[0]
+            if import_db_select.value not in options:
+                if current_active in options:
+                    import_db_select.value = current_active
+                elif dbs:
+                    import_db_select.value = dbs[0]
+            import_db_select.update()
+            update_import_schemas_for_wizard(import_db_select.value)
+        except Exception as e:
+            print(f"Error loading databases for wizard: {e}")
+
     async def handle_local_file_upload(e):
         filename = e.file.name
         target_dir = '/shared'
@@ -1236,22 +1495,26 @@ def index():
             ext = os.path.splitext(filename)[1].lower()
             table_name = sanitize_table_name(os.path.splitext(filename)[0])
             
+            target_db = import_db_select.value or 'starter'
+            target_schema = import_schema_select.value or 'main'
+            fq_name = f'"{target_db}"."{target_schema}"."{table_name}"'
+            
             if ext == '.parquet':
-                sql = f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM read_parquet('{target_path}');"
+                sql = f"CREATE OR REPLACE TABLE {fq_name} AS SELECT * FROM read_parquet('{target_path}');"
             elif ext == '.json':
-                sql = f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM read_json('{target_path}', format='auto');"
+                sql = f"CREATE OR REPLACE TABLE {fq_name} AS SELECT * FROM read_json('{target_path}', format='auto');"
             else:
-                sql = f"CREATE OR REPLACE TABLE {table_name} AS SELECT * FROM read_csv('{target_path}', header=true, auto_detect=true);"
+                sql = f"CREATE OR REPLACE TABLE {fq_name} AS SELECT * FROM read_csv('{target_path}', header=true, auto_detect=true);"
                 
             explorer.conn.execute(sql)
-            ui.notify(f"Successfully uploaded and imported local file to table '{table_name}'", type='success')
+            ui.notify(f"Successfully uploaded and imported local file to table '{table_name}' in {target_db}.{target_schema}", type='success')
             
             try:
-                col_rows = explorer.conn.execute(f"PRAGMA table_info('{table_name}')").fetchall()
+                col_rows = explorer.conn.execute(f"PRAGMA table_info('{fq_name}')").fetchall()
                 cols = [(r[1],) for r in col_rows]
-                sql_editor.value = format_column_projection_query(cols, table_name)
+                sql_editor.value = format_column_projection_query(cols, fq_name)
             except Exception:
-                sql_editor.value = f"SELECT * FROM {table_name} LIMIT 100;"
+                sql_editor.value = f"SELECT * FROM {fq_name} LIMIT 100;"
             refresh_schema_tree()
             tabs.value = 'Explorer'
             run_editor_query()
@@ -1266,34 +1529,38 @@ def index():
         url = url.strip()
         tbl_name = sanitize_table_name(custom_table.strip() if custom_table and custom_table.strip() else "remote_dataset")
         
+        target_db = import_db_select.value or 'starter'
+        target_schema = import_schema_select.value or 'main'
+        fq_name = f'"{target_db}"."{target_schema}"."{tbl_name}"'
+        
         ui.notify("Connecting and importing remote dataset...", type='info')
         try:
             explorer.conn.execute("INSTALL httpfs; LOAD httpfs;")
             fmt = format_type.upper()
             if fmt == 'PARQUET':
-                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_parquet('{url}');"
+                sql = f"CREATE OR REPLACE TABLE {fq_name} AS SELECT * FROM read_parquet('{url}');"
             elif fmt == 'JSON':
-                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_json('{url}', format='auto');"
+                sql = f"CREATE OR REPLACE TABLE {fq_name} AS SELECT * FROM read_json('{url}', format='auto');"
             elif fmt == 'CSV':
-                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_csv('{url}', header=true, auto_detect=true);"
+                sql = f"CREATE OR REPLACE TABLE {fq_name} AS SELECT * FROM read_csv('{url}', header=true, auto_detect=true);"
             else:
                 ext = url.split('?')[0].split('.')[-1].lower()
                 if ext == 'parquet':
-                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_parquet('{url}');"
+                    sql = f"CREATE OR REPLACE TABLE {fq_name} AS SELECT * FROM read_parquet('{url}');"
                 elif ext == 'json':
-                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_json('{url}', format='auto');"
+                    sql = f"CREATE OR REPLACE TABLE {fq_name} AS SELECT * FROM read_json('{url}', format='auto');"
                 else:
-                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_csv('{url}', header=true, auto_detect=true);"
+                    sql = f"CREATE OR REPLACE TABLE {fq_name} AS SELECT * FROM read_csv('{url}', header=true, auto_detect=true);"
                     
             explorer.conn.execute(sql)
-            ui.notify(f"Successfully imported dataset to table '{tbl_name}'", type='success')
+            ui.notify(f"Successfully imported dataset to table '{tbl_name}' in {target_db}.{target_schema}", type='success')
             
             try:
-                col_rows = explorer.conn.execute(f"PRAGMA table_info('{tbl_name}')").fetchall()
+                col_rows = explorer.conn.execute(f"PRAGMA table_info('{fq_name}')").fetchall()
                 cols = [(r[1],) for r in col_rows]
-                sql_editor.value = format_column_projection_query(cols, tbl_name)
+                sql_editor.value = format_column_projection_query(cols, fq_name)
             except Exception:
-                sql_editor.value = f"SELECT * FROM {tbl_name} LIMIT 100;"
+                sql_editor.value = f"SELECT * FROM {fq_name} LIMIT 100;"
             refresh_schema_tree()
             tabs.value = 'Explorer'
             run_editor_query()
@@ -1307,6 +1574,10 @@ def index():
             
         s3_uri = s3_uri.strip()
         tbl_name = sanitize_table_name(custom_table.strip() if custom_table and custom_table.strip() else "s3_dataset")
+        
+        target_db = import_db_select.value or 'starter'
+        target_schema = import_schema_select.value or 'main'
+        fq_name = f'"{target_db}"."{target_schema}"."{tbl_name}"'
         
         ui.notify("Connecting and importing S3 dataset...", type='info')
         try:
@@ -1323,29 +1594,29 @@ def index():
                 
             fmt = format_type.upper()
             if fmt == 'PARQUET':
-                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_parquet('{s3_uri}');"
+                sql = f"CREATE OR REPLACE TABLE {fq_name} AS SELECT * FROM read_parquet('{s3_uri}');"
             elif fmt == 'JSON':
-                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_json('{s3_uri}', format='auto');"
+                sql = f"CREATE OR REPLACE TABLE {fq_name} AS SELECT * FROM read_json('{s3_uri}', format='auto');"
             elif fmt == 'CSV':
-                sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_csv('{s3_uri}', header=true, auto_detect=true);"
+                sql = f"CREATE OR REPLACE TABLE {fq_name} AS SELECT * FROM read_csv('{s3_uri}', header=true, auto_detect=true);"
             else:
                 ext = s3_uri.split('?')[0].split('.')[-1].lower()
                 if ext == 'parquet':
-                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_parquet('{s3_uri}');"
+                    sql = f"CREATE OR REPLACE TABLE {fq_name} AS SELECT * FROM read_parquet('{s3_uri}');"
                 elif ext == 'json':
-                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_json('{s3_uri}', format='auto');"
+                    sql = f"CREATE OR REPLACE TABLE {fq_name} AS SELECT * FROM read_json('{s3_uri}', format='auto');"
                 else:
-                    sql = f"CREATE OR REPLACE TABLE {tbl_name} AS SELECT * FROM read_csv('{s3_uri}', header=true, auto_detect=true);"
+                    sql = f"CREATE OR REPLACE TABLE {fq_name} AS SELECT * FROM read_csv('{s3_uri}', header=true, auto_detect=true);"
                     
             explorer.conn.execute(sql)
-            ui.notify(f"Successfully imported S3 dataset to table '{tbl_name}'", type='success')
+            ui.notify(f"Successfully imported S3 dataset to table '{tbl_name}' in {target_db}.{target_schema}", type='success')
             
             try:
-                col_rows = explorer.conn.execute(f"PRAGMA table_info('{tbl_name}')").fetchall()
+                col_rows = explorer.conn.execute(f"PRAGMA table_info('{fq_name}')").fetchall()
                 cols = [(r[1],) for r in col_rows]
-                sql_editor.value = format_column_projection_query(cols, tbl_name)
+                sql_editor.value = format_column_projection_query(cols, fq_name)
             except Exception:
-                sql_editor.value = f"SELECT * FROM {tbl_name} LIMIT 100;"
+                sql_editor.value = f"SELECT * FROM {fq_name} LIMIT 100;"
             refresh_schema_tree()
             tabs.value = 'Explorer'
             run_editor_query()
@@ -1563,11 +1834,50 @@ def index():
             writer.writerow([row.get(col, '') for col in columns])
         return output.getvalue().encode('utf-8')
 
+    # --- DYNAMIC PARAMETER INPUTS FOR SAVED QUERIES ---
+    parameter_input_fields = {}
+
+    def refresh_parameter_inputs(sql_text):
+        params = detect_parameters(sql_text)
+        if not params:
+            parameter_inputs_card.style('display: none;')
+            parameter_inputs_card.clear()
+            parameter_input_fields.clear()
+            return
+            
+        if set(params) == set(parameter_input_fields.keys()):
+            return
+            
+        parameter_inputs_card.style('display: block;')
+        parameter_inputs_card.clear()
+        parameter_input_fields.clear()
+        
+        with parameter_inputs_card:
+            with ui.row().classes('items-center gap-1.5 pb-1 text-slate-700 dark:text-slate-300'):
+                ui.icon('tune', size='xs')
+                ui.label('Query Parameters').classes('font-bold text-[11px] uppercase tracking-wider')
+                
+            with ui.row().classes('w-full gap-3 flex-wrap items-center'):
+                for p in params:
+                    p_lower = p.lower()
+                    label = p.replace('_', ' ').title()
+                    
+                    if 'date' in p_lower:
+                        inp = ui.input(label, placeholder='YYYY-MM-DD').props('outlined dense').style('width: 160px;')
+                    elif 'id' in p_lower or 'limit' in p_lower or 'count' in p_lower or 'num' in p_lower:
+                        inp = ui.number(label, placeholder='e.g. 10').props('outlined dense').style('width: 140px;')
+                    else:
+                        inp = ui.input(label, placeholder='Value...').props('outlined dense').classes('flex-grow')
+                        
+                    parameter_input_fields[p] = inp
+        parameter_inputs_card.update()
+
     # --- LIVE LINTER BACKGROUND DEBOUNCED VALIDATOR ---
     validation_task = None
 
     async def validate_sql_on_change(e):
         app.storage.user['last_query'] = e.value
+        refresh_parameter_inputs(e.value)
         nonlocal validation_task
         if validation_task is not None:
             validation_task.cancel()
@@ -1583,12 +1893,103 @@ def index():
             linter_label.classes(replace='text-xs font-mono text-slate-500')
             return
             
+        # Resolve parameters for background validation using placeholder dummy values
+        linter_params = detect_parameters(sql)
+        linter_param_values = {}
+        for p in linter_params:
+            p_lower = p.lower()
+            if 'date' in p_lower:
+                linter_param_values[p] = '2026-06-15'
+            elif any(k in p_lower for k in ('id', 'limit', 'count', 'num', 'dist', 'lower', 'upper', 'amount', 'val')):
+                linter_param_values[p] = 1
+            else:
+                linter_param_values[p] = 'value'
+        
+        sql_lint = substitute_sql_parameters(sql, linter_param_values)
+            
+        # Get active database context and list of attached databases from explorer connection
+        active_db = 'main'
+        db_list = []
+        try:
+            active_db = explorer.conn.execute("SELECT current_database();").fetchone()[0]
+            db_list = explorer.conn.execute("SELECT database_name, path FROM duckdb_databases").fetchall()
+        except Exception as e:
+            print(f"Error fetching active context/databases for linter: {e}")
+
+        # Build known db configuration lookup
+        db_configs = {}
+        try:
+            config_path = get_config_path()
+            if os.path.exists(config_path):
+                import yaml
+                with open(config_path, 'r') as f:
+                    cfg = yaml.safe_load(f)
+                if cfg and 'databases' in cfg:
+                    for db in cfg['databases']:
+                        db_configs[db.get('name')] = db
+        except Exception:
+            pass
+
+        # Build attach queries to replicate context in validation connection
+        attach_sqls = []
+        for db_name, db_path in db_list:
+            if db_name in ('system', 'temp', 'main') or db_name.startswith('__'):
+                continue
+            
+            if db_name in db_configs:
+                db_cfg = db_configs[db_name]
+                db_type = db_cfg.get('type')
+                path = db_cfg.get('path')
+                options = db_cfg.get('options', {})
+                
+                ext_load = ""
+                if db_type in ('ducklake', 'sqlite', 'postgres', 'mysql'):
+                    ext_load = f"INSTALL {db_type}; LOAD {db_type}; "
+                    
+                if db_type == 'ducklake':
+                    data_path = options.get('data_path', 'data_parquet/')
+                    sql_cmd = f"{ext_load}ATTACH 'ducklake:{path}' AS {db_name} (DATA_PATH '{data_path}');"
+                elif db_type == 'sqlite':
+                    sql_cmd = f"{ext_load}ATTACH '{path}' AS {db_name} (TYPE sqlite);"
+                elif db_type == 'postgres':
+                    sql_cmd = f"{ext_load}ATTACH '{path}' AS {db_name} (TYPE postgres);"
+                elif db_type == 'mysql':
+                    sql_cmd = f"{ext_load}ATTACH '{path}' AS {db_name} (TYPE mysql);"
+                else:
+                    sql_cmd = f"ATTACH '{path}' AS {db_name};"
+                attach_sqls.append(sql_cmd)
+            else:
+                if db_path:
+                    if db_path.startswith('ducklake:'):
+                        sql_cmd = f"INSTALL ducklake; LOAD ducklake; ATTACH '{db_path}' AS {db_name};"
+                    elif db_path.endswith('.db') or db_path.endswith('.sqlite') or db_path.endswith('.sqlite3'):
+                        sql_cmd = f"INSTALL sqlite; LOAD sqlite; ATTACH '{db_path}' AS {db_name} (TYPE sqlite);"
+                    else:
+                        sql_cmd = f"ATTACH '{db_path}' AS {db_name};"
+                    attach_sqls.append(sql_cmd)
+
         loop = asyncio.get_event_loop()
         def run_explain():
+            first_word = sql.split()[0].lower() if sql.split() else ""
+            if first_word in ('use', 'install', 'load', 'attach', 'detach'):
+                return None
+
             try:
-                chk_conn = duckdb.connect(explorer.db_file)
+                chk_conn = duckdb.connect(explorer.db_file, config=DB_CONFIG)
                 try:
-                    chk_conn.execute(f"EXPLAIN {sql}")
+                    for attach_cmd in attach_sqls:
+                        try:
+                            chk_conn.execute(attach_cmd)
+                        except Exception as ex:
+                            print(f"Linter failed to auto-attach database {attach_cmd}: {ex}")
+                    
+                    if active_db:
+                        try:
+                            chk_conn.execute(f"USE {active_db};")
+                        except Exception as ex:
+                            print(f"Linter failed to switch to active database {active_db}: {ex}")
+
+                    chk_conn.execute(f"EXPLAIN {sql_lint}")
                     return None
                 finally:
                     chk_conn.close()
@@ -1647,6 +2048,41 @@ def index():
         ui.notify("SQL code copied to clipboard!", type='positive')
 
     def refresh_saved_queries_list():
+        def show_snippet_dialog(q_id, q_name, q_desc, q_sql, q_cat, cat_color):
+            with ui.context.client:
+                with ui.dialog() as dialog, ui.card().classes('w-[50vw] max-w-2xl p-4 gap-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xl dark-bg-panel'):
+                    with ui.row().classes('w-full justify-between items-center no-wrap'):
+                        with ui.row().classes('items-center gap-2 no-wrap'):
+                            ui.badge(q_cat, color=cat_color).classes('text-xs py-0.5 px-1.5')
+                            ui.label(q_name).classes('text-base font-bold text-slate-800 dark:text-slate-100 truncate')
+                        ui.button(icon='close', on_click=dialog.close).props('flat round dense size=sm color=slate').classes('text-slate-400')
+                        
+                    if q_desc:
+                        ui.label(q_desc).classes('text-xs text-slate-500 dark:text-slate-400 leading-relaxed font-normal whitespace-pre-wrap w-full')
+                        
+                    # Code block (Editable)
+                    code_textarea = ui.textarea(value=q_sql).classes('text-xs w-full p-2 rounded-lg bg-slate-900 text-slate-100 font-mono border border-slate-800').props('input-class="font-mono text-slate-100" filled autogrow shadow-none dense').style('font-family: monospace; color: #f1f5f9; background: #0f172a;')
+                    
+                    # Action row
+                    with ui.row().classes('w-full justify-between items-center mt-2 pt-2 border-t border-slate-100 dark:border-slate-800'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.button('Execute Query', icon='play_arrow', on_click=lambda: [run_snippet_immediately(code_textarea.value), dialog.close()]).props('elevated color=positive').classes('text-xs font-bold')
+                            ui.button('Load to Editor', icon='arrow_forward', on_click=lambda: [load_history_query(code_textarea.value), dialog.close()]).props('outline color=primary').classes('text-xs font-bold')
+                            ui.button('Copy SQL', icon='content_copy', on_click=lambda: copy_snippet_to_clipboard(code_textarea.value)).props('flat color=secondary').classes('text-xs')
+                            
+                            def make_save_handler(qid=q_id, ta=code_textarea):
+                                def save():
+                                    if explorer.update_saved_query(qid, ta.value):
+                                        ui.notify("Snippet updated successfully!", type='positive')
+                                        refresh_saved_queries_list()
+                                    else:
+                                        ui.notify("Failed to update snippet.", type='negative')
+                                return save
+                            ui.button('Save Changes', icon='save', on_click=make_save_handler()).props('elevated color=primary').classes('text-xs font-bold')
+                            
+                        ui.button('Delete', icon='delete', on_click=lambda: [confirm_delete_query(q_id, q_name), dialog.close()]).props('flat color=negative').classes('text-xs')
+                    dialog.open()
+
         saved_queries_container.clear()
         with saved_queries_container:
             queries = explorer.list_saved_queries()
@@ -1686,38 +2122,19 @@ def index():
                 else:
                     cat_color = 'teal'
                 
-                with ui.card().classes('w-full p-0 border rounded shadow-none dark-bg-panel overflow-hidden transition flex-none').style('border-color: var(--q-slate-200);') as snippet_card:
+                with ui.card().classes('w-full p-2 border rounded shadow-none dark-bg-panel overflow-hidden cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-850 transition flex-none').style('border-color: var(--q-slate-200);') as snippet_card:
                     if q_desc:
                         snippet_card.tooltip(q_desc)
-                        
-                    with ui.expansion().classes('w-full').props('header-class="q-py-xs q-px-sm min-h-[28px]" expand-icon-class="text-slate-500"') as exp:
-                        with exp.add_slot('header'):
-                            with ui.row().classes('w-full items-center gap-1.5 no-wrap'):
-                                ui.badge(q_cat, color=cat_color).classes('text-[8px] py-0.5 px-1 flex-none')
-                                ui.label(q_name).classes('text-xs font-bold text-slate-800 dark:text-slate-200 truncate')
-                        
-                        with ui.column().classes('w-full p-2.5 gap-2 border-t border-slate-100 dark:border-slate-850'):
-                            if q_desc:
-                                ui.label(q_desc).classes('text-[10px] text-slate-400 font-normal break-words whitespace-normal')
-                                
-                            ui.code(q_sql, language='sql').classes('text-[9px] w-full p-1.5 rounded bg-slate-900 text-slate-100 font-mono max-h-24 overflow-auto')
-                            
-                            # Handlers and Bottom Action row
-                            def make_load_handler(code=q_sql):
-                                return lambda _: load_history_query(code)
-                            def make_run_handler(code=q_sql):
-                                return lambda _: run_snippet_immediately(code)
-                            def make_copy_handler(code=q_sql):
-                                return lambda _: copy_snippet_to_clipboard(code)
-                            def make_delete_handler(query_id=q_id, query_name=q_name):
-                                return lambda _: confirm_delete_query(query_id, query_name)
-                                
-                            with ui.row().classes('w-full justify-between items-center mt-1 pt-1.5 border-t border-slate-100 dark:border-slate-800/50'):
-                                with ui.row().classes('items-center gap-1'):
-                                    ui.button(icon='play_arrow', on_click=make_run_handler()).props('flat dense size=sm color=positive').classes('p-0.5').tooltip('Execute snippet')
-                                    ui.button(icon='arrow_forward', on_click=make_load_handler()).props('flat dense size=sm color=primary').classes('p-0.5').tooltip('Load to editor')
-                                    ui.button(icon='content_copy', on_click=make_copy_handler()).props('flat dense size=sm color=secondary').classes('p-0.5').tooltip('Copy SQL')
-                                ui.button(icon='delete', on_click=make_delete_handler()).props('flat dense size=sm color=negative').classes('p-0.5').tooltip('Delete snippet')
+                    
+                    def make_click_handler(qid=q_id, qname=q_name, qdesc=q_desc, qsql=q_sql, qcat=q_cat, ccol=cat_color):
+                        return lambda _: show_snippet_dialog(qid, qname, qdesc, qsql, qcat, ccol)
+                    snippet_card.on('click', make_click_handler())
+                    
+                    with ui.row().classes('w-full items-center justify-between no-wrap'):
+                        with ui.row().classes('items-center gap-1.5 no-wrap'):
+                            ui.badge(q_cat, color=cat_color).classes('text-[8px] py-0.5 px-1 flex-none')
+                            ui.label(q_name).classes('text-xs font-bold text-slate-800 dark:text-slate-200 truncate')
+                        ui.icon('open_in_new', size='xs').classes('text-slate-400')
 
     def confirm_delete_query(query_id, query_name):
         with ui.dialog() as dialog, ui.card():
@@ -1931,7 +2348,7 @@ def index():
                 last_tab = app.storage.user.get('active_tab', 'Explorer')
             except Exception:
                 last_tab = 'Explorer'
-            if last_tab not in ['Explorer', 'JupyterLab', 'dbt Workbench', 'Code Editor', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer', 'Scheduler', 'Settings']:
+            if last_tab not in ['Explorer', 'JupyterLab', 'dbt Workbench', 'Code Editor', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer', 'Scheduler', 'Garage S3', 'Telemetry', 'Apache Superset', 'Settings']:
                 last_tab = 'Explorer'
                 
             with ui.tabs(value=last_tab, on_change=lambda e: handle_tab_change_global(e.value)).props('inline-label dense align=right').classes('text-white flex-grow') as tabs:
@@ -1946,6 +2363,7 @@ def index():
                 scheduler_tab = ui.tab(name='Scheduler', label='', icon='img:/scheduler_colored.svg').tooltip('Background Query Scheduler')
                 garage_tab = ui.tab(name='Garage S3', label='', icon='img:/garage_orange.svg').tooltip('Garage S3 Console')
                 telemetry_tab = ui.tab(name='Telemetry', label='', icon='img:/telemetry_colored.svg').tooltip('Telemetry & Observability')
+                superset_tab = ui.tab(name='Apache Superset', label='', icon='img:/superset_logo.svg').tooltip('Apache Superset BI Reporting')
                 settings_tab = ui.tab(name='Settings', label='', icon='img:/settings_colored.svg').tooltip('Studio Settings')
             
         studio_container = ui.row().classes('w-full no-wrap min-h-0 flex-grow').style('margin: 0; padding: 0;')
@@ -1959,6 +2377,7 @@ def index():
         scheduler_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         garage_container = ui.column().classes('w-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
         telemetry_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
+        superset_container = ui.column().classes('w-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
         settings_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         
         # Build Database Tools Container Content
@@ -2049,37 +2468,53 @@ def index():
                             ui.icon('science', color='warning').classes('text-2xl')
                             ui.label('Synthetic Seeding Engine').classes('text-lg font-bold text-slate-800 dark:text-white')
                         ui.separator().classes('opacity-50')
+                        ui.label('Select a predefined schema template to generate a new attached DuckDB database, populated with synthetic or real-world datasets.').classes('text-xs text-slate-400 leading-relaxed max-w-3xl')
                         
-                        with ui.row().classes('w-full items-center justify-between gap-6 flex-wrap'):
-                            with ui.column().classes('gap-2'):
-                                ui.label('Generate structured sales records, loyalty customer profiles, and stock categorisation lists using Fake Analytics Seeder.').classes('text-xs text-slate-400 leading-relaxed max-w-2xl')
-                                
-                                # Metrics breakdown
-                                with ui.row().classes('gap-4 mt-2'):
-                                    with ui.row().classes('items-center gap-1.5'):
-                                        ui.label('Transactions:').classes('text-[10px] text-slate-400 font-semibold uppercase')
-                                        trans_badge = ui.badge('Checking...', color='indigo').classes('text-[10px]')
-                                    with ui.row().classes('items-center gap-1.5'):
-                                        ui.label('Customers:').classes('text-[10px] text-slate-400 font-semibold uppercase')
-                                        cust_badge = ui.badge('Checking...', color='indigo').classes('text-[10px]')
-                                    with ui.row().classes('items-center gap-1.5'):
-                                        ui.label('Inventory:').classes('text-[10px] text-slate-400 font-semibold uppercase')
-                                        invent_badge = ui.badge('Checking...', color='indigo').classes('text-[10px]')
-                            
-                            # Controls
-                            with ui.row().classes('items-center gap-3'):
+                        # Controls row
+                        with ui.row().classes('w-full items-center gap-4 flex-wrap'):
+                            seed_templates = list_seeding_templates()
+                            if seed_templates:
+                                # Define template select dropdown
+                                # 1. Define density select dropdown first so the handler can reference it
                                 density_select = ui.select(
                                     options={
                                         '1000': '1,000 Rows (Light)',
                                         '6500': '6,500 Rows (Standard)',
-                                        '15000': '15,000 Rows (Dense)'
+                                        '15000': '15,000 Rows (Dense)',
+                                        '300000': '300,000 Rows (Super Dense)',
+                                        '1500000': '1,500,000 Rows (Ultra Dense)'
                                     },
                                     value='6500',
                                     label='Mock Data Density'
                                 ).props('dense outlined').style('width: 220px;')
                                 
-                                ui.button('Reset & Custom Seed', icon='restart_alt', color='warning',
-                                          on_click=lambda: trigger_custom_seed(density_select.value)).props('elevated dense').classes('px-4 py-2')
+                                # 2. Define handler referencing density_select
+                                def handle_template_select_change(e):
+                                    val = e.value.lower() if e.value else ''
+                                    is_live = any(k in val for k in ['railway', 'taxi', 'github', 'openaq', 'open_aq', 'weather'])
+                                    if is_live:
+                                        density_select.disable()
+                                        ui.notify("Mock data density disabled (loads real-world dataset directly).", type='info')
+                                    else:
+                                        density_select.enable()
+                                
+                                # 3. Define template select dropdown passing handler to on_change
+                                seed_select = ui.select(
+                                    options=seed_templates,
+                                    value=next(iter(seed_templates.keys())),
+                                    label='Select Schema / Model',
+                                    on_change=handle_template_select_change
+                                ).props('dense outlined').classes('flex-grow').style('min-width: 250px;')
+                                
+                                # Initial check on creation
+                                val_init = seed_select.value.lower() if seed_select.value else ''
+                                if any(k in val_init for k in ['railway', 'taxi', 'github', 'openaq', 'open_aq', 'weather']):
+                                    density_select.disable()
+                                
+                                ui.button('Create & Seed Database', icon='play_circle_filled', color='primary',
+                                          on_click=lambda: trigger_template_seed(seed_select.value, density_select.value)).props('elevated dense').classes('px-4 py-2')
+                            else:
+                                ui.label('No seed_*.sql templates found in /templates directory.').classes('text-xs text-amber-500 italic')
 
                     # CARD 4: Dynamic File Import Wizard
                     with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4 flex-none'):
@@ -2087,6 +2522,21 @@ def index():
                             ui.icon('cloud_upload', color='primary').classes('text-2xl')
                             ui.label('Dynamic File Import Wizard').classes('text-lg font-bold text-slate-800 dark:text-white')
                         ui.separator().classes('opacity-50')
+                        
+                        # Added target database and schema selectors for Dynamic File Import Wizard
+                        with ui.row().classes('w-full gap-4 items-center flex-wrap'):
+                            import_db_select = ui.select(
+                                options={},
+                                value=None,
+                                label='Target Database',
+                                on_change=lambda e: update_import_schemas_for_wizard(e.value)
+                            ).props('outlined dense').style('width: 240px;')
+                            
+                            import_schema_select = ui.select(
+                                options={'main': 'main'},
+                                value='main',
+                                label='Target Schema'
+                            ).props('outlined dense').style('width: 240px;')
                         
                         with ui.tabs().classes('w-full border-b') as wizard_tabs:
                             local_import_tab = ui.tab('Local File Upload', icon='upload_file')
@@ -2372,8 +2822,8 @@ def index():
                     if has_semicolon:
                         sql = sql[:-1].strip()
                         
-                    # Split trailing clauses (ORDER BY, LIMIT, OFFSET)
-                    sql, trailing = split_sql_trailing_clauses(sql)
+                    # Split trailing clauses (GROUP BY, HAVING, ORDER BY, LIMIT, OFFSET)
+                    sql, trailing = split_sql_trailing_clauses(sql, keywords=['GROUP BY', 'HAVING', 'ORDER BY', 'LIMIT', 'OFFSET'])
                     
                     # Create type mapping and alias-lookup
                     col_type_map = {c_name.lower(): c_type for c_name, c_type in cols}
@@ -2399,9 +2849,8 @@ def index():
                         else:
                             clauses.append(f"  AND (${col} IS NULL OR \"{col}\" = ${col})")
                         
-                    # Check if WHERE exists (case-insensitive search)
-                    import re
-                    has_where = re.search(r'(?i)\bWHERE\b', sql)
+                    # Check if WHERE exists at the top level
+                    has_where = has_top_level_where(sql)
                     
                     if has_where:
                         # Append clauses to the existing WHERE block
@@ -2538,6 +2987,7 @@ def index():
                 ui.notify(f"Failed to delete endpoint: {err}", type='negative')
 
         def refresh_api_endpoints_grid():
+            sync_fastapi_dynamic_routes()
             api_endpoints_list_container.clear()
             
             # Query aggregate metrics for endpoints
@@ -2740,8 +3190,8 @@ def index():
                     if has_semicolon:
                         sql = sql[:-1].strip()
                         
-                    # Split trailing clauses (ORDER BY, LIMIT, OFFSET)
-                    sql, trailing = split_sql_trailing_clauses(sql)
+                    # Split trailing clauses (GROUP BY, HAVING, ORDER BY, LIMIT, OFFSET)
+                    sql, trailing = split_sql_trailing_clauses(sql, keywords=['GROUP BY', 'HAVING', 'ORDER BY', 'LIMIT', 'OFFSET'])
                     
                     # Create type mapping and alias-lookup
                     col_type_map = {c_name.lower(): c_type for c_name, c_type in cols}
@@ -2767,9 +3217,8 @@ def index():
                         else:
                             clauses.append(f"  AND (${col} IS NULL OR \"{col}\" = ${col})")
                         
-                    # Check if WHERE exists (case-insensitive search)
-                    import re
-                    has_where = re.search(r'(?i)\bWHERE\b', sql)
+                    # Check if WHERE exists at the top level
+                    has_where = has_top_level_where(sql)
                     
                     if has_where:
                         # Append clauses to the existing WHERE block
@@ -2906,6 +3355,7 @@ def index():
                 ui.notify(f"Failed to delete endpoint: {err}", type='negative')
 
         def refresh_api_endpoints_grid():
+            sync_fastapi_dynamic_routes()
             api_endpoints_list_container.clear()
             
             # Query aggregate metrics for endpoints
@@ -3033,7 +3483,8 @@ def index():
                     ui.label('Inspect all active REST API microservices, dynamically test request payloads, and explore formatted metered responses in real-time.').classes('text-sm text-slate-500 dark:text-slate-400')
                 
                 try:
-                    rows = explorer.conn.execute("SELECT id, path, description, sql_code, COALESCE(security_enabled, FALSE) FROM _duckdb_studio_api_endpoints ORDER BY created_at DESC;").fetchall()
+                    rows_val = config_db.query_all("SELECT id, path, description, sql_code, security_enabled FROM _duckdb_studio_api_endpoints ORDER BY created_at DESC;")
+                    rows = [(r['id'], r['path'], r['description'], r['sql_code'], bool(r['security_enabled'])) for r in rows_val]
                 except Exception as e:
                     ui.label(f"Failed to load endpoints: {e}").classes('text-xs text-negative')
                     return
@@ -3561,6 +4012,57 @@ def index():
                 })();
             ''')
 
+        # Build Apache Superset Container Content
+        with superset_container.classes('p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap'):
+            # Header Card
+            with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-none'):
+                with ui.row().classes('items-center gap-4'):
+                    # Large Superset logo (white and green)
+                    ui.html('''<svg viewBox="31 35 150 77" version="1.1" xmlns="http://www.w3.org/2000/svg" width="48" height="48" class="flex-shrink-0">
+                        <path d="M141.56,37.83C129.1,37.83 117.56,44.83 106.56,57.08C95.62,44.64 83.94,37.83 70.89,37.83C49.29,37.83 33.52,53.19 33.52,74C33.52,94.81 49.29,110 70.89,110C84.13,110 94.45,103.77 105.89,91.33C117,103.74 128.32,110 141.56,110C163.17,110 178.93,94.83 178.93,74C178.93,53.17 163.17,37.83 141.56,37.83ZM71,88.19C61.85,88.19 56.4,82.19 56.4,74.19C56.4,66.19 61.89,60 71,60C78.78,60 85,66.22 91.82,74.58C85.44,82.36 78.63,88.19 71,88.19ZM140.88,88.19C133.29,88.19 126.88,82.19 120.05,74.19C127.05,65.83 133.05,60 140.88,60C150.03,60 155.48,66.22 155.48,74.19C155.48,82.16 150.07,88.19 140.92,88.19L140.88,88.19Z" fill="#10B981"/>
+                        <path d="M122.21,104.88L136.74,87.57C130.9,85.85 125.61,80.64 120.09,74.19L105.93,91.3C110.555,96.709 116.059,101.301 122.21,104.88Z" fill="#20A7C9" class="dark:fill-white"/>
+                        <path d="M106.52,57.08C101.915,51.629 96.45,46.967 90.34,43.28L75.8,60.81C81.33,62.69 86.23,67.71 91.43,74.05L92,74.45C92,74.45 106.7,56.88 106.52,57.08Z" fill="#20A7C9" class="dark:fill-white"/>
+                    </svg>''', sanitize=False)
+                    with ui.column().classes('gap-0.5'):
+                        ui.label('Apache Superset BI Reporting').classes('text-2xl font-black text-slate-800 dark:text-white')
+                        ui.label('Enterprise-ready business intelligence web application for data exploration and visualization.').classes('text-sm text-slate-500 dark:text-slate-400')
+
+            # Launch Card
+            with ui.card().classes('w-full p-8 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col items-center justify-center gap-6 text-center'):
+                ui.icon('bar_chart', size='64px', color='primary')
+                with ui.column().classes('gap-2 items-center'):
+                    ui.label('Launch Apache Superset Workspace').classes('text-xl font-bold text-slate-800 dark:text-white')
+                    ui.label('Open Apache Superset in a secure, first-party browser tab. This bypasses all sandbox restrictions and resolves cookie blocking.').classes('text-sm text-slate-500 dark:text-slate-400 max-w-lg')
+                
+                # Active DB connection & Credentials info cards
+                with ui.row().classes('gap-6 justify-center w-full max-w-2xl py-4'):
+                    with ui.card().classes('p-4 border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 rounded-lg flex-1 text-left'):
+                        ui.label('🔑 Default Credentials').classes('text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2')
+                        ui.label('Username: admin').classes('text-sm font-mono font-bold text-slate-700 dark:text-slate-300')
+                        ui.label('Password: admin').classes('text-sm font-mono font-bold text-slate-700 dark:text-slate-300')
+                    with ui.card().classes('p-4 border border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 rounded-lg flex-1 text-left'):
+                        ui.label('🔌 Seeded Connection').classes('text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2')
+                        ui.label('Database Name: DuckDB_PGWire').classes('text-sm font-bold text-slate-700 dark:text-slate-300')
+                        ui.label('Ready for immediate SQL querying inside SQL Lab.').classes('text-xs text-slate-500 mt-1')
+
+                def open_superset_new_window():
+                    ui.run_javascript('''
+                        (function() {
+                            var host = window.location.hostname;
+                            var port = window.location.port;
+                            var proto = window.location.protocol;
+                            var targetUrl;
+                            if (host.endsWith('.localhost')) {
+                                var baseDomain = host.substring(host.indexOf('.'));
+                                targetUrl = proto + '//superset' + baseDomain + (port ? ':' + port : '') + '/login/?auto_login=true';
+                            } else {
+                                targetUrl = proto + '//' + host + ':8088/login/?auto_login=true';
+                            }
+                            window.open(targetUrl, '_blank');
+                        })();
+                    ''')
+                ui.button('Open Superset Workspace', icon='launch', on_click=open_superset_new_window).props('size=lg elevated color=primary').classes('px-8 py-3 text-base font-bold rounded-xl shadow-lg hover:scale-105 transition-transform')
+
         # Build Telemetry Container Content
         with telemetry_container:
             # Header Card
@@ -3751,21 +4253,22 @@ def index():
                 
                 # Update API metrics
                 try:
-                    global_stats = explorer.conn.execute("""
+                    res_val = config_db.query_one("""
                         SELECT 
-                            COUNT(*),
-                            AVG(m.latency_ms),
-                            SUM(CASE WHEN m.status_code < 400 THEN 1 ELSE 0 END)
+                            COUNT(*) as total_calls,
+                            AVG(m.latency_ms) as avg_lat,
+                            SUM(CASE WHEN m.status_code < 400 THEN 1 ELSE 0 END) as success_calls
                         FROM _duckdb_studio_api_metrics m
                         INNER JOIN _duckdb_studio_api_endpoints e ON m.endpoint_path = e.path;
-                    """).fetchone()
+                    """)
                     
-                    total_calls = global_stats[0] if global_stats[0] is not None else 0
-                    avg_latency = global_stats[1] if global_stats[1] is not None else 0.0
-                    success_count = global_stats[2] if global_stats[2] is not None else 0
+                    total_calls = res_val['total_calls'] if res_val and res_val['total_calls'] is not None else 0
+                    avg_latency = res_val['avg_lat'] if res_val and res_val['avg_lat'] is not None else 0.0
+                    success_count = res_val['success_calls'] if res_val and res_val['success_calls'] is not None else 0
                     success_rate = (success_count * 100.0 / total_calls) if total_calls > 0 else 100.0
                     
-                    active_routes = explorer.conn.execute("SELECT COUNT(*) FROM _duckdb_studio_api_endpoints;").fetchone()[0]
+                    res_routes = config_db.query_one("SELECT COUNT(*) as cnt FROM _duckdb_studio_api_endpoints;")
+                    active_routes = res_routes['cnt'] if res_routes else 0
                     
                     api_calls_lbl.text = str(total_calls)
                     api_latency_lbl.text = f"{avg_latency:.1f} ms"
@@ -3776,7 +4279,7 @@ def index():
                     
                 # Update performance table
                 try:
-                    detail_rows = explorer.conn.execute("""
+                    rows_val = config_db.query_all("""
                         SELECT 
                             m.endpoint_path,
                             COUNT(*) as calls,
@@ -3789,7 +4292,8 @@ def index():
                         INNER JOIN _duckdb_studio_api_endpoints e ON m.endpoint_path = e.path
                         GROUP BY m.endpoint_path
                         ORDER BY calls DESC;
-                    """).fetchall()
+                    """)
+                    detail_rows = [(r['endpoint_path'], r['calls'], r['avg_lat'], r['min_lat'], r['max_lat'], r['success_rate'], r['last_called']) for r in rows_val]
                 except Exception as ex:
                     print(f"Failed to query detail api rows: {ex}")
                     detail_rows = []
@@ -3883,6 +4387,36 @@ def index():
                     settings_jupyter_url = ui.input('Jupyter Server URL', value=j_url).props('outlined dense').classes('w-full').tooltip('Base URL of the JupyterLab interface container.')
                     settings_jupyter_token = ui.input('Jupyter Security Token', value=j_token, password=True, password_toggle_button=True).props('outlined dense').classes('w-full').tooltip('Token query parameter required to authenticate JupyterLab session.')
 
+                # Card 5: AI Copilot Configuration
+                with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.icon('auto_awesome', color='primary').classes('text-2xl')
+                        ui.label('AI Copilot Configuration').classes('text-lg font-bold text-slate-800 dark:text-white')
+                    ui.separator().classes('opacity-50')
+                    
+                    settings_ai_provider = ui.select(
+                        options={'none': 'Disabled / None', 'openai': 'OpenAI', 'anthropic': 'Anthropic', 'ollama': 'Ollama (Local)', 'custom': 'Custom OpenAI-Compatible'}, 
+                        value=APP_SETTINGS.get('ai_provider', 'none'), 
+                        label='AI Provider'
+                    ).props('outlined dense').classes('w-full')
+                    
+                    settings_ai_api_key = ui.input(
+                        'API Key', 
+                        value=APP_SETTINGS.get('ai_api_key', ''), 
+                        password=True, 
+                        password_toggle_button=True
+                    ).props('outlined dense').classes('w-full').tooltip('API key for OpenAI, Anthropic, or custom providers.')
+                    
+                    settings_ai_model = ui.input(
+                        'Model Name', 
+                        value=APP_SETTINGS.get('ai_model', 'gpt-4o')
+                    ).props('outlined dense').classes('w-full').tooltip('The model ID (e.g. gpt-4o, claude-3-5-sonnet, or local ollama model name).')
+                    
+                    settings_ai_base_url = ui.input(
+                        'Base URL', 
+                        value=APP_SETTINGS.get('ai_base_url', '')
+                    ).props('outlined dense').classes('w-full').tooltip('Custom API gateway Base URL (e.g., http://localhost:11434/v1 for Ollama).')
+
             # Actions row
             with ui.row().classes('w-full justify-end gap-3 p-4'):
                 def handle_save_settings():
@@ -3893,7 +4427,11 @@ def index():
                         "telemetry_retention_days": int(settings_telemetry_retention.value) if settings_telemetry_retention.value is not None else 30,
                         "jwt_secret": settings_jwt_secret.value.strip() if settings_jwt_secret.value else "duckdb_studio_secret_key_1337",
                         "jwt_issuer": settings_jwt_issuer.value.strip() if settings_jwt_issuer.value else "duckdb_studio",
-                        "jwt_audience": settings_jwt_audience.value.strip() if settings_jwt_audience.value else "duckdb_studio_clients"
+                        "jwt_audience": settings_jwt_audience.value.strip() if settings_jwt_audience.value else "duckdb_studio_clients",
+                        "ai_provider": settings_ai_provider.value,
+                        "ai_api_key": settings_ai_api_key.value.strip() if settings_ai_api_key.value else "",
+                        "ai_model": settings_ai_model.value.strip() if settings_ai_model.value else "gpt-4o",
+                        "ai_base_url": settings_ai_base_url.value.strip() if settings_ai_base_url.value else ""
                     }
                     new_jupyter = {
                         "url": settings_jupyter_url.value.strip() if settings_jupyter_url.value else "http://localhost:8889",
@@ -3919,6 +4457,7 @@ def index():
         scheduler_container.bind_visibility_from(tabs, 'value', value='Scheduler')
         garage_container.bind_visibility_from(tabs, 'value', value='Garage S3')
         telemetry_container.bind_visibility_from(tabs, 'value', value='Telemetry')
+        superset_container.bind_visibility_from(tabs, 'value', value='Apache Superset')
         settings_container.bind_visibility_from(tabs, 'value', value='Settings')
         
     # Main split layout container
@@ -3989,12 +4528,7 @@ def index():
                                     ddl_btn = ui.button('DDL/DML', on_click=lambda: select_category('DDL/DML')).props('flat dense size=xs color=primary').classes('font-bold px-1 flex-grow').style('font-size: 12px !important;')
                                 saved_queries_container = ui.column().classes('w-full overflow-auto gap-2 text-slate-800 dark:text-slate-100').style('max-height: 260px;')
                     
-                    # Seeding Actions
-                    with ui.row().classes('w-full mt-auto pt-2 justify-between gap-1 no-wrap'):
-                        ui.button('Import File', icon='file_upload', color='primary',
-                                  on_click=lambda: open_import_dialog()).props('elevated dense').classes('text-xs flex-grow')
-                        ui.button('Reset & Reseed', icon='restart_alt', color='warning', 
-                                  on_click=lambda: confirm_reseed()).props('outline dense').classes('text-xs flex-grow')
+
 
             # --- RIGHT WORKSPACE (SQL EDITOR, ACTIONS, GRAPHICS, GRID) ---
             with main_splitter.after:
@@ -4008,6 +4542,9 @@ def index():
                         
                         # Mode switches
                         with ui.row().classes('items-center gap-3'):
+                            # AI Assistant toggle button
+                            ai_toggle_btn = ui.button('AI Assistant', icon='auto_awesome', on_click=lambda: toggle_ai_panel()).props('flat dense size=sm color=primary').classes('font-bold px-2')
+                            
                             ui.dark_mode().bind_value(app.storage.user, 'dark_mode')
                             ui.icon('light_mode', color='amber').classes('text-lg')
                             
@@ -4018,8 +4555,22 @@ def index():
                             ui.switch(value=app.storage.user.get('dark_mode', False), on_change=toggle_theme).bind_value(app.storage.user, 'dark_mode').props('color=indigo')
                             ui.icon('dark_mode', color='indigo').classes('text-lg')
                     
+                    # Explorer Sub-Tabs to switch between SQL Workspace and ER Diagram
+                    with ui.tabs(value='SQL Workspace', on_change=lambda e: refresh_er_diagram() if e.value == 'ER Diagram' else None).classes('w-full border-b text-indigo-500 mb-1') as workspace_sub_tabs:
+                        editor_sub_tab = ui.tab('SQL Workspace', icon='code')
+                        er_sub_tab = ui.tab('ER Diagram', icon='schema')
+
+                    # Create the split row layout using programmatic slots to avoid re-indenting the rest of layout
+                    workspace_split_row = ui.row().classes('w-full flex-grow no-wrap min-h-0 gap-3 p-0')
+                    workspace_split_row.__enter__()
+                    
+                    left_workspace_col = ui.column().classes('h-full flex-grow min-h-0 gap-2 flex-nowrap overflow-hidden p-0')
+                    left_workspace_col.__enter__()
+
                     # SQL Editor Card Container
-                    with ui.card().classes('w-full p-2.5 shadow-sm border-slate-200 dark:border-slate-800'):
+                    sql_editor_card = ui.card().classes('w-full p-2.5 shadow-sm border-slate-200 dark:border-slate-800')
+                    sql_editor_card.bind_visibility_from(workspace_sub_tabs, 'value', value='SQL Workspace')
+                    with sql_editor_card:
                         
                         # 🧱 INTERACTIVE VISUAL QUERY BUILDER
                         with ui.expansion('🧱 Interactive Visual Query Builder', icon='auto_awesome', value=False).classes('w-full border border-dashed border-indigo-200 dark:border-indigo-900 rounded-lg p-1.5 dark-bg-panel mb-1.5 text-xs text-indigo-600 dark:text-indigo-400 font-bold') as query_builder_expansion:
@@ -4067,6 +4618,8 @@ def index():
                                 ui.icon('code', color='primary').classes('text-lg')
                                 ui.label('SQL Query Editor').classes('font-semibold text-slate-700 dark:text-slate-300')
                         
+                        # Dynamic parameter inputs card for Parameterized Saved Queries
+                        parameter_inputs_card = ui.card().classes('w-full p-3 border rounded shadow-none dark-bg-panel gap-2').style('display: none;')
                         
                         # SQL Code Editor itself (using NiceGUI CodeMirror component with linter bound)
                         initial_query = app.storage.user.get('last_query', query_history[0])
@@ -4100,7 +4653,10 @@ def index():
                             
                             ui.label('Press Ctrl+Enter inside workspace to run').classes('text-[10px] text-slate-400 font-mono hidden md:block')
                     
-                    with ui.card().classes('w-full flex-grow p-2.5 shadow-sm border-slate-200 dark:border-slate-800 overflow-hidden min-h-0 flex-nowrap'):
+                    # Output Results Card Container
+                    output_results_card = ui.card().classes('w-full flex-grow p-2.5 shadow-sm border-slate-200 dark:border-slate-800 overflow-hidden min-h-0 flex-nowrap')
+                    output_results_card.bind_visibility_from(workspace_sub_tabs, 'value', value='SQL Workspace')
+                    with output_results_card:
                         
                         # Result Status Banner
                         with ui.row().classes('w-full justify-between items-center no-wrap border-b pb-2'):
@@ -4228,12 +4784,320 @@ def index():
                                             db_size = os.path.getsize(DB_NAME) if os.path.exists(DB_NAME) else 0
                                             ui.label(f"{db_size / (1024*1024):.2f} MB").classes('text-sm font-mono font-bold text-slate-800 dark:text-slate-200')
 
+                    # ER Diagram Card Container
+                    er_diagram_card = ui.card().classes('w-full flex-grow p-4 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden min-h-0 flex-nowrap dark-bg-panel')
+                    er_diagram_card.bind_visibility_from(workspace_sub_tabs, 'value', value='ER Diagram')
+                    with er_diagram_card:
+                        with ui.row().classes('w-full items-center justify-between no-wrap gap-4 pb-2 border-b'):
+                            with ui.row().classes('items-center gap-2'):
+                                ui.icon('schema', color='primary').classes('text-xl')
+                                ui.label('Interactive ER Schema Diagram').classes('font-semibold text-slate-700 dark:text-slate-300')
+                                
+                            with ui.row().classes('items-center gap-2 no-wrap'):
+                                # Table filter input
+                                er_filter_input = ui.input(placeholder='Filter tables (e.g. users)...', on_change=lambda: refresh_er_diagram()).props('outlined dense clearable size=sm').classes('w-64 text-xs')
+                                
+                                # Refresh button
+                                ui.button(icon='refresh', on_click=lambda: refresh_er_diagram()).props('flat dense round size=sm').classes('text-slate-600').tooltip('Reload schema diagram')
+                        
+                        # Mermaid Diagram HTML Container
+                        er_diagram_container = ui.column().classes('w-full flex-grow overflow-auto items-center justify-center p-4 bg-slate-50/50 dark:bg-slate-900/50 rounded-lg border border-dashed border-slate-200 dark:border-slate-800 min-h-0')
+                        with er_diagram_container:
+                            er_diagram_html = ui.html('<div class="text-slate-400 text-sm">Loading ER Diagram...</div>', sanitize=False).classes('mermaid w-full text-center flex justify-center')
+
+                    # Helper function to refresh and render the ER diagram
+                    def refresh_er_diagram():
+                        try:
+                            active_db = 'main'
+                            try:
+                                active_db = explorer.conn.execute("SELECT current_database();").fetchone()[0]
+                            except Exception:
+                                pass
+                                
+                            filter_text = er_filter_input.value if er_filter_input.value else ""
+                            mermaid_code = generate_schema_mermaid(explorer, active_db, filter_text)
+                            
+                            import uuid
+                            unique_id = f"mermaid-graph-{uuid.uuid4().hex[:8]}"
+                            er_diagram_html.content = f'<pre id="{unique_id}" class="mermaid text-center" style="display: block; width: 100%; margin: 0 auto;">{mermaid_code}</pre>'
+                            
+                            ui.run_javascript("""
+                                try {
+                                    mermaid.run({
+                                        nodes: [document.getElementById('%s')]
+                                    });
+                                } catch(e) {
+                                    console.error("Mermaid render error:", e);
+                                }
+                            """ % unique_id)
+                        except Exception as refresh_ex:
+                            ui.notify(f"Failed to refresh ER diagram: {refresh_ex}", type='negative')
+
+                    # Exit the left column slot context
+                    left_workspace_col.__exit__(None, None, None)
+
+                    # Right AI Assistant Panel Column (collapsible)
+                    ai_panel_col = ui.column().classes('h-full w-80 flex-none gap-2 flex-nowrap overflow-hidden p-3 border border-slate-200 dark:border-slate-800 rounded-xl dark-bg-panel shadow-sm min-h-0')
+                    ai_panel_col.visible = app.storage.user.get('ai_panel_visible', False)
+                    with ai_panel_col:
+                        with ui.row().classes('w-full items-center justify-between border-b pb-2 flex-none'):
+                            with ui.row().classes('items-center gap-1.5'):
+                                ui.icon('auto_awesome', color='primary').classes('text-lg')
+                                ui.label('AI SQL Copilot').classes('font-bold text-slate-800 dark:text-white text-sm')
+                            ui.button(icon='close', on_click=lambda: toggle_ai_panel()).props('flat round dense size=sm').classes('text-slate-500')
+                            
+                        # Chat history scroll area
+                        chat_history_area = ui.scroll_area().classes('w-full flex-grow min-h-0 pr-1')
+                        with chat_history_area:
+                            chat_history_container = ui.column().classes('w-full gap-2.5 p-1')
+                            with chat_history_container:
+                                ui.chat_message(
+                                    text='Hello! I am your AI SQL Copilot. I can write queries, explain them, or fix errors. Configure your API key in Settings to get started!',
+                                    name='Copilot',
+                                    avatar='https://api.dicebear.com/7.x/bottts/svg?seed=copilot',
+                                    sent=False
+                                )
+                                
+                        # Explainer & Action buttons
+                        with ui.row().classes('w-full gap-1 flex-none pt-1 border-t'):
+                            ui.button('Explain Code', icon='info', on_click=lambda: run_ai_action('explain')).props('outline dense size=xs color=primary').classes('flex-grow text-[10px] font-bold')
+                            ui.button('Fix Query', icon='build', on_click=lambda: run_ai_action('fix')).props('outline dense size=xs color=warning').classes('flex-grow text-[10px] font-bold')
+                            
+                        # Chat Input text area
+                        with ui.row().classes('w-full items-center gap-1.5 flex-none pt-1'):
+                            chat_input = ui.input(placeholder='Ask Copilot a question...').props('outlined dense').classes('flex-grow text-xs').style('font-size: 11px;')
+                            chat_input.on('keydown.enter', lambda: send_chat_message())
+                            ui.button(icon='send', on_click=lambda: send_chat_message()).props('elevated dense color=primary size=sm').classes('px-2.5')
+
+                    # Exit the split row slot context
+                    workspace_split_row.__exit__(None, None, None)
+
+                    # AI Assistant Helpers
+                    def toggle_ai_panel():
+                        ai_panel_col.visible = not ai_panel_col.visible
+                        ai_panel_col.update()
+                        app.storage.user['ai_panel_visible'] = ai_panel_col.visible
+                        if ai_panel_col.visible:
+                            ai_toggle_btn.props('unelevated color=indigo')
+                        else:
+                            ai_toggle_btn.props('flat color=primary')
+                        ai_toggle_btn.update()
+
+                    # Set initial button state based on storage
+                    if ai_panel_col.visible:
+                        ai_toggle_btn.props('unelevated color=indigo')
+                    else:
+                        ai_toggle_btn.props('flat color=primary')
+
+                    def get_active_schema_summary():
+                        try:
+                            active_db = 'main'
+                            try:
+                                active_db = explorer.conn.execute("SELECT current_database();").fetchone()[0]
+                            except Exception:
+                                pass
+                            
+                            cols_rows = explorer.conn.execute("""
+                                SELECT table_name, column_name, data_type 
+                                FROM duckdb_columns 
+                                WHERE database_name = ? AND schema_name = 'main'
+                                ORDER BY table_name, column_index;
+                            """, [active_db]).fetchall()
+                            
+                            if not cols_rows:
+                                return "No tables found in active schema."
+                                
+                            tables = {}
+                            for tbl, col, dtype in cols_rows:
+                                if tbl not in tables:
+                                    tables[tbl] = []
+                                tables[tbl].append(f"{col} ({dtype})")
+                                
+                            summary = []
+                            for tbl, cols in tables.items():
+                                summary.append(f"Table '{tbl}' columns: {', '.join(cols)}")
+                            return "\n".join(summary)
+                        except Exception as ex:
+                            return f"Error gathering schema context: {ex}"
+
+                    async def send_ai_request_stream(prompt):
+                        provider = APP_SETTINGS.get('ai_provider', 'none')
+                        api_key = APP_SETTINGS.get('ai_api_key', '')
+                        model = APP_SETTINGS.get('ai_model', 'gpt-4o')
+                        base_url = APP_SETTINGS.get('ai_base_url', '')
+                        
+                        if provider == 'none':
+                            yield "AI Copilot is currently disabled. Please configure your AI Provider in the Settings tab."
+                            return
+                            
+                        system_prompt = f"""You are an expert DuckDB SQL Co-Pilot inside DuckDB Data Studio.
+Here is the active database schema:
+{get_active_schema_summary()}
+
+Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep explanations concise and professional."""
+
+                        import httpx
+                        import json
+                        
+                        if provider in ('openai', 'custom', 'ollama'):
+                            url = "https://api.openai.com/v1/chat/completions"
+                            if base_url:
+                                url = base_url
+                            elif provider == 'ollama':
+                                url = "http://host.docker.internal:11434/v1"
+                                
+                            url = url.rstrip('/')
+                            if not url.endswith('/chat/completions'):
+                                if not url.endswith('/v1'):
+                                    url = url + '/v1'
+                                url = url + '/chat/completions'
+                                    
+                            headers = {
+                                "Content-Type": "application/json"
+                            }
+                            if api_key:
+                                headers["Authorization"] = f"Bearer {api_key}"
+                                
+                            payload = {
+                                "model": model,
+                                "messages": [
+                                    {"role": "system", "content": system_prompt},
+                                    {"role": "user", "content": prompt}
+                                ],
+                                "temperature": 0.2,
+                                "stream": True
+                            }
+                            
+                            try:
+                                async with httpx.AsyncClient(timeout=60.0) as client:
+                                    async with client.stream("POST", url, json=payload, headers=headers) as resp:
+                                        if resp.status_code == 200:
+                                            async for line in resp.aiter_lines():
+                                                line_clean = line.strip()
+                                                if not line_clean:
+                                                    continue
+                                                print(f"DEBUG: AI Stream Line: {line_clean}", flush=True)
+                                                if line_clean.startswith("data:"):
+                                                    data_str = line_clean[5:].strip()
+                                                    if data_str == "[DONE]":
+                                                        break
+                                                    try:
+                                                        chunk = json.loads(data_str)
+                                                        delta = chunk.get('choices', [{}])[0].get('delta', {})
+                                                        if 'content' in delta:
+                                                            yield delta['content']
+                                                    except Exception as parse_ex:
+                                                        print(f"DEBUG: JSON parse error: {parse_ex} on {data_str}", flush=True)
+                                        else:
+                                            err_text = await resp.aread()
+                                            yield f"Error from LLM Provider: {resp.status_code} - {err_text.decode(errors='ignore')}"
+                            except Exception as ex:
+                                yield f"Failed to connect to LLM Provider: {ex}"
+                                
+                        elif provider == 'anthropic':
+                            url = "https://api.anthropic.com/v1/messages"
+                            headers = {
+                                "x-api-key": api_key,
+                                "anthropic-version": "2023-06-01",
+                                "content-type": "application/json"
+                            }
+                            payload = {
+                                "model": model,
+                                "system": system_prompt,
+                                "messages": [
+                                    {"role": "user", "content": prompt}
+                                ],
+                                "max_tokens": 1024,
+                                "temperature": 0.2
+                            }
+                            try:
+                                async with httpx.AsyncClient(timeout=60.0) as client:
+                                    resp = await client.post(url, json=payload, headers=headers)
+                                    if resp.status_code == 200:
+                                        res_json = resp.json()
+                                        yield res_json['content'][0]['text']
+                                    else:
+                                        yield f"Error from Anthropic: {resp.status_code} - {resp.text}"
+                            except Exception as ex:
+                                yield f"Failed to connect to Anthropic: {ex}"
+                                
+                        else:
+                            yield "Unsupported AI Provider."
+
+                    async def send_chat_message():
+                        text = chat_input.value.strip()
+                        if not text:
+                            return
+                        chat_input.value = ''
+                        
+                        with chat_history_container:
+                            ui.chat_message(text=text, name='User', sent=True)
+                        with chat_history_container:
+                            typing_msg = ui.chat_message(text='', name='Copilot', sent=False)
+                            
+                        chat_history_area.scroll_to(percent=1.0)
+                        
+                        import time
+                        full_response = ""
+                        last_update = time.time()
+                        async for chunk in send_ai_request_stream(text):
+                            full_response += chunk
+                            now = time.time()
+                            if now - last_update > 0.15:
+                                typing_msg.text = full_response
+                                typing_msg.update()
+                                chat_history_area.scroll_to(percent=1.0)
+                                last_update = now
+                        
+                        typing_msg.text = full_response
+                        typing_msg.update()
+                        chat_history_area.scroll_to(percent=1.0)
+                        
+                    async def run_ai_action(action):
+                        sql = sql_editor.value.strip()
+                        if not sql:
+                            ui.notify('SQL editor is empty!', type='warning')
+                            return
+                            
+                        if not ai_panel_col.visible:
+                            toggle_ai_panel()
+                            
+                        prompt = ""
+                        if action == 'explain':
+                            prompt = f"Explain this SQL query in detail, explaining what it does step by step:\n\n```sql\n{sql}\n```"
+                        elif action == 'fix':
+                            error_text = status_label.text
+                            prompt = f"This SQL query failed to run with the following error/status:\n{error_text}\n\nHere is the SQL query:\n\n```sql\n{sql}\n```\n\nPlease suggest how to fix it."
+                            
+                        with chat_history_container:
+                            ui.chat_message(text=f"Requesting query {action}...", name='User', sent=True)
+                        with chat_history_container:
+                            typing_msg = ui.chat_message(text='', name='Copilot', sent=False)
+                            
+                        chat_history_area.scroll_to(percent=1.0)
+                        
+                        import time
+                        full_response = ""
+                        last_update = time.time()
+                        async for chunk in send_ai_request_stream(prompt):
+                            full_response += chunk
+                            now = time.time()
+                            if now - last_update > 0.15:
+                                typing_msg.text = full_response
+                                typing_msg.update()
+                                chat_history_area.scroll_to(percent=1.0)
+                                last_update = now
+                                
+                        typing_msg.text = full_response
+                        typing_msg.update()
+                        chat_history_area.scroll_to(percent=1.0)
+
     # --- CALLBACKS ENCAPSULATED INSIDE INDEX CLIENT CONTEXT ---
 
     def get_table_statistics(schema_name, table_name, database_name='main', attached_dbs=None):
         """Perform analytical scans on a table to compute card metrics and column statistics."""
         # Open a dedicated connection for this background thread to ensure thread safety
-        thread_conn = duckdb.connect(explorer.db_file)
+        thread_conn = duckdb.connect(explorer.db_file, config=DB_CONFIG)
         try:
             # Re-attach any databases that were attached in the main session
             try:
@@ -4513,9 +5377,146 @@ def index():
                 ui.notify(f"Inspection failed: {str(ex)}", type='negative')
                 ui.label(f"Error analyzing table: {str(ex)}").classes('text-rose-500 text-center py-8 w-full font-bold')
 
+    def generate_schema_mermaid(explorer_instance, active_db, filter_text=""):
+        try:
+            # 1. Fetch tables and columns in the active schema (main)
+            query_cols = """
+                SELECT table_name, column_name, data_type 
+                FROM duckdb_columns 
+                WHERE database_name = ? AND schema_name = 'main'
+                ORDER BY table_name, column_index;
+            """
+            cols_rows = explorer_instance.conn.execute(query_cols, [active_db]).fetchall()
+            if not cols_rows:
+                return "erDiagram\n    %% No tables found in the active schema."
+
+            # Group columns by table_name
+            tables = {}
+            for tbl, col, dtype in cols_rows:
+                # Apply text filter if provided
+                if filter_text:
+                    ft = filter_text.strip().lower()
+                    if ft not in tbl.lower() and ft not in col.lower():
+                        continue
+                if tbl not in tables:
+                    tables[tbl] = []
+                tables[tbl].append((col, dtype))
+
+            if not tables:
+                return "erDiagram\n    %% No tables match your filter criteria."
+
+            # 2. Fetch explicit constraints from the active database
+            constraints_list = []
+            try:
+                constraints_list = explorer_instance.conn.execute("SELECT table_name, constraint_type, constraint_text FROM duckdb_constraints").fetchall()
+            except Exception:
+                pass
+
+            # Identify primary keys per table
+            primary_keys = {}
+            for tbl, c_type, c_text in constraints_list:
+                if tbl not in tables:
+                    continue
+                if c_type == 'PRIMARY KEY':
+                    import re
+                    pk_match = re.search(r"PRIMARY KEY\((.*?)\)", c_text, re.IGNORECASE)
+                    if pk_match:
+                        cols = [c.strip().strip('"').strip('`') for c in pk_match.group(1).split(',')]
+                        if tbl not in primary_keys:
+                            primary_keys[tbl] = set()
+                        primary_keys[tbl].update(cols)
+
+            # 3. Build relations list
+            relations = []
+            
+            # Attempt to parse explicit FOREIGN KEY constraints if any
+            for tbl, c_type, c_text in constraints_list:
+                if tbl not in tables:
+                    continue
+                if c_type == 'FOREIGN KEY':
+                    import re
+                    fk_match = re.search(r"FOREIGN KEY\s*\((.*?)\)\s*REFERENCES\s*(\w+)\s*\((.*?)\)", c_text, re.IGNORECASE)
+                    if fk_match:
+                        fk_col = fk_match.group(1).strip().strip('"').strip('`')
+                        target_tbl = fk_match.group(2).strip()
+                        pk_col = fk_match.group(3).strip().strip('"').strip('`')
+                        if target_tbl in tables:
+                            relations.append((tbl, fk_col, target_tbl, pk_col, "explicit"))
+
+            # Apply heuristics
+            for tbl in tables.keys():
+                for col, dtype in tables[tbl]:
+                    col_lower = col.lower()
+                    if col_lower.endswith('_id') or col_lower.endswith('id'):
+                        prefix = col_lower[:-3] if col_lower.endswith('_id') else col_lower[:-2]
+                        if not prefix:
+                            continue
+                        
+                        # Normalize prefix for loose matching (e.g. ignoring underscores)
+                        norm_prefix = prefix.replace('_', '')
+                        candidate_norms = [norm_prefix, norm_prefix + 's', norm_prefix + 'es']
+                        if norm_prefix.endswith('y'):
+                            candidate_norms.append(norm_prefix[:-1] + 'ies')
+                        
+                        for target_tbl in tables.keys():
+                            if target_tbl == tbl:
+                                continue
+                            norm_target = target_tbl.replace('_', '')
+                            if norm_target in candidate_norms:
+                                target_columns = [c[0].lower() for c in tables[target_tbl]]
+                                target_pk = 'id'
+                                if 'id' in target_columns:
+                                    if not any(r[0] == tbl and r[1] == col and r[2] == target_tbl for r in relations):
+                                        relations.append((tbl, col, target_tbl, target_pk, "heuristic"))
+                                break
+
+            # Generate Mermaid String
+            lines = ["erDiagram"]
+
+            # Render Entities
+            for tbl, cols in tables.items():
+                lines.append(f"    {tbl} {{")
+                for col, dtype in cols:
+                    type_display = dtype.split('(')[0].lower()
+                    type_display = "".join([c if c.isalnum() else "_" for c in type_display])
+                    
+                    key_ann = ""
+                    is_pk = False
+                    is_fk = False
+                    
+                    if tbl in primary_keys and col in primary_keys[tbl]:
+                        is_pk = True
+                    elif col.lower() == 'id':
+                        is_pk = True
+                    
+                    if any(r[0] == tbl and r[1] == col for r in relations):
+                        is_fk = True
+
+                    if is_pk and is_fk:
+                        key_ann = "PK,FK"
+                    elif is_pk:
+                        key_ann = "PK"
+                    elif is_fk:
+                        key_ann = "FK"
+                        
+                    label_display = f" {key_ann}" if key_ann else ""
+                    lines.append(f"        {type_display} {col}{label_display}")
+                lines.append("    }")
+
+            # Render Relationships
+            for source_tbl, source_col, target_tbl, target_col, rel_type in relations:
+                lines.append(f"    {target_tbl} ||--o{{ {source_tbl} : \"{source_col}\"")
+
+            return "\n".join(lines)
+        except Exception as err_ex:
+            return f"erDiagram\n    %% Error generating diagram: {str(err_ex)}"
+
     def refresh_databases_list():
         """Fetch all attached databases from duckdb_databases and render them beautifully."""
         def detach_database_action(db_name):
+            if db_name in ('main', 'starter'):
+                ui.notify("Cannot detach the primary database!", type='warning')
+                return
             try:
                 explorer.conn.execute("USE main;")
                 explorer.conn.execute(f"DETACH {db_name};")
@@ -4549,7 +5550,7 @@ def index():
                         continue
                         
                     is_active = (db_name == active_db)
-                    is_primary = is_active
+                    is_primary = (db_name in ('main', 'starter'))
                     badge_color = 'indigo' if is_active else 'emerald'
                     
                     with ui.row().classes('w-full items-center justify-between no-wrap gap-1 py-0.5 px-1 rounded hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition'):
@@ -4576,7 +5577,10 @@ def index():
                                 ui.button(icon='edit', on_click=lambda db=db_name, path=db_path: open_rename_dialog(db, path)).props('flat dense round size=sm').classes('text-slate-400 hover:text-primary').tooltip('Rename connection alias')
                                 ui.button(icon='delete', on_click=lambda db=db_name: detach_database_action(db)).props('flat dense round size=sm').classes('text-slate-400 hover:text-rose-500').tooltip('Detach database')
                         else:
-                            ui.badge('Active', color=badge_color).classes('text-[8px] py-0.5 px-1')
+                            if is_active:
+                                ui.badge('Active', color=badge_color).classes('text-[8px] py-0.5 px-1')
+                            else:
+                                ui.badge('Primary', color='slate').classes('text-[8px] py-0.5 px-1')
         except Exception as e:
             print(f"Error refreshing databases list: {e}")
 
@@ -4766,6 +5770,7 @@ def index():
             refresh_extensions_grid()
         elif value == 'Database Tools':
             refresh_seeding_metrics()
+            populate_wizard_databases()
         elif value == 'API Endpoints':
             refresh_api_endpoints_grid()
         elif value == 'Scheduler':
@@ -4908,17 +5913,20 @@ def index():
             else:
                 return 'orange'
         
-        trans_badge.set_text(f"{tx_count:,} Rows")
-        trans_badge.props(f"color={get_color(tx_count)}")
-        trans_badge.update()
-        
-        cust_badge.set_text(f"{cust_count:,} Rows")
-        cust_badge.props(f"color={get_color(cust_count)}")
-        cust_badge.update()
-        
-        invent_badge.set_text(f"{inv_count:,} Rows")
-        invent_badge.props(f"color={get_color(inv_count)}")
-        invent_badge.update()
+        try:
+            trans_badge.set_text(f"{tx_count:,} Rows")
+            trans_badge.props(f"color={get_color(tx_count)}")
+            trans_badge.update()
+            
+            cust_badge.set_text(f"{cust_count:,} Rows")
+            cust_badge.props(f"color={get_color(cust_count)}")
+            cust_badge.update()
+            
+            invent_badge.set_text(f"{inv_count:,} Rows")
+            invent_badge.props(f"color={get_color(inv_count)}")
+            invent_badge.update()
+        except NameError:
+            pass
         
         # Dynamically populate export database select options
         try:
@@ -5193,6 +6201,14 @@ def index():
             num_customers = 100
             num_transactions = 1000
             density_label = "1,000"
+        elif density_value == '300000':
+            num_customers = 10000
+            num_transactions = 300000
+            density_label = "300,000"
+        elif density_value == '1500000':
+            num_customers = 50000
+            num_transactions = 1500000
+            density_label = "1,500,000"
         elif density_value == '15000':
             num_customers = 1000
             num_transactions = 15000
@@ -5227,6 +6243,731 @@ def index():
                 ui.notify("Failed to re-seed database. Check logs.", type='negative')
         except Exception as e:
             ui.notify(f"Error during re-seeding: {e}", type='negative')
+
+    def seed_car_rental_data(conn, num_customers=100, num_reservations=300):
+        from faker import Faker
+        import random
+        import uuid
+        from datetime import datetime, timedelta
+        fake = Faker()
+        Faker.seed(42)
+        
+        # Clear existing data just in case
+        conn.execute("DELETE FROM maintenance_logs; DELETE FROM payments; DELETE FROM reservations; DELETE FROM driver_licenses; DELETE FROM customers; DELETE FROM cars; DELETE FROM vehicle_profiles; DELETE FROM locations;")
+        
+        # 1. seed locations
+        locations = [
+            (1, "LAX Airport Hub", "9000 Airport Blvd", "Los Angeles", "CA", "90045", "USA", True),
+            (2, "SFO Airport Hub", "780 N McDonnell Rd", "San Francisco", "CA", "94128", "USA", True),
+            (3, "JFK Airport Hub", "Building 123 Federal Circle", "Jamaica", "NY", "11430", "USA", True),
+            (4, "Miami Downtown Hub", "200 SE 2nd Ave", "Miami", "FL", "33131", "USA", True),
+            (5, "Seattle Airport Hub", "3150 S 160th St", "SeaTac", "WA", "98188", "USA", True)
+        ]
+        conn.executemany("INSERT INTO locations VALUES (?, ?, ?, ?, ?, ?, ?, ?)", locations)
+        
+        # 2. seed vehicle_profiles
+        profiles = [
+            (1, "Economy", "Toyota", "Corolla", 2022, "gasoline", 5, 2, 45.0),
+            (2, "Economy", "Honda", "Civic", 2023, "gasoline", 5, 2, 48.0),
+            (3, "SUV", "Jeep", "Grand Cherokee", 2021, "gasoline", 5, 4, 85.0),
+            (4, "SUV", "Ford", "Explorer", 2022, "gasoline", 7, 5, 95.0),
+            (5, "Convertible", "Ford", "Mustang", 2023, "gasoline", 4, 2, 120.0),
+            (6, "Electric", "Tesla", "Model 3", 2023, "electric", 5, 3, 90.0),
+            (7, "Electric", "Tesla", "Model Y", 2022, "electric", 5, 4, 110.0)
+        ]
+        conn.executemany("INSERT INTO vehicle_profiles VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", profiles)
+        
+        # 3. seed cars
+        cars = []
+        for c_id in range(1, 31):
+            prof = random.choice(profiles)
+            loc = random.choice(locations)
+            vin = fake.unique.vin()
+            plate = fake.unique.license_plate()
+            color = random.choice(["Black", "White", "Silver", "Gray", "Red", "Blue"])
+            odom = random.randint(1000, 80000)
+            status = random.choice(["available", "available", "available", "rented", "maintenance"])
+            cars.append((c_id, prof[0], loc[0], vin, plate, color, odom, status, datetime.now()))
+        conn.executemany("INSERT INTO cars VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", cars)
+        
+        # 4. seed customers
+        customers = []
+        licenses = []
+        states = ["CA", "NY", "FL", "TX", "WA", "NV", "OR", "AZ"]
+        for cust_id in range(1, num_customers + 1):
+            fn = fake.first_name()
+            ln = fake.last_name()
+            email = f"{fn.lower()}.{ln.lower()}@example.com"
+            phone = fake.phone_number()
+            status = random.choices(["active", "suspended", "blacklisted"], weights=[95, 4, 1], k=1)[0]
+            created = datetime.now() - timedelta(days=random.randint(30, 700))
+            customers.append((cust_id, email, fn, ln, phone, status, created, created))
+            
+            # license
+            lic_num = fake.unique.bothify(text='??######')
+            exp = datetime.now() + timedelta(days=random.randint(30, 1500))
+            verified = random.choice([True, True, False])
+            ver_at = created + timedelta(days=2) if verified else None
+            licenses.append((cust_id, lic_num, random.choice(states), "USA", exp.date(), verified, ver_at))
+            
+        conn.executemany("INSERT INTO customers VALUES (?, ?, ?, ?, ?, ?, ?, ?)", customers)
+        conn.executemany("INSERT INTO driver_licenses VALUES (?, ?, ?, ?, ?, ?, ?)", licenses)
+        
+        # 5. seed reservations & payments
+        reservations = []
+        payments = []
+        pay_id = 1
+        
+        for r_idx in range(1, num_reservations + 1):
+            cust = random.choice(customers)
+            car = random.choice(cars)
+            pickup_loc = random.choice(locations)
+            dropoff_loc = random.choice(locations)
+            
+            # date logistics
+            pickup_time = datetime.now() - timedelta(days=random.randint(-15, 300))
+            duration = random.randint(1, 14)
+            dropoff_time = pickup_time + timedelta(days=duration)
+            
+            is_completed = pickup_time < datetime.now()
+            status = "completed" if is_completed else random.choice(["confirmed", "active", "cancelled"])
+            
+            actual_pickup = pickup_time if status in ["completed", "active"] else None
+            actual_dropoff = dropoff_time if status == "completed" else None
+            
+            # Find daily rate
+            daily_rate = [p[8] for p in profiles if p[0] == car[1]][0]
+            rental_cost = round(daily_rate * duration, 2)
+            ins_cost = round(random.choice([0.0, 15.0, 30.0]) * duration, 2)
+            late_fees = round(random.choice([0.0, 0.0, 50.0]) if status == "completed" else 0.0, 2)
+            tax = round((rental_cost + ins_cost) * 0.08, 2)
+            total = round(rental_cost + ins_cost + late_fees + tax, 2)
+            
+            reservations.append((
+                r_idx, uuid.uuid4(), cust[0], car[0],
+                pickup_loc[0], dropoff_loc[0],
+                pickup_time, dropoff_time,
+                actual_pickup, actual_dropoff,
+                status, rental_cost, ins_cost, late_fees, tax, total,
+                pickup_time - timedelta(days=random.randint(1, 10)),
+                datetime.now()
+            ))
+            
+            # Payment for reservations
+            if status != "cancelled":
+                p_status = "captured" if is_completed or status == "active" else "authorized"
+                payments.append((
+                    pay_id, r_idx, "Stripe", f"ch_{uuid.uuid4().hex[:12]}",
+                    total, "deposit", p_status, pickup_time - timedelta(days=1)
+                ))
+                pay_id += 1
+                
+        conn.executemany("INSERT INTO reservations VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", reservations)
+        conn.executemany("INSERT INTO payments VALUES (?, ?, ?, ?, ?, ?, ?, ?)", payments)
+        
+        # 6. seed maintenance logs
+        maintenance = []
+        for m_idx in range(1, 15):
+            car = random.choice(cars)
+            m_type = random.choice(["oil_change", "tire_rotation", "body_repair", "detailing"])
+            cost = random.choice([49.99, 89.99, 450.00, 120.00])
+            odom = random.randint(1000, 80000)
+            started = datetime.now() - timedelta(days=random.randint(10, 200))
+            completed = started + timedelta(hours=random.randint(2, 48))
+            maintenance.append((
+                m_idx, car[0], m_type, f"Scheduled {m_type}", cost, odom, started, completed, "Done"
+            ))
+        conn.executemany("INSERT INTO maintenance_logs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", maintenance)
+
+    def seed_e_commerce_data(conn, num_users=100, num_orders=300):
+        from faker import Faker
+        import random
+        import json
+        import uuid
+        from datetime import datetime, timedelta
+        fake = Faker()
+        Faker.seed(42)
+        
+        # Clear existing data just in case
+        conn.execute("DELETE FROM payments; DELETE FROM order_items; DELETE FROM orders; DELETE FROM product_images; DELETE FROM product_variants; DELETE FROM products; DELETE FROM categories; DELETE FROM user_addresses; DELETE FROM users;")
+        
+        # 1. seed categories
+        categories = [
+            (1, None, "Electronics", "electronics", "Gadgets and devices", True),
+            (2, None, "Apparel", "apparel", "Clothing and fashion", True),
+            (3, 1, "Smartphones", "smartphones", "Mobile phones", True),
+            (4, 1, "Audio", "audio", "Headphones and speakers", True),
+            (5, 2, "Menswear", "menswear", "Men's clothing", True)
+        ]
+        conn.executemany("INSERT INTO categories VALUES (?, ?, ?, ?, ?, ?)", categories)
+        
+        # 2. seed products
+        products = [
+            (1, 3, "iPhone 15 Pro", "iphone-15-pro", "Latest Apple flagship", "Apple", True, datetime.now(), datetime.now()),
+            (2, 3, "Galaxy S24 Ultra", "galaxy-s24-ultra", "Premium Android device", "Samsung", True, datetime.now(), datetime.now()),
+            (3, 4, "WH-1000XM5", "wh-1000xm5", "Top noise-cancelling headphones", "Sony", True, datetime.now(), datetime.now()),
+            (4, 5, "Slim Fit Chinos", "slim-fit-chinos", "Comfortable cotton trousers", "Uniqlo", True, datetime.now(), datetime.now()),
+            (5, 4, "Eco Speaker", "eco-speaker", "Portable bluetooth speaker", "JBL", True, datetime.now(), datetime.now())
+        ]
+        conn.executemany("INSERT INTO products VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", products)
+        
+        # 3. seed variants
+        variants = [
+            (1, 1, "IPH15P-128-BLK", 999.0, 1099.0, 0.187, json.dumps({"color": "Black", "storage": "128GB"}), datetime.now(), datetime.now()),
+            (2, 1, "IPH15P-256-SLV", 1099.0, None, 0.187, json.dumps({"color": "Silver", "storage": "256GB"}), datetime.now(), datetime.now()),
+            (3, 2, "GALS24U-256-GRY", 1199.0, 1299.0, 0.232, json.dumps({"color": "Titanium Gray", "storage": "256GB"}), datetime.now(), datetime.now()),
+            (4, 3, "SONYXM5-BLK", 348.0, 399.0, 0.250, json.dumps({"color": "Black"}), datetime.now(), datetime.now()),
+            (5, 4, "CHINO-32-BEG", 39.90, None, 0.400, json.dumps({"size": "32", "color": "Beige"}), datetime.now(), datetime.now())
+        ]
+        conn.executemany("INSERT INTO product_variants VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)", variants)
+        
+        # 4. seed product_images
+        images = [
+            (1, 1, 1, "https://example.com/images/iphone15-blk.jpg", "iPhone 15 Pro Black", 1, True),
+            (2, 2, 3, "https://example.com/images/s24u-gry.jpg", "Galaxy S24 Ultra Gray", 1, True),
+            (3, 3, 4, "https://example.com/images/sony-xm5.jpg", "Sony WH-1000XM5 Black", 1, True)
+        ]
+        conn.executemany("INSERT INTO product_images VALUES (?, ?, ?, ?, ?, ?, ?)", images)
+        
+        # 5. seed users
+        users = []
+        addresses = []
+        addr_id = 1
+        
+        for u_id in range(1, num_users + 1):
+            fn = fake.first_name()
+            ln = fake.last_name()
+            email = f"{fn.lower()}.{ln.lower()}@example.com"
+            phone = fake.phone_number()
+            active = True
+            created = datetime.now() - timedelta(days=random.randint(15, 600))
+            users.append((u_id, email, fn, ln, phone, active, created, created))
+            
+            # shipping address
+            addresses.append((
+                addr_id, u_id, "shipping", True,
+                fake.street_address(), None, fake.city(), fake.state(), fake.zipcode(), "USA", created
+            ))
+            addr_id += 1
+            
+            # optional billing address
+            if random.choice([True, False]):
+                addresses.append((
+                    addr_id, u_id, "billing", False,
+                    fake.street_address(), None, fake.city(), fake.state(), fake.zipcode(), "USA", created
+                ))
+                addr_id += 1
+                
+        conn.executemany("INSERT INTO users VALUES (?, ?, ?, ?, ?, ?, ?, ?)", users)
+        conn.executemany("INSERT INTO user_addresses VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", addresses)
+        
+        # 6. seed orders & order items & payments
+        orders = []
+        items = []
+        payments = []
+        item_id = 1
+        pay_id = 1
+        
+        for o_id in range(1, num_orders + 1):
+            user = random.choice(users)
+            user_addrs = [a for a in addresses if a[1] == user[0]]
+            ship_addr = user_addrs[0] if user_addrs else None
+            bill_addr = user_addrs[-1] if user_addrs else None
+            
+            created = datetime.now() - timedelta(days=random.randint(1, 200))
+            o_status = random.choice(["completed", "completed", "completed", "shipped", "pending", "cancelled"])
+            
+            # Items selection
+            num_items = random.choices([1, 2, 3], weights=[70, 20, 10], k=1)[0]
+            selected_vars = random.sample(variants, num_items)
+            
+            subtotal = 0.0
+            order_items_to_add = []
+            for var in selected_vars:
+                qty = random.choice([1, 1, 2])
+                price = var[3]
+                subtotal += price * qty
+                
+                order_items_to_add.append((
+                    item_id, o_id, var[0], var[2], price, qty
+                ))
+                item_id += 1
+                
+            ship_cost = 0.0 if subtotal > 100.0 else 5.99
+            tax = round(subtotal * 0.08, 2)
+            discount = round(subtotal * 0.1 if random.choice([True, False, False]) else 0.0, 2)
+            total = round(subtotal + ship_cost + tax - discount, 2)
+            
+            orders.append((
+                o_id, f"ORD-{100000 + o_id}", user[0], o_status,
+                subtotal, ship_cost, tax, discount, total,
+                ship_addr[0] if ship_addr else None, bill_addr[0] if bill_addr else None,
+                created, datetime.now()
+            ))
+            
+            items.extend(order_items_to_add)
+            
+            if o_status != "cancelled":
+                p_status = "captured" if o_status in ["completed", "shipped"] else "pending"
+                payments.append((
+                    pay_id, o_id, "Stripe", f"ch_{uuid.uuid4().hex[:12]}" if p_status == "captured" else "",
+                    total, p_status, created
+                ))
+                pay_id += 1
+                
+        conn.executemany("INSERT INTO orders VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", orders)
+        conn.executemany("INSERT INTO order_items VALUES (?, ?, ?, ?, ?, ?)", items)
+        conn.executemany("INSERT INTO payments VALUES (?, ?, ?, ?, ?, ?, ?)", payments)
+
+    def seed_smart_home_data(conn, num_devices=100, num_readings=500):
+        from faker import Faker
+        import random
+        from datetime import datetime, timedelta
+        fake = Faker()
+        Faker.seed(42)
+        
+        # Clear existing data just in case
+        conn.execute("DELETE FROM device_events; DELETE FROM energy_consumption; DELETE FROM thermostat_readings; DELETE FROM devices; DELETE FROM rooms;")
+        
+        # 1. seed rooms
+        rooms = [
+            (1, "Living Room", 1, "Living Zone"),
+            (2, "Kitchen", 1, "Living Zone"),
+            (3, "Master Bedroom", 2, "Sleeping Zone"),
+            (4, "Guest Bedroom", 2, "Sleeping Zone"),
+            (5, "Basement Office", 0, "Basement"),
+            (6, "Garage", 1, "Basement")
+        ]
+        conn.executemany("INSERT INTO rooms VALUES (?, ?, ?, ?)", rooms)
+        
+        # 2. seed devices
+        device_types = ["Thermostat", "Smart Plug", "Light Switch", "Camera"]
+        models = {
+            "Thermostat": ["Nest Learning v3", "Ecobee SmartPremium"],
+            "Smart Plug": ["Kasa EP10", "Wemo SmartPlug"],
+            "Light Switch": ["Lutron Caseta", "Philips Hue Switch"],
+            "Camera": ["Ring Indoor Cam", "Nest Cam IQ"]
+        }
+        
+        devices = []
+        for d_id in range(1, num_devices + 1):
+            room = random.choice(rooms)
+            d_type = random.choice(device_types)
+            model = random.choice(models[d_type])
+            firmware = f"v{random.randint(1, 4)}.{random.randint(0, 9)}.{random.randint(0, 99)}"
+            installed = datetime.now() - timedelta(days=random.randint(10, 300))
+            online = random.choice([True, True, True, False])
+            devices.append((d_id, room[0], d_type, model, firmware, installed, online))
+            
+        conn.executemany("INSERT INTO devices VALUES (?, ?, ?, ?, ?, ?, ?)", devices)
+        
+        # 3. seed readings and energy
+        thermostats = [d for d in devices if d[2] == "Thermostat"]
+        plugs_and_switches = [d for d in devices if d[2] in ["Smart Plug", "Light Switch"]]
+        all_online_devices = [d for d in devices if d[6]]
+        
+        if not thermostats:
+            thermostats = [devices[0]]
+            
+        thermostat_readings = []
+        energy_consumption = []
+        device_events = []
+        
+        start_time = datetime.now() - timedelta(days=30)
+        
+        # Generate readings
+        for r_idx in range(1, num_readings + 1):
+            timestamp = start_time + timedelta(minutes=random.randint(1, 30 * 24 * 60))
+            
+            # Thermostat reading
+            t_dev = random.choice(thermostats)
+            target = random.choice([20.0, 21.0, 22.0, 23.5])
+            actual = target + random.uniform(-2.5, 2.5)
+            humidity = random.uniform(35.0, 65.0)
+            hvac = random.choice(['off', 'heating', 'cooling'])
+            thermostat_readings.append((timestamp, t_dev[0], target, actual, humidity, hvac))
+            
+            # Energy consumption
+            e_dev = random.choice(plugs_and_switches) if plugs_and_switches else random.choice(devices)
+            watts = random.uniform(5.0, 1500.0) if e_dev[2] == "Smart Plug" else random.uniform(2.0, 60.0)
+            voltage = random.choice([118.5, 120.0, 121.2])
+            energy_consumption.append((timestamp, e_dev[0], watts, voltage))
+            
+            # Device events
+            if r_idx % 10 == 0:
+                ev_dev = random.choice(all_online_devices) if all_online_devices else random.choice(devices)
+                ev_type = random.choice(["connection_drop", "firmware_updated", "motion_detected"])
+                severity = "warning" if ev_type == "connection_drop" else ("info" if ev_type == "firmware_updated" else "info")
+                details = f"Device detected: {ev_type}"
+                device_events.append((timestamp, ev_dev[0], ev_type, severity, details))
+                
+        conn.executemany("INSERT INTO thermostat_readings VALUES (?, ?, ?, ?, ?, ?)", thermostat_readings)
+        conn.executemany("INSERT INTO energy_consumption VALUES (?, ?, ?, ?)", energy_consumption)
+        if device_events:
+            conn.executemany("INSERT INTO device_events VALUES (?, ?, ?, ?, ?)", device_events)
+
+    def seed_logistics_data(conn, num_couriers=100, num_events=500):
+        from faker import Faker
+        import random
+        from datetime import datetime, timedelta
+        fake = Faker()
+        Faker.seed(42)
+        
+        # Clear existing data
+        conn.execute("DELETE FROM delivery_feedback; DELETE FROM tracking_events; DELETE FROM shipments; DELETE FROM couriers; DELETE FROM depots;")
+        
+        # 1. seed depots
+        depots = [
+            (1, "North Regional Sorting Hub", "Amsterdam", 20000),
+            (2, "South Regional Sorting Hub", "Eindhoven", 15000),
+            (3, "West Port Distribution Center", "Rotterdam", 35000),
+            (4, "East Border Gateway", "Enschede", 12000),
+            (5, "Central Hub Utrecht", "Utrecht", 50000)
+        ]
+        conn.executemany("INSERT INTO depots VALUES (?, ?, ?, ?)", depots)
+        
+        # 2. seed couriers
+        v_types = ["Electric Van", "Heavy Truck", "Bicycle"]
+        couriers = []
+        for c_id in range(1, num_couriers + 1):
+            name = fake.name()
+            v_type = random.choice(v_types)
+            status = random.choices(["active", "on_leave"], weights=[95, 5], k=1)[0]
+            couriers.append((c_id, name, v_type, status))
+        conn.executemany("INSERT INTO couriers VALUES (?, ?, ?, ?)", couriers)
+        
+        # 3. seed shipments
+        num_shipments = max(10, num_events // 3)
+        shipments = []
+        cities = ["Amsterdam", "Rotterdam", "Utrecht", "The Hague", "Eindhoven", "Groningen", "Maastricht"]
+        for s_id in range(1, num_shipments + 1):
+            sender = fake.company()
+            city = random.choice(cities)
+            weight = round(random.uniform(0.5, 25.0) if random.choice([True, True, False]) else random.uniform(25.0, 500.0), 2)
+            created = datetime.now() - timedelta(days=random.randint(1, 45))
+            status = random.choices(["delivered", "out_for_delivery", "sorted", "failed"], weights=[85, 8, 5, 2], k=1)[0]
+            shipments.append((s_id, sender, city, weight, status, created))
+        conn.executemany("INSERT INTO shipments VALUES (?, ?, ?, ?, ?, ?)", shipments)
+        
+        # 4. seed tracking events
+        tracking_events = []
+        feedback = []
+        te_id = 1
+        
+        for s in shipments:
+            s_id, _, _, _, status, created = s
+            depot = random.choice(depots)
+            courier = random.choice(couriers)
+            
+            # Event 1: Created
+            t1 = created + timedelta(minutes=random.randint(10, 120))
+            tracking_events.append((te_id, s_id, None, None, t1, "manifest_received", "Shipment details uploaded by sender"))
+            te_id += 1
+            
+            # Event 2: Arrived at Depot
+            t2 = t1 + timedelta(minutes=random.randint(60, 360))
+            tracking_events.append((te_id, s_id, None, depot[0], t2, "arrived_at_depot", f"Arrived at sorting hub {depot[1]}"))
+            te_id += 1
+            
+            # Event 3: Departed Depot
+            t3 = t2 + timedelta(minutes=random.randint(120, 720))
+            tracking_events.append((te_id, s_id, courier[0], depot[0], t3, "departed_depot", f"Departed sorting hub {depot[1]}"))
+            te_id += 1
+            
+            # Event 4: Terminal Event
+            t4 = t3 + timedelta(minutes=random.randint(30, 240))
+            if status == "delivered":
+                tracking_events.append((te_id, s_id, courier[0], None, t4, "delivered", f"Delivered to recipient by courier {courier[1]}"))
+                te_id += 1
+                
+                # Feedback
+                if random.choice([True, False, False]):
+                    rating = random.choices([5, 4, 3, 2, 1], weights=[70, 15, 10, 3, 2], k=1)[0]
+                    comments = fake.sentence() if rating < 4 else "Great service!"
+                    feedback.append((s_id, rating, comments, t4 + timedelta(minutes=random.randint(5, 120))))
+            elif status == "failed":
+                tracking_events.append((te_id, s_id, courier[0], None, t4, "delivery_attempt_failed", "Recipient not home, delivery re-scheduled"))
+                te_id += 1
+                
+        conn.executemany("INSERT INTO tracking_events VALUES (?, ?, ?, ?, ?, ?, ?)", tracking_events)
+        if feedback:
+            conn.executemany("INSERT INTO delivery_feedback VALUES (?, ?, ?, ?)", feedback)
+
+    def seed_clickstream_data(conn, num_visitors=100, num_events=500):
+        from faker import Faker
+        import random
+        import uuid
+        from datetime import datetime, timedelta
+        fake = Faker()
+        Faker.seed(42)
+        
+        # Clear existing data
+        conn.execute("DELETE FROM checkout_events; DELETE FROM campaign_clicks; DELETE FROM page_views; DELETE FROM sessions; DELETE FROM visitors;")
+        
+        # 1. seed visitors
+        sources = ["Organic Search", "Google Ads", "Newsletter", "Direct", "Social Media"]
+        countries = ["NL", "DE", "BE", "FR", "UK", "US"]
+        visitors = []
+        campaign_clicks = []
+        cc_id = 1
+        
+        for v_id in range(1, num_visitors + 1):
+            cookie = f"cookie_{uuid.uuid4().hex[:12]}"
+            source = random.choice(sources)
+            country = random.choice(countries)
+            created = datetime.now() - timedelta(days=random.randint(10, 60))
+            visitors.append((v_id, cookie, source, country, created))
+            
+            # Optional campaign click
+            if source in ["Google Ads", "Newsletter", "Social Media"] and random.choice([True, False]):
+                campaign = f"Promo_{random.choice(['Summer', 'BlackFriday', 'Spring'])}_2026"
+                medium = 'cpc' if source == "Google Ads" else ('email' if source == "Newsletter" else 'social')
+                campaign_clicks.append((cc_id, v_id, campaign, medium, created - timedelta(minutes=random.randint(1, 30))))
+                cc_id += 1
+                
+        conn.executemany("INSERT INTO visitors VALUES (?, ?, ?, ?, ?)", visitors)
+        if campaign_clicks:
+            conn.executemany("INSERT INTO campaign_clicks VALUES (?, ?, ?, ?, ?)", campaign_clicks)
+            
+        # 2. seed sessions
+        browsers = ["Chrome", "Firefox", "Safari", "Edge"]
+        sessions = []
+        s_idx = 1
+        for v in visitors:
+            v_id, _, _, _, v_created = v
+            # Some visitors have multiple sessions
+            for s_count in range(random.choices([1, 2], weights=[80, 20], k=1)[0]):
+                started = v_created + timedelta(days=s_count * random.randint(1, 5), hours=random.randint(0, 23))
+                token = f"sess_{uuid.uuid4().hex[:16]}"
+                ip = fake.ipv4()
+                browser = random.choice(browsers)
+                sessions.append((s_idx, v_id, token, ip, browser, started))
+                s_idx += 1
+        conn.executemany("INSERT INTO sessions VALUES (?, ?, ?, ?, ?, ?)", sessions)
+        
+        # 3. seed page views and checkout events
+        page_views = []
+        checkout_events = []
+        pv_id = 1
+        co_id = 1
+        
+        paths = ["/home", "/categories", "/products/details", "/cart", "/checkout"]
+        
+        for sess in sessions:
+            sess_id, _, _, _, _, s_time = sess
+            
+            # Generate click path for the session
+            # Bounce sessions only have 1 page view
+            is_bounce = random.choice([True, False, False, False]) # 25% bounce rate
+            view_count = 1 if is_bounce else random.randint(2, 6)
+            
+            current_time = s_time
+            for page_idx in range(view_count):
+                url = paths[page_idx] if page_idx < len(paths) else random.choice(paths)
+                load_time = random.choices([random.randint(100, 500), random.randint(500, 1500), random.randint(1500, 4000)], weights=[70, 25, 5], k=1)[0]
+                referrer = "https://google.com" if page_idx == 0 else f"https://mystore.localhost{paths[page_idx-1]}"
+                page_views.append((pv_id, sess_id, url, referrer, load_time, current_time))
+                pv_id += 1
+                
+                # Advance time between pages
+                current_time += timedelta(seconds=random.randint(10, 300))
+                
+            # If session reached checkout page, generate checkout events
+            if not is_bounce and view_count >= 4:
+                steps = ['1_view_cart', '2_shipping', '3_payment', '4_success']
+                cart_value = round(random.uniform(15.99, 450.0), 2)
+                
+                # Determine how far they got in the checkout funnel
+                funnel_depth = random.choices([1, 2, 3, 4], weights=[10, 15, 15, 60], k=1)[0]
+                
+                for step_idx in range(funnel_depth):
+                    step = steps[step_idx]
+                    success = (step_idx == funnel_depth - 1) and (funnel_depth == 4)
+                    checkout_events.append((
+                        co_id, sess_id, step, cart_value, success, current_time
+                    ))
+                    co_id += 1
+                    current_time += timedelta(seconds=random.randint(30, 120))
+                    
+        conn.executemany("INSERT INTO page_views VALUES (?, ?, ?, ?, ?, ?)", page_views)
+        if checkout_events:
+            conn.executemany("INSERT INTO checkout_events VALUES (?, ?, ?, ?, ?, ?)", checkout_events)
+
+    async def trigger_template_seed(template_path, density_value='6500'):
+        """Generates a new duckdb database with a sanitised name based on the template file name, attaches it, and populates it."""
+        if not template_path or not os.path.exists(template_path):
+            ui.notify("Template file not found.", type='negative')
+            return
+            
+        import re
+        # Sanitise DB name
+        base_name = os.path.splitext(os.path.basename(template_path))[0]
+        if base_name.startswith('seed_'):
+            base_name = base_name[5:]
+            
+        # Parse database name from the SQL file if specified as a comment
+        db_name_override = None
+        if os.path.exists(template_path):
+            try:
+                with open(template_path, 'r', encoding='utf-8') as f:
+                    for _ in range(15):
+                        line = f.readline()
+                        if not line:
+                            break
+                        match = re.search(r'--\s*(?:Database Name|Database|DB Name|DB):\s*([a-zA-Z0-9_]+)', line, re.IGNORECASE)
+                        if match:
+                            db_name_override = match.group(1).strip()
+                            break
+            except Exception as e:
+                print(f"DEBUG: Failed to read template for name override: {e}", flush=True)
+
+        if db_name_override:
+            sanitised_name = db_name_override
+        else:
+            # Convert camelCase/PascalCase or dashes to snake_case
+            name_mappings = {
+                'noaaweather': 'noaa_weather',
+                'nyctaxi': 'nyc_taxi',
+                'githubarchive': 'github_archive',
+                'openaq': 'open_aq',
+                'ns-railway': 'ns_railway',
+                'ns_railway': 'ns_railway',
+            }
+            
+            normalized = base_name.lower().replace('_', '').replace('-', '')
+            if normalized in name_mappings:
+                sanitised_name = name_mappings[normalized]
+            else:
+                s1 = re.sub(r'(.)([A-Z][a-z]+)', r'\1_\2', base_name)
+                sanitised_name = re.sub(r'([a-z0-9])([A-Z])', r'\1_\2', s1).lower().replace('-', '_')
+                sanitised_name = re.sub(r'_+', '_', sanitised_name).strip('_')
+        
+        # Determine database path
+        if os.path.exists('/databases') and os.path.isdir('/databases'):
+            db_path = f"/databases/{sanitised_name}.duckdb"
+        else:
+            if not os.path.exists('databases'):
+                os.makedirs('databases', exist_ok=True)
+            db_path = f"databases/{sanitised_name}.duckdb"
+            
+        # Scale parameters according to chosen density
+        if density_value == '1000':
+            num_entities = 50
+            num_facts = 150
+            density_label = "Light"
+        elif density_value == '300000':
+            num_entities = 10000
+            num_facts = 300000
+            density_label = "Super Dense"
+        elif density_value == '1500000':
+            num_entities = 50000
+            num_facts = 1500000
+            density_label = "Ultra Dense"
+        elif density_value == '15000':
+            num_entities = 500
+            num_facts = 2000
+            density_label = "Dense"
+        else:
+            num_entities = 150
+            num_facts = 500
+            density_label = "Standard"
+
+        ui.notify(f"Creating and seeding database '{sanitised_name}' ({density_label} density)... Please wait.", type='info')
+        
+        loop = asyncio.get_event_loop()
+        def do_template_seeding():
+            with open(template_path, 'r', encoding='utf-8') as f:
+                full_content = f.read()
+                
+            parts = full_content.split("-- === SNIPPETS ===")
+            schema_sql = parts[0]
+            
+            # To ensure a clean slate and avoid "Table already exists" errors on re-seeding,
+            # detach the database and delete the file if they already exist.
+            attached_dbs = [row[0] for row in explorer.conn.execute("PRAGMA show_databases;").fetchall()]
+            if sanitised_name in attached_dbs:
+                try:
+                    explorer.conn.execute(f"DETACH {sanitised_name};")
+                except Exception as ex:
+                    print(f"DEBUG: Failed to detach {sanitised_name} during cleanup: {ex}", flush=True)
+            
+            if os.path.exists(db_path):
+                try:
+                    os.remove(db_path)
+                except Exception as ex:
+                    print(f"DEBUG: Failed to remove old database file {db_path}: {ex}", flush=True)
+            
+            # Now attach the fresh database file
+            attach_sql = f"ATTACH '{db_path}' AS {sanitised_name};"
+            explorer.conn.execute(attach_sql)
+                
+            # Save it to config
+            save_attached_database(sanitised_name, 'duckdb', db_path)
+            
+            # Run the seeding SQL inside the new database
+            current_db_res = explorer.conn.execute("SELECT current_database();").fetchone()
+            prev_db = current_db_res[0] if current_db_res else 'main'
+            
+            explorer.conn.execute(f"USE {sanitised_name};")
+            try:
+                explorer.conn.execute(schema_sql)
+                
+                # Check and run custom python mock data seeding with scaled parameters
+                if sanitised_name == 'car_rental':
+                    seed_car_rental_data(explorer.conn, num_customers=num_entities, num_reservations=num_facts)
+                elif sanitised_name == 'e_commerce':
+                    seed_e_commerce_data(explorer.conn, num_users=num_entities, num_orders=num_facts)
+                elif sanitised_name == 'smart_home':
+                    seed_smart_home_data(explorer.conn, num_devices=num_entities, num_readings=num_facts)
+                elif sanitised_name == 'logistics':
+                    seed_logistics_data(explorer.conn, num_couriers=num_entities, num_events=num_facts)
+                elif sanitised_name == 'clickstream':
+                    seed_clickstream_data(explorer.conn, num_visitors=num_entities, num_events=num_facts)
+            finally:
+                explorer.conn.execute(f"USE {prev_db};")
+                
+            # Parse and deploy snippets if present
+            if len(parts) > 1:
+                import re
+                import uuid
+                snippets_part = parts[1]
+                snippet_blocks = re.findall(r'-- === SNIPPET START ===(.*?)-- === SNIPPET END ===', snippets_part, re.DOTALL)
+                for block in snippet_blocks:
+                    lines = block.strip().split('\n')
+                    name = "Unnamed Snippet"
+                    description = ""
+                    sql_lines = []
+                    
+                    for line in lines:
+                        if line.startswith('-- Name:'):
+                            name = line[8:].strip()
+                        elif line.startswith('-- Description:'):
+                            description = line[15:].strip()
+                        else:
+                            sql_lines.append(line)
+                            
+                    sql_code = '\n'.join(sql_lines).strip()
+                    
+                    # Store in _duckdb_studio_saved_queries
+                    try:
+                        config_db.execute("DELETE FROM _duckdb_studio_saved_queries WHERE name = ?", (name,))
+                        config_db.execute(
+                            "INSERT INTO _duckdb_studio_saved_queries (id, name, description, sql_code, created_at, category) VALUES (?, ?, ?, ?, ?, ?)",
+                            (str(uuid.uuid4()), name, description, sql_code, datetime.now().isoformat(), "Analytical")
+                        )
+                    except Exception as ex_db:
+                        print(f"DEBUG: Failed to save template snippet to SQLite: {ex_db}", flush=True)
+                
+        try:
+            await loop.run_in_executor(None, do_template_seeding)
+            ui.notify(f"Successfully created, attached, and seeded database '{sanitised_name}' ({density_label} density)!", type='positive')
+            refresh_schema_tree()
+            try:
+                refresh_saved_queries_list()
+            except Exception:
+                pass
+        except Exception as e:
+            ui.notify(f"Failed to seed database: {e}", type='negative', duration=7)
 
 
     def format_sql_query():
@@ -5271,6 +7012,24 @@ def index():
             ui.notify('Please write a query first!', type='warning')
             return
             
+        # Prevent detaching, renaming, or overriding primary database from within SQL Editor
+        import re
+        sql_clean = sql.strip().lower()
+        if re.search(r"\bdetach\s+(?:database\s+)?['\"]?(?:main|starter)['\"]?\b", sql_clean):
+            ui.notify("Security Policy: Detaching the primary database is not allowed!", type='negative')
+            status_label.text = "Error: Detaching primary database is blocked by policy."
+            return
+            
+        if re.search(r"\balter\s+database\s+['\"]?(?:main|starter)['\"]?\s+rename\s+to\b", sql_clean):
+            ui.notify("Security Policy: Renaming the primary database is not allowed!", type='negative')
+            status_label.text = "Error: Renaming primary database is blocked by policy."
+            return
+
+        if re.search(r"\battach\s+.*?\bas\s+['\"]?(?:main|starter)['\"]?\b", sql_clean):
+            ui.notify("Security Policy: Overriding the 'main' or 'starter' database name is not allowed!", type='negative')
+            status_label.text = "Error: Overriding primary database name is blocked by policy."
+            return
+            
         # Append to query history if it's new
         if sql not in query_history:
             query_history.append(sql)
@@ -5303,15 +7062,29 @@ def index():
                 data_path = data_match.group(1).strip()
                 os.makedirs(data_path, exist_ok=True)
         
+        # Resolve parameters if any
+        params = detect_parameters(sql)
+        if params:
+            empty_params = [p for p in params if p not in parameter_input_fields or parameter_input_fields[p].value is None or str(parameter_input_fields[p].value).strip() == ""]
+            if empty_params:
+                ui.notify(f"Please fill in all query parameters: {', '.join(empty_params)}", type='warning')
+                status_label.text = "Execution halted: Missing parameter values."
+                return
+            param_values = {p: parameter_input_fields[p].value for p in params}
+            sql_exec = substitute_sql_parameters(sql, param_values)
+        else:
+            sql_exec = sql
+        print(f"DEBUG EXECUTING SQL: {sql_exec}", flush=True)
+
         # Run the query in DuckDB
-        res = explorer.query(sql)
+        res = explorer.query(sql_exec)
         
         # Track query latency for Telemetry Dashboard
         import datetime
         query_latency_history.append({
             'timestamp': datetime.datetime.now().strftime('%H:%M:%S'),
             'latency': res.get('duration_ms', 0),
-            'query': sql[:40] + ('...' if len(sql) > 40 else ''),
+            'query': sql_exec[:40] + ('...' if len(sql_exec) > 40 else ''),
             'success': 'error' not in res
         })
         if len(query_latency_history) > 15:
@@ -5723,11 +7496,18 @@ def index():
 
     def run_profiler_query():
         """Execute the EXPLAIN or EXPLAIN ANALYZE statement in DuckDB and parse/render the ASCII visual plan tree."""
-        sql = sql_editor.value.strip()
-        if not sql:
+        sql_raw = sql_editor.value.strip()
+        if not sql_raw:
             ui.notify('Please write a query first!', type='warning')
             return
             
+        params = detect_parameters(sql_raw)
+        if params:
+            param_values = {p: parameter_input_fields[p].value for p in params if p in parameter_input_fields}
+            sql = substitute_sql_parameters(sql_raw, param_values)
+        else:
+            sql = sql_raw
+        
         mode_val = profile_mode_select.value
         is_analyze = "ANALYZE" in mode_val or "Execution Profile" in mode_val
         
@@ -5889,375 +7669,392 @@ def index():
 
     # --- DATA INGESTION WIZARD DIALOG ---
     
-    async def handle_ingest_upload(e):
+    current_uploaded_path = ""
+    current_file_ext = ""
+    column_mapping_rows = []
+
+    async def handle_upload_and_sniff(e):
+        nonlocal current_uploaded_path, current_file_ext
+        
+        temp_dir = 'scratch'
+        os.makedirs(temp_dir, exist_ok=True)
+        current_file_ext = os.path.splitext(e.file.name)[1].lower()
+        current_uploaded_path = os.path.join(temp_dir, f"temp_upload_{int(time.time())}{current_file_ext}")
+        
+        try:
+            # Read file bytes and write to temp path
+            content_bytes = await e.file.read()
+            with open(current_uploaded_path, 'wb') as f:
+                f.write(content_bytes)
+            
+            # Sniff CSV options or detect schemas
+            if current_file_ext == '.parquet':
+                sniff_query = f"DESCRIBE SELECT * FROM read_parquet('{current_uploaded_path}') LIMIT 0;"
+                preview_query = f"SELECT * FROM read_parquet('{current_uploaded_path}') LIMIT 5;"
+                csv_options_expansion.visible = False
+            elif current_file_ext in ('.json', '.ndjson'):
+                sniff_query = f"DESCRIBE SELECT * FROM read_json_auto('{current_uploaded_path}') LIMIT 0;"
+                preview_query = f"SELECT * FROM read_json_auto('{current_uploaded_path}') LIMIT 5;"
+                csv_options_expansion.visible = False
+            else:
+                sniff_query = f"DESCRIBE SELECT * FROM read_csv_auto('{current_uploaded_path}') LIMIT 0;"
+                preview_query = f"SELECT * FROM read_csv_auto('{current_uploaded_path}') LIMIT 5;"
+                csv_options_expansion.visible = True
+            csv_options_expansion.update()
+            
+            # Retrieve column metadata
+            cols_meta = explorer.conn.execute(sniff_query).fetchall()
+            
+            # Fetch preview rows
+            preview_data = explorer.conn.execute(preview_query).fetchall()
+            preview_cols = [x[0] for x in explorer.conn.execute(sniff_query).description]
+            
+            # Sanitize suggested table name
+            tbl_name = os.path.splitext(e.file.name)[0]
+            tbl_name = "".join([c if c.isalnum() else "_" for c in tbl_name]).strip("_").lower()
+            table_name_input.value = tbl_name
+            table_name_input.update()
+            
+            # Render column mappings dynamically
+            mapping_grid_container.clear()
+            column_mapping_rows.clear()
+            with mapping_grid_container:
+                with ui.row().classes('w-full font-bold text-xs text-slate-500 border-b pb-1 gap-4 items-center no-wrap'):
+                    ui.label('Import').classes('w-12')
+                    ui.label('Source Column').classes('flex-grow min-w-[150px]')
+                    ui.label('Destination Name').classes('flex-grow min-w-[150px]')
+                    ui.label('Type').classes('w-32')
+                    
+                for col in cols_meta:
+                    col_name = col[0]
+                    col_type = col[1]
+                    with ui.row().classes('w-full gap-4 items-center text-xs no-wrap'):
+                        active_cb = ui.checkbox(value=True).classes('w-12')
+                        ui.label(col_name).classes('flex-grow min-w-[150px] truncate font-mono')
+                        dest_in = ui.input(value=col_name).props('outlined dense').classes('flex-grow min-w-[150px]')
+                        type_sel = ui.select(
+                            options={
+                                col_type: col_type,
+                                'VARCHAR': 'VARCHAR',
+                                'INTEGER': 'INTEGER',
+                                'BIGINT': 'BIGINT',
+                                'DOUBLE': 'DOUBLE',
+                                'TIMESTAMP': 'TIMESTAMP',
+                                'DATE': 'DATE',
+                                'BOOLEAN': 'BOOLEAN'
+                            },
+                            value=col_type
+                        ).props('outlined dense').classes('w-32')
+                        
+                        column_mapping_rows.append({
+                            'active': active_cb,
+                            'src': col_name,
+                            'dest': dest_in,
+                            'type': type_sel
+                        })
+            mapping_grid_container.update()
+            
+            # Render preview table
+            preview_table_container.clear()
+            columns_def = [{'name': c, 'label': c, 'field': c, 'align': 'left'} for c in preview_cols]
+            rows_def = []
+            for row in preview_data:
+                row_dict = {}
+                for idx, val in enumerate(row):
+                    row_dict[preview_cols[idx]] = str(val) if val is not None else ''
+                rows_def.append(row_dict)
+                
+            with preview_table_container:
+                ui.table(columns=columns_def, rows=rows_def, row_key=preview_cols[0] if preview_cols else 'id').props('dense flat bordered').classes('w-full text-xs')
+            preview_table_container.update()
+            
+            set_step(2)
+            
+        except Exception as sniff_ex:
+            ui.notify(f"Failed to parse file layout: {sniff_ex}", type='negative')
+
+    async def trigger_import():
+        nonlocal current_uploaded_path, current_file_ext
         target_db = target_db_select.value
         target_schema = target_schema_select.value
-        
         tbl_name = table_name_input.value.strip()
         if not tbl_name:
-            tbl_name = os.path.splitext(e.file.name)[0]
-            # Slugify table name to make it a valid SQL identifier
-            tbl_name = "".join([c if c.isalnum() else "_" for c in tbl_name]).strip("_").lower()
-            
-        if not tbl_name:
-            ui.notify('Please specify a valid table name!', type='warning')
+            ui.notify('Please enter a valid table name!', type='warning')
             return
             
         fq_name = f"{target_db}.{target_schema}.{tbl_name}"
         policy = collision_select.value
-        delim = delimiter_select.value
         mode = import_mode_select.value
         is_external = (mode == 'external')
         
-        if is_external and policy == 'append':
-            ui.notify("Append is not supported for external tables (views)!", type='warning')
+        # Check collisions
+        exists = False
+        try:
+            check_res = explorer.conn.execute(f"SELECT 1 FROM duckdb_tables WHERE database_name = '{target_db}' AND schema_name = '{target_schema}' AND table_name = '{tbl_name}'").fetchall()
+            if not check_res:
+                check_res = explorer.conn.execute(f"SELECT 1 FROM duckdb_views WHERE database_name = '{target_db}' AND schema_name = '{target_schema}' AND view_name = '{tbl_name}'").fetchall()
+            exists = len(check_res) > 0
+        except Exception:
+            pass
+            
+        if exists:
+            if policy == 'fail':
+                ui.notify(f"Table/View '{tbl_name}' already exists in {target_db}.{target_schema}!", type='warning')
+                return
+            elif policy == 'replace':
+                explorer.conn.execute(f"DROP VIEW IF EXISTS {fq_name};")
+                explorer.conn.execute(f"DROP TABLE IF EXISTS {fq_name};")
+        
+        # Construct the query based on mapped columns
+        select_cols = []
+        for row in column_mapping_rows:
+            if row['active'].value:
+                src_escaped = f'"{row["src"]}"'
+                dest_escaped = f'"{row["dest"].value.strip()}"'
+                dtype = row['type'].value
+                select_cols.append(f"CAST({src_escaped} AS {dtype}) AS {dest_escaped}")
+                
+        if not select_cols:
+            ui.notify("Please select at least one column to import!", type='warning')
             return
             
-        # Temporary or persistent file path in scratch folder
-        temp_dir = 'scratch'
-        os.makedirs(temp_dir, exist_ok=True)
-        ext = os.path.splitext(e.file.name)[1].lower()
+        cols_clause = ", ".join(select_cols)
         
-        if is_external:
-            target_file_path = os.path.join(temp_dir, f"{tbl_name}{ext}")
-        else:
-            target_file_path = os.path.join(temp_dir, f"temp_upload_{int(time.time())}{ext}")
-        
-        try:
-            content_bytes = await e.file.read()
-            
-            # Write diagnostic info to scratch/ingest_debug.log
-            with open('scratch/ingest_debug.log', 'w') as log_f:
-                log_f.write(f"file_name: {e.file.name}\n")
-                log_f.write(f"type: {type(content_bytes)}\n")
-                log_f.write(f"length: {len(content_bytes)}\n")
-                try:
-                    log_f.write(f"decoded_start:\n{content_bytes.decode('utf-8')[:500]}\n")
-                except Exception as log_ex:
-                    log_f.write(f"decode_error: {log_ex}\n")
-                    log_f.write(f"raw_start:\n{str(content_bytes[:500])}\n")
-            
-            # Save uploaded bytes to persistent/temp file
-            with open(target_file_path, 'wb') as f:
-                f.write(content_bytes)
+        # Determine correct read function
+        if current_file_ext == '.parquet':
+            read_func = f"read_parquet('{current_uploaded_path}')"
+        elif current_file_ext in ('.json', '.ndjson'):
+            read_func = f"read_json_auto('{current_uploaded_path}')"
+        else: # CSV
+            delim = delimiter_select.value
+            extra_opts = []
+            if delim != 'auto':
+                extra_opts.append(f"delim='{delim}'")
+            if ignore_errors_checkbox.value:
+                extra_opts.append("ignore_errors=True")
+            if null_padding_checkbox.value:
+                extra_opts.append("null_padding=True")
+            if not strict_mode_checkbox.value:
+                extra_opts.append("strict_mode=False")
+            if all_varchar_checkbox.value:
+                extra_opts.append("all_varchar=True")
                 
-            # Check if table or view exists in target database and schema
-            exists = False
-            try:
-                check_res = explorer.conn.execute(f"SELECT 1 FROM duckdb_tables WHERE database_name = '{target_db}' AND schema_name = '{target_schema}' AND table_name = '{tbl_name}'").fetchall()
-                if not check_res:
-                    check_res = explorer.conn.execute(f"SELECT 1 FROM duckdb_views WHERE database_name = '{target_db}' AND schema_name = '{target_schema}' AND view_name = '{tbl_name}'").fetchall()
-                exists = len(check_res) > 0
-            except Exception:
-                pass
-                
-            if exists:
-                if policy == 'fail':
-                    ui.notify(f"Table or View '{tbl_name}' already exists in {target_db}.{target_schema}! Choose 'Replace' or use a different name.", type='warning')
-                    return
-                elif policy == 'replace':
-                    explorer.conn.execute(f"DROP VIEW IF EXISTS {fq_name};")
-                    explorer.conn.execute(f"DROP TABLE IF EXISTS {fq_name};")
-            
-            # Ingest query building
             delim_opt = ""
-            if ext not in ['.parquet', '.json', '.ndjson']:
-                extra_opts = []
-                if delim != 'auto':
-                    extra_opts.append(f"delim='{delim}'")
-                if ignore_errors_checkbox.value:
-                    extra_opts.append("ignore_errors=True")
-                if null_padding_checkbox.value:
-                    extra_opts.append("null_padding=True")
-                if not strict_mode_checkbox.value:
-                    extra_opts.append("strict_mode=False")
-                if all_varchar_checkbox.value:
-                    extra_opts.append("all_varchar=True")
-                if extra_opts:
-                    delim_opt = ", " + ", ".join(extra_opts)
- 
-            # Resolve JSON source representation (supporting wrapped API JSON arrays or custom templates)
-            if ext in ['.json', '.ndjson']:
-                selected_tmpl = template_select.value
-                templated_query = None
-                if selected_tmpl and os.path.exists(selected_tmpl):
-                    try:
-                        import yaml
-                        with open(selected_tmpl, 'r') as f_tmpl:
-                            tmpl = yaml.safe_load(f_tmpl)
-                        if isinstance(tmpl, dict) and 'query_template' in tmpl:
-                            templated_query = tmpl['query_template'].replace('{file_path}', target_file_path)
-                            print(f"INFO: Applying custom JSON unnesting template from {selected_tmpl}")
-                    except Exception as tmpl_ex:
-                        print(f"WARNING: Failed to parse selected template: {tmpl_ex}")
-                
-                if templated_query:
-                    json_source = templated_query
-                else:
-                    try:
-                        cols = explorer.conn.execute(f"DESCRIBE SELECT * FROM read_json_auto('{target_file_path}');").fetchall()
-                        col_names_types = {row[0]: row[1] for row in cols}
-                        target_col = None
-                        for candidate in ['data', 'results', 'rows', 'items']:
-                            if candidate in col_names_types:
-                                t = col_names_types[candidate]
-                                if '[]' in t and ('STRUCT' in t or 'MAP' in t):
-                                    target_col = candidate
-                                    break
-                        if not target_col:
-                            for c_name, t in col_names_types.items():
-                                if '[]' in t and ('STRUCT' in t or 'MAP' in t):
-                                    target_col = c_name
-                                    break
-                        if target_col:
-                            json_source = f"SELECT unnest.* FROM (SELECT UNNEST({target_col}) AS unnest FROM read_json_auto('{target_file_path}'))"
-                            print(f"INFO: Automatically unnesting nested JSON array from column '{target_col}'.")
-                        else:
-                            json_source = f"SELECT * FROM read_json_auto('{target_file_path}')"
-                    except Exception as ex:
-                        print(f"WARNING: Failed to automatically inspect JSON layout: {ex}")
-                        json_source = f"SELECT * FROM read_json_auto('{target_file_path}')"
-
-            if is_external:
-                # Create an external table view pointing to the persistent file
-                if ext == '.parquet':
-                    ingest_sql = f"CREATE VIEW {fq_name} AS SELECT * FROM read_parquet('{target_file_path}');"
-                elif ext in ['.json', '.ndjson']:
-                    ingest_sql = f"CREATE VIEW {fq_name} AS {json_source};"
-                else:
-                    ingest_sql = f"CREATE VIEW {fq_name} AS SELECT * FROM read_csv_auto('{target_file_path}'{delim_opt});"
-            else:
-                # Physical table creation/insertion
-                if ext == '.parquet':
-                    if exists and policy == 'append':
-                        ingest_sql = f"INSERT INTO {fq_name} SELECT * FROM read_parquet('{target_file_path}');"
-                    else:
-                        ingest_sql = f"CREATE TABLE {fq_name} AS SELECT * FROM read_parquet('{target_file_path}');"
-                elif ext in ['.json', '.ndjson']:
-                    if exists and policy == 'append':
-                        ingest_sql = f"INSERT INTO {fq_name} {json_source};"
-                    else:
-                        ingest_sql = f"CREATE TABLE {fq_name} AS {json_source};"
-                else:
-                    if exists and policy == 'append':
-                        ingest_sql = f"INSERT INTO {fq_name} SELECT * FROM read_csv_auto('{target_file_path}'{delim_opt});"
-                    else:
-                        ingest_sql = f"CREATE TABLE {fq_name} AS SELECT * FROM read_csv_auto('{target_file_path}'{delim_opt});"
+            if extra_opts:
+                delim_opt = ", " + ", ".join(extra_opts)
+            read_func = f"read_csv_auto('{current_uploaded_path}'{delim_opt})"
             
-            # Run ingestion in DuckDB
+        # Ingestion Query
+        if is_external:
+            persistent_path = os.path.join('scratch', f"{tbl_name}{current_file_ext}")
+            try:
+                if os.path.exists(persistent_path):
+                    os.remove(persistent_path)
+                os.rename(current_uploaded_path, persistent_path)
+                current_uploaded_path = persistent_path
+            except Exception as rename_ex:
+                print(f"Rename failed: {rename_ex}")
+            
+            read_func = read_func.replace(current_uploaded_path, persistent_path)
+            ingest_sql = f"CREATE VIEW {fq_name} AS SELECT {cols_clause} FROM {read_func};"
+        else:
+            if exists and policy == 'append':
+                ingest_sql = f"INSERT INTO {fq_name} SELECT {cols_clause} FROM {read_func};"
+            else:
+                ingest_sql = f"CREATE TABLE {fq_name} AS SELECT {cols_clause} FROM {read_func};"
+                
+        try:
+            start_time = time.time()
             explorer.conn.execute(ingest_sql)
             explorer.conn.commit()
+            duration = time.time() - start_time
             
-            if is_external:
-                ui.notify(f"Successfully created external view '{tbl_name}' in {target_db}.{target_schema} pointing to file!", type='success')
-            else:
-                ui.notify(f"Ingested file into '{tbl_name}' table in {target_db}.{target_schema}!", type='success')
-            import_dialog.close()
+            try:
+                imported_count = explorer.conn.execute(f"SELECT COUNT(*) FROM {fq_name}").fetchone()[0]
+            except Exception:
+                imported_count = "N/A"
+                
+            success_metrics_label.text = f"Successfully imported {imported_count} rows in {duration:.2f} seconds."
+            success_query_action_btn.on_click(lambda: auto_query_imported(fq_name))
+            set_step(3)
             
-            # Reset form inputs
-            table_name_input.value = ''
-            import_mode_select.value = 'table'
-            collision_select.value = 'fail'
-            delimiter_select.value = 'auto'
-            ignore_errors_checkbox.value = False
-            null_padding_checkbox.value = False
-            strict_mode_checkbox.value = True
-            all_varchar_checkbox.value = False
-            uploader.reset()
-            
-            # Refresh tree and execute preview query
-            refresh_schema_tree()
-            populate_builder_tables()
-            cols = explorer.list_columns_with_types(tbl_name, database=target_db, schema=target_schema)
-            if cols:
-                sql_editor.value = format_column_projection_query(cols, fq_name)
-            else:
-                sql_editor.value = f"SELECT * FROM {fq_name} LIMIT 100;"
-            run_editor_query()
-            
-        except Exception as ex:
-            ui.notify(f"Ingestion failed: {str(ex)}", type='negative', duration=7)
-        finally:
-            if 'target_file_path' in locals() and not is_external:
-                if os.path.exists(target_file_path):
-                    try:
-                        os.remove(target_file_path)
-                    except Exception:
-                        pass
-
-    # Build Table Inspector Modal Dialog
-    with ui.dialog() as inspector_dialog, ui.card().classes('w-[900px] max-w-[95vw] p-6 gap-4 border border-slate-100 dark:border-slate-800 rounded-xl dark-bg-flat'):
-        inspector_content = ui.column().classes('w-full gap-4')
-
-    # Build Modal Ingestion Dialog
-    with ui.dialog() as import_dialog, ui.card().classes('w-96 p-6 gap-4'):
-        ui.label('📥 Data Ingestion Wizard').classes('text-lg font-bold text-slate-800 dark:text-white')
-        ui.label('Upload a local CSV, Parquet, or JSON file to parse and ingest into the sandbox.').classes('text-xs text-slate-500 -mt-2')
-        
-        # Controls
-        table_name_input = ui.input('Table Name (Optional)', placeholder='Suggested automatically if blank').props('outlined dense').classes('w-full')
-        
-        # Target Database & Schema selection dropdowns
-        target_db_select = ui.select(
-            options={'your_duckdb_file': 'your_duckdb_file'},
-            value='your_duckdb_file',
-            label='Target Database',
-            on_change=lambda e: update_import_schemas(e.value)
-        ).props('outlined dense').classes('w-full')
-        
-        target_schema_select = ui.select(
-            options={'main': 'main'},
-            value='main',
-            label='Target Schema'
-        ).props('outlined dense').classes('w-full')
-        
-        templates_options = {'': 'None (Auto-detect)'}
-        
-        template_select = ui.select(
-            options=templates_options,
-            value='',
-            label='JSON Unnesting Template'
-        ).props('outlined dense').classes('w-full')
-        
-        async def select_custom_template():
-            start_dir = '/templates' if os.path.exists('/templates') else 'templates'
-            if not os.path.exists(start_dir):
-                start_dir = '.'
-            picker = local_file_picker(start_dir)
-            res = await picker
-            if res:
-                custom_path = res[0]
+            if not is_external and os.path.exists(current_uploaded_path):
                 try:
-                    import yaml
-                    with open(custom_path, 'r') as f_tmpl:
-                        tmpl = yaml.safe_load(f_tmpl)
-                    if isinstance(tmpl, dict) and 'name' in tmpl and 'query_template' in tmpl:
-                        templates_options[custom_path] = f"📁 {tmpl['name']} ({os.path.basename(custom_path)})"
-                        template_select.options = templates_options
-                        template_select.value = custom_path
-                        template_select.update()
-                        ui.notify(f"Loaded template: {tmpl['name']}", type='success')
-                    else:
-                        ui.notify("Invalid template! Must contain 'name' and 'query_template'.", type='warning')
-                except Exception as ex_tmpl:
-                    ui.notify(f"Failed to load template: {ex_tmpl}", type='negative')
+                    os.remove(current_uploaded_path)
+                except Exception:
+                    pass
+                    
+        except Exception as ingest_ex:
+            ui.notify(f"Ingestion failed: {ingest_ex}", type='negative', duration=7)
 
-        ui.button('Browse local template...', icon='folder_open', on_click=select_custom_template).props('flat dense').classes('text-xs self-end text-primary -mt-2 mb-2')
+    def auto_query_imported(fq_name):
+        import_dialog.close()
+        refresh_schema_tree()
+        populate_builder_tables()
+        sql_editor.value = f"SELECT * FROM {fq_name} LIMIT 100;"
+        run_editor_query()
 
-        def update_import_schemas(db_name):
-            try:
-                schema_rows = explorer.conn.execute(f"SELECT schema_name FROM duckdb_schemas WHERE database_name = '{db_name}' AND schema_name NOT IN ('information_schema', 'pg_catalog') ORDER BY schema_name").fetchall()
-                schemas = [row[0] for row in schema_rows]
-                if not schemas:
-                    schemas = ['main']
-                target_schema_select.options = {s: s for s in schemas}
-                target_schema_select.value = 'main' if 'main' in schemas else schemas[0]
-                target_schema_select.update()
-            except Exception as e:
-                print(f"Error loading schemas for {db_name}: {e}")
-                target_schema_select.options = {'main': 'main'}
-                target_schema_select.value = 'main'
-                target_schema_select.update()
-
-        def open_import_dialog():
-            try:
-                db_rows = explorer.conn.execute("SELECT database_name FROM duckdb_databases").fetchall()
-                dbs = [row[0] for row in db_rows if row[0] not in ('system', 'temp') and not row[0].startswith('__')]
-                target_db_select.options = {db: db for db in dbs}
-                if 'your_duckdb_file' in dbs:
-                    target_db_select.value = 'your_duckdb_file'
-                elif 'main' in dbs:
-                    target_db_select.value = 'main'
-                else:
-                    target_db_select.value = dbs[0] if dbs else 'your_duckdb_file'
-                target_db_select.update()
-                
-                update_import_schemas(target_db_select.value)
-                
-                # Scan templates directory and populate options
-                tmpls = list_json_unnesting_templates()
-                new_opts = {'': 'None (Auto-detect)'}
-                new_opts.update(tmpls)
-                template_select.options = new_opts
-                template_select.value = ''
-                template_select.update()
-                
-            except Exception as e:
-                print(f"Error loading databases for import dialog: {e}")
-            import_dialog.open()
-
-        # Define a placeholder to handle forward references
-        collision_select = None
-
-        def handle_import_mode_change(e):
-            nonlocal collision_select
-            if not collision_select:
-                return
-            if e.value == 'external':
-                collision_select.options = {
-                    'fail': 'Fail if exists',
-                    'replace': 'Replace (Overwrite)'
-                }
-                if collision_select.value == 'append':
-                    collision_select.value = 'fail'
-            else:
-                collision_select.options = {
-                    'fail': 'Fail if table exists',
-                    'replace': 'Replace table (Overwrite)',
-                    'append': 'Append rows to existing'
-                }
-            collision_select.update()
-
-        import_mode_select = ui.select(
-            options={
-                'table': 'Import as Physical Table',
-                'external': 'Import as External Table (View)'
-            },
-            value='table',
-            label='Import Mode',
-            on_change=handle_import_mode_change
-        ).props('outlined dense').classes('w-full')
-
-        collision_select = ui.select(
-            options={
+    def handle_import_mode_change(e):
+        if e.value == 'external':
+            collision_select.options = {
+                'fail': 'Fail if exists',
+                'replace': 'Replace (Overwrite)'
+            }
+            if collision_select.value == 'append':
+                collision_select.value = 'fail'
+        else:
+            collision_select.options = {
                 'fail': 'Fail if table exists',
                 'replace': 'Replace table (Overwrite)',
                 'append': 'Append rows to existing'
-            },
-            value='fail',
-            label='Collision Policy'
-        ).props('outlined dense').classes('w-full')
+            }
+        collision_select.update()
+
+    def update_import_schemas(db_name):
+        try:
+            schema_rows = explorer.conn.execute(f"SELECT schema_name FROM duckdb_schemas WHERE database_name = '{db_name}' AND schema_name NOT IN ('information_schema', 'pg_catalog') ORDER BY schema_name").fetchall()
+            schemas = [row[0] for row in schema_rows]
+            if not schemas:
+                schemas = ['main']
+            target_schema_select.options = {s: s for s in schemas}
+            target_schema_select.value = 'main' if 'main' in schemas else schemas[0]
+            target_schema_select.update()
+        except Exception as e:
+            print(f"Error loading schemas for {db_name}: {e}")
+            target_schema_select.options = {'main': 'main'}
+            target_schema_select.value = 'main'
+            target_schema_select.update()
+
+    def open_import_dialog():
+        try:
+            db_rows = explorer.conn.execute("SELECT database_name FROM duckdb_databases").fetchall()
+            dbs = [row[0] for row in db_rows if row[0] not in ('system', 'temp') and not row[0].startswith('__')]
+            target_db_select.options = {db: db for db in dbs}
+            if 'starter' in dbs:
+                target_db_select.value = 'starter'
+            elif 'main' in dbs:
+                target_db_select.value = 'main'
+            else:
+                target_db_select.value = dbs[0] if dbs else 'starter'
+            target_db_select.update()
+            
+            update_import_schemas(target_db_select.value)
+            uploader.reset()
+            set_step(1)
+        except Exception as e:
+            print(f"Error loading databases for import dialog: {e}")
+        import_dialog.open()
+
+    # Build Modal Ingestion Dialog
+    with ui.dialog() as import_dialog, ui.card().classes('w-[900px] max-w-[95vw] p-6 gap-4 border border-slate-100 dark:border-slate-800 rounded-xl dark-bg-flat'):
         
-        delimiter_select = ui.select(
-            options={
-                'auto': 'Auto-detect Delimiter',
-                ',': 'Comma ( , )',
-                ';': 'Semicolon ( ; )',
-                '\t': 'Tab ( \\t )',
-                '|': 'Pipe ( | )'
-            },
-            value='auto',
-            label='CSV Delimiter'
-        ).props('outlined dense').classes('w-full')
-        
-        # Advanced CSV Options collapsible section
-        with ui.expansion('🔧 Advanced CSV Options', icon='tune').classes('w-full border border-slate-200 dark:border-slate-700 rounded-md text-xs text-slate-700 dark:text-slate-300'):
-            with ui.column().classes('p-2 gap-1 w-full'):
-                ignore_errors_checkbox = ui.checkbox('Ignore malformed rows (ignore_errors)', value=False).classes('text-xs text-slate-700 dark:text-slate-300')
-                null_padding_checkbox = ui.checkbox('Null padding for missing columns (null_padding)', value=False).classes('text-xs text-slate-700 dark:text-slate-300')
-                strict_mode_checkbox = ui.checkbox('Strict schema validation (strict_mode)', value=True).classes('text-xs text-slate-700 dark:text-slate-300')
-                all_varchar_checkbox = ui.checkbox('Load all columns as text (all_varchar)', value=False).classes('text-xs text-slate-700 dark:text-slate-300')
-        
-        uploader = ui.upload(
-            label='Select CSV, Parquet or JSON',
-            auto_upload=False,
-            max_files=1,
-            on_upload=handle_ingest_upload
-        ).props('outlined dense accept=".csv,.tsv,.parquet,.json,.ndjson"').classes('w-full')
-        
-        with ui.row().classes('w-full justify-end gap-2 pt-2'):
-            ui.button('Cancel', on_click=import_dialog.close).props('flat')
-            ui.button('Ingest File', icon='bolt', color='primary', on_click=lambda: uploader.run_method('upload')).props('elevated')
+        def set_step(step_num):
+            step_1_container.visible = (step_num == 1)
+            step_2_container.visible = (step_num == 2)
+            step_3_container.visible = (step_num == 3)
+            step_1_container.update()
+            step_2_container.update()
+            step_3_container.update()
+
+        # Step 1 Container
+        step_1_container = ui.column().classes('w-full gap-4')
+        with step_1_container:
+            ui.label('📥 Drag-and-Drop Data Import Wizard').classes('text-xl font-bold text-slate-800 dark:text-white')
+            ui.label('Upload a local CSV, Parquet, or JSON file to parse, customize, and ingest into the database.').classes('text-xs text-slate-500 -mt-2')
+            
+            with ui.row().classes('w-full gap-4'):
+                target_db_select = ui.select(
+                    options={'starter': 'starter'},
+                    value='starter',
+                    label='Target Database',
+                    on_change=lambda e: update_import_schemas(e.value)
+                ).props('outlined dense').classes('flex-grow')
+                
+                target_schema_select = ui.select(
+                    options={'main': 'main'},
+                    value='main',
+                    label='Target Schema'
+                ).props('outlined dense').classes('flex-grow')
+
+            uploader = ui.upload(
+                label='Drag & Drop file here, or click to browse',
+                auto_upload=True,
+                max_files=1,
+                on_upload=lambda e: handle_upload_and_sniff(e)
+            ).props('outlined dense accept=".csv,.tsv,.parquet,.json,.ndjson"').classes('w-full custom-dropzone h-48 justify-center border-2 border-dashed border-indigo-200 dark:border-slate-800 rounded-xl p-4')
+            
+            with ui.row().classes('w-full justify-end pt-2'):
+                ui.button('Cancel', on_click=import_dialog.close).props('flat')
+
+        # Step 2 Container
+        step_2_container = ui.column().classes('w-full gap-4')
+        with step_2_container:
+            ui.label('⚙️ Configure Table Schema & Preview').classes('text-lg font-bold text-slate-800 dark:text-white')
+            
+            with ui.row().classes('w-full gap-4 items-center'):
+                table_name_input = ui.input('Table Name', placeholder='Suggested automatically').props('outlined dense').classes('flex-grow')
+                import_mode_select = ui.select(
+                    options={
+                        'table': 'Import as Physical Table',
+                        'external': 'Import as External Table (View)'
+                    },
+                    value='table',
+                    label='Import Mode',
+                    on_change=lambda e: handle_import_mode_change(e)
+                ).props('outlined dense').classes('flex-grow')
+                
+                collision_select = ui.select(
+                    options={
+                        'fail': 'Fail if table exists',
+                        'replace': 'Replace table (Overwrite)',
+                        'append': 'Append rows to existing'
+                    },
+                    value='fail',
+                    label='Collision Policy'
+                ).props('outlined dense').classes('flex-grow')
+
+            csv_options_expansion = ui.expansion('🔧 CSV Parsing Options', icon='tune').classes('w-full border border-slate-200 dark:border-slate-800 rounded-md text-xs')
+            with csv_options_expansion:
+                with ui.column().classes('p-3 gap-2 w-full'):
+                    with ui.row().classes('w-full gap-4'):
+                        delimiter_select = ui.select(
+                            options={
+                                'auto': 'Auto-detect Delimiter',
+                                ',': 'Comma ( , )',
+                                ';': 'Semicolon ( ; )',
+                                '\t': 'Tab ( \\t )',
+                                '|': 'Pipe ( | )'
+                            },
+                            value='auto',
+                            label='Delimiter'
+                        ).props('outlined dense').classes('flex-grow')
+                        
+                        all_varchar_checkbox = ui.checkbox('Load all as text', value=False).classes('text-xs')
+                        ignore_errors_checkbox = ui.checkbox('Ignore errors', value=False).classes('text-xs')
+                    with ui.row().classes('w-full gap-4'):
+                        null_padding_checkbox = ui.checkbox('Null padding', value=False).classes('text-xs')
+                        strict_mode_checkbox = ui.checkbox('Strict mode', value=True).classes('text-xs')
+
+            ui.label('Column Mapping').classes('text-sm font-bold text-slate-700 dark:text-slate-300 mt-2')
+            mapping_grid_container = ui.column().classes('w-full gap-2 border p-3 rounded-lg dark:border-slate-800 max-h-48 overflow-y-auto')
+
+            ui.label('Data Preview (First 5 rows)').classes('text-sm font-bold text-slate-700 dark:text-slate-300 mt-2')
+            preview_table_container = ui.column().classes('w-full overflow-x-auto')
+
+            with ui.row().classes('w-full justify-between pt-2'):
+                ui.button('Back', icon='arrow_back', on_click=lambda: set_step(1)).props('flat')
+                ui.button('Ingest Data', icon='bolt', color='primary', on_click=lambda: trigger_import()).props('elevated')
+
+        # Step 3 Container
+        step_3_container = ui.column().classes('w-full gap-4 items-center justify-center p-6')
+        with step_3_container:
+            ui.icon('check_circle', color='emerald', size='lg').classes('text-5xl')
+            ui.label('Data Ingestion Complete!').classes('text-xl font-bold text-slate-800 dark:text-white')
+            success_metrics_label = ui.label('').classes('text-sm text-slate-600 dark:text-slate-400')
+            
+            with ui.row().classes('gap-4 mt-4'):
+                success_query_action_btn = ui.button('Query Table in Editor', icon='search', color='primary').props('elevated')
+                ui.button('Close Wizard', on_click=import_dialog.close).props('flat')
 
     # Build Save Query Dialog
     with ui.dialog() as save_query_dialog, ui.card().classes('w-96 p-6 gap-4'):
@@ -6297,10 +8094,20 @@ def index():
             on_change=lambda e: toggle_ducklake_options(e)
         ).props('outlined dense').classes('w-full')
         
-        attach_path_input = ui.input(
-            label='Path or Connection String',
-            placeholder='e.g., path/to/sqlite.db or host=localhost ...'
-        ).props('outlined dense').classes('w-full')
+        with ui.row().classes('w-full gap-2 items-center flex-nowrap'):
+            attach_path_input = ui.input(
+                label='Path or Connection String',
+                placeholder='e.g., /databases/my_db.duckdb or host=localhost ...'
+            ).props('outlined dense').classes('flex-grow')
+            
+            async def select_attach_file():
+                start_dir = '/databases' if os.path.exists('/databases') else os.path.abspath('.')
+                picker = local_file_picker(start_dir, upper_limit=None, multiple=False)
+                res = await picker
+                if res:
+                    attach_path_input.set_value(res[0])
+                    
+            ui.button(icon='folder_open', on_click=select_attach_file).props('dense outline').classes('p-2 q-mt-md').tooltip('Browse database files')
         
         # DuckLake options container
         with ui.column().classes('w-full gap-2 border border-slate-200 dark:border-slate-800 rounded p-3 dark-bg-flat') as ducklake_opts_container:
@@ -6326,6 +8133,10 @@ def index():
             alias = "".join([c if c.isalnum() else "_" for c in alias]).strip("_").lower()
             if not alias:
                 ui.notify('Please provide a valid alphanumeric database alias!', type='warning')
+                return
+                
+            if alias in ('main', 'starter'):
+                ui.notify("Cannot use 'main' or 'starter' as database alias!", type='warning')
                 return
                 
             status_label.text = "Attaching database..."
@@ -6414,6 +8225,14 @@ def index():
             if new_alias == rename_target_old_name:
                 ui.notify('New alias is the same as the old alias!', type='warning')
                 return
+
+            if rename_target_old_name in ('main', 'starter'):
+                ui.notify("Cannot rename the primary database!", type='warning')
+                return
+
+            if new_alias in ('main', 'starter'):
+                ui.notify("Cannot rename connection alias to 'main' or 'starter'!", type='warning')
+                return
                 
             try:
                 # 1. Look up the database type in attached_databases.yaml
@@ -6473,6 +8292,9 @@ def index():
             ui.button('Rename', icon='edit', color='primary', on_click=handle_rename_db).props('elevated')
 
     def open_rename_dialog(old_name, db_path):
+        if old_name in ('main', 'starter'):
+            ui.notify("Cannot rename the primary database!", type='warning')
+            return
         nonlocal rename_target_old_name, rename_target_path
         rename_target_old_name = old_name
         rename_target_path = db_path
@@ -6528,8 +8350,8 @@ def index():
                 if has_semicolon:
                     sql = sql[:-1].strip()
                     
-                # Split trailing clauses (ORDER BY, LIMIT, OFFSET)
-                sql, trailing = split_sql_trailing_clauses(sql)
+                # Split trailing clauses (GROUP BY, HAVING, ORDER BY, LIMIT, OFFSET)
+                sql, trailing = split_sql_trailing_clauses(sql, keywords=['GROUP BY', 'HAVING', 'ORDER BY', 'LIMIT', 'OFFSET'])
                 
                 # Create type mapping and alias-lookup
                 col_type_map = {c_name.lower(): c_type for c_name, c_type in cols}
@@ -6555,8 +8377,7 @@ def index():
                     else:
                         clauses.append(f"  AND (${col} IS NULL OR \"{col}\" = ${col})")
                     
-                import re
-                has_where = re.search(r'(?i)\bWHERE\b', sql)
+                has_where = has_top_level_where(sql)
                 if has_where:
                     sql += "\n" + "\n".join(clauses)
                 else:
@@ -6645,13 +8466,13 @@ def index():
             
         try:
             # Check duplicate path excluding current endpoint
-            dup = explorer.conn.execute("SELECT 1 FROM _duckdb_studio_api_endpoints WHERE path = ? AND id != ?", [path, endpoint_id]).fetchone()
+            dup = config_db.query_one("SELECT 1 FROM _duckdb_studio_api_endpoints WHERE path = ? AND id != ?", [path, endpoint_id])
             if dup:
                 ui.notify(f"Endpoint path '/api/{path}' already exists! Please use a unique path.", type='negative')
                 return
                 
             rl_value = rate_limit.strip() if rate_limit and rate_limit.strip() else None
-            explorer.conn.execute("""
+            config_db.execute("""
                 UPDATE _duckdb_studio_api_endpoints 
                 SET path = ?, description = ?, sql_code = ?, security_enabled = ?, rate_limit = ? 
                 WHERE id = ?;
@@ -6695,19 +8516,24 @@ def index():
             
     ui.keyboard(on_key=handle_keyboard)
 
-    # Restore saved active database context
-    saved_active = app.storage.user.get('active_database')
-    if saved_active:
-        try:
-            explorer.conn.execute(f"USE {saved_active};")
-        except Exception:
-            pass
+    # Restore saved active database context, defaulting to 'main'
+    saved_active = 'main'
+    try:
+        explorer.conn.execute("USE main;")
+        app.storage.user['active_database'] = 'main'
+    except Exception:
+        pass
 
     # --- INITIAL RUN ON CLIENT BROWSER CONNECT ---
     refresh_schema_tree()
     populate_builder_tables()
     update_query_history_list()
     refresh_saved_queries_list()
+    populate_wizard_databases()
+    try:
+        refresh_parameter_inputs(sql_editor.value)
+    except Exception:
+        pass
 
 
 @app.get("/dbt_orange.svg")
@@ -6815,6 +8641,17 @@ def db_tools_colored_svg():
     return Response(content=svg_content, media_type="image/svg+xml")
 
 
+@app.get("/superset_logo.svg")
+def superset_logo_svg():
+    from fastapi import Response
+    svg_content = '''<svg viewBox="31 35 150 77" version="1.1" xmlns="http://www.w3.org/2000/svg" width="24" height="24">
+    <path d="M141.56,37.83C129.1,37.83 117.56,44.83 106.56,57.08C95.62,44.64 83.94,37.83 70.89,37.83C49.29,37.83 33.52,53.19 33.52,74C33.52,94.81 49.29,110 70.89,110C84.13,110 94.45,103.77 105.89,91.33C117,103.74 128.32,110 141.56,110C163.17,110 178.93,94.83 178.93,74C178.93,53.17 163.17,37.83 141.56,37.83ZM71,88.19C61.85,88.19 56.4,82.19 56.4,74.19C56.4,66.19 61.89,60 71,60C78.78,60 85,66.22 91.82,74.58C85.44,82.36 78.63,88.19 71,88.19ZM140.88,88.19C133.29,88.19 126.88,82.19 120.05,74.19C127.05,65.83 133.05,60 140.88,60C150.03,60 155.48,66.22 155.48,74.19C155.48,82.16 150.07,88.19 140.92,88.19L140.88,88.19Z" fill="#FFFFFF"/>
+    <path d="M122.21,104.88L136.74,87.57C130.9,85.85 125.61,80.64 120.09,74.19L105.93,91.3C110.555,96.709 116.059,101.301 122.21,104.88Z" fill="#10B981"/>
+    <path d="M106.52,57.08C101.915,51.629 96.45,46.967 90.34,43.28L75.8,60.81C81.33,62.69 86.23,67.71 91.43,74.05L92,74.45C92,74.45 106.7,56.88 106.52,57.08Z" fill="#10B981"/>
+</svg>'''
+    return Response(content=svg_content, media_type="image/svg+xml")
+
+
 @app.get("/api_endpoint_icon.png")
 def api_endpoint_icon():
     import os
@@ -6829,23 +8666,15 @@ def api_endpoint_icon():
 # --- DYNAMIC API ENDPOINTS ROUTER ---
 @app.get("/api/list-endpoints")
 def list_endpoints():
-    db_path = DB_NAME
-    conn = duckdb.connect(db_path)
     try:
-        # Check if table exists first
-        table_exists = conn.execute("SELECT count(*) FROM information_schema.tables WHERE table_name = '_duckdb_studio_api_endpoints';").fetchone()[0]
-        if not table_exists:
-            return {"message": "Table _duckdb_studio_api_endpoints does not exist yet. Please load the main web interface once to initialize it."}
-        rows = conn.execute("SELECT path, description, sql_code, COALESCE(security_enabled, FALSE) FROM _duckdb_studio_api_endpoints;").fetchall()
-        return [{"path": r[0], "description": r[1], "sql_code": r[2], "security_enabled": r[3]} for r in rows]
+        rows_val = config_db.query_all("SELECT path, description, sql_code, security_enabled FROM _duckdb_studio_api_endpoints;")
+        return [{"path": r['path'], "description": r['description'], "sql_code": r['sql_code'], "security_enabled": bool(r['security_enabled'])} for r in rows_val]
     except Exception as e:
         return {"error": str(e)}
-    finally:
-        conn.close()
 
 
 
-@app.get("/api/{endpoint_path:path}/stream")
+@app.get("/api/{endpoint_path:path}/stream", include_in_schema=False)
 @limiter.limit(get_dynamic_rate_limit)
 def handle_streaming_endpoint(endpoint_path: str, request: Request):
     from fastapi.responses import StreamingResponse
@@ -6857,7 +8686,7 @@ def handle_streaming_endpoint(endpoint_path: str, request: Request):
     db_path = DB_NAME
     conn = None
     try:
-        conn = duckdb.connect(db_path)
+        conn = duckdb.connect(db_path, config=DB_CONFIG)
         load_attached_databases_for_connection(conn)
         
         # Load the endpoint query from SQLite database
@@ -6873,6 +8702,15 @@ def handle_streaming_endpoint(endpoint_path: str, request: Request):
             raise HTTPException(status_code=404, detail=error_message)
             
         sql_code, security_enabled = res['sql_code'], bool(res['security_enabled'])
+        
+        # Substitute double-brace parameters ({{param}}) using query parameters
+        double_brace_params = detect_parameters(sql_code)
+        if double_brace_params:
+            brace_values = {}
+            for p in double_brace_params:
+                val = request.query_params.get(p)
+                brace_values[p] = val
+            sql_code = substitute_sql_parameters(sql_code, brace_values)
         
         # Enforce JWT Authorization if enabled for this endpoint
         if security_enabled:
@@ -6953,7 +8791,7 @@ def handle_streaming_endpoint(endpoint_path: str, request: Request):
             print(f"ERROR logging API streaming telemetry metrics: {log_err}", flush=True)
 
 
-@app.get("/api/{endpoint_path:path}")
+@app.get("/api/{endpoint_path:path}", include_in_schema=False)
 @limiter.limit(get_dynamic_rate_limit)
 def handle_dynamic_endpoint(endpoint_path: str, request: Request):
     import time, datetime
@@ -6964,7 +8802,7 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
     db_path = DB_NAME
     conn = None
     try:
-        conn = duckdb.connect(db_path)
+        conn = duckdb.connect(db_path, config=DB_CONFIG)
         # Load and attach configured databases so the query can access them if needed
         load_attached_databases_for_connection(conn)
         
@@ -6981,6 +8819,15 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
             raise HTTPException(status_code=404, detail=error_message)
             
         sql_code, security_enabled = res['sql_code'], bool(res['security_enabled'])
+        
+        # Substitute double-brace parameters ({{param}}) using query parameters
+        double_brace_params = detect_parameters(sql_code)
+        if double_brace_params:
+            brace_values = {}
+            for p in double_brace_params:
+                val = request.query_params.get(p)
+                brace_values[p] = val
+            sql_code = substitute_sql_parameters(sql_code, brace_values)
         
         # Enforce JWT Authorization if enabled for this endpoint
         if security_enabled:
@@ -7120,17 +8967,192 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
                     pass
 
 
+def sync_fastapi_dynamic_routes():
+    # Remove previously registered dynamic routes from the API schema list (modify in place)
+    app.routes[:] = [r for r in app.routes if not (
+        hasattr(r, 'path') and 
+        r.path.startswith("/api/") and 
+        r.path != "/api/list-endpoints" and
+        "{endpoint_path}" not in r.path
+    )]
+    
+    # Reload from SQLite config database
+    try:
+        endpoints = config_db.query_all("SELECT path, description FROM _duckdb_studio_api_endpoints;")
+    except Exception as e:
+        print(f"ERROR: failed to load api endpoints for route sync: {e}", flush=True)
+        endpoints = []
+        
+    for ep in endpoints:
+        path = ep['path']
+        desc = ep['description'] or "Dynamic SQL API Endpoint"
+        
+        # Closures to bypass route path parameters validation
+        def make_handler(ep_path=path):
+            async def dynamic_get(request: Request):
+                return handle_dynamic_endpoint(ep_path, request)
+            return dynamic_get
+            
+        def make_stream_handler(ep_path=path):
+            async def dynamic_stream(request: Request):
+                return handle_streaming_endpoint(ep_path, request)
+            return dynamic_stream
+            
+        app.add_api_route(
+            path=f"/api/{path}",
+            endpoint=make_handler(),
+            methods=["GET"],
+            name=f"api_{path.replace('/', '_')}",
+            description=desc
+        )
+        
+        app.add_api_route(
+            path=f"/api/{path}/stream",
+            endpoint=make_stream_handler(),
+            methods=["GET"],
+            name=f"api_{path.replace('/', '_')}_stream",
+            description=f"Streaming chunked CSV response for {desc}"
+        )
+        
+    # Clear OpenAPI schema cache so it rebuilds with new routes
+    app.openapi_schema = None
+
 # --- INITIALIZE AND SEED DATABASE ON STARTUP ---
 print("INFO: Initializing and seeding database on startup...", flush=True)
 seed_database(DB_NAME)
 init_saved_queries_table(DB_NAME)
+sync_fastapi_dynamic_routes()
 
+
+def run_buenavista_server():
+    try:
+        import os
+        os.environ["BUENAVISTA_HOST"] = "0.0.0.0"
+
+        import logging
+        logging.basicConfig(level=logging.INFO)
+        logging.getLogger("buenavista").setLevel(logging.DEBUG)
+
+        import duckdb
+        from buenavista.backends.duckdb import DuckDBConnection
+        from buenavista import bv_dialects, postgres, rewrite
+
+        class DuckDBPostgresRewriter(rewrite.Rewriter):
+            def rewrite(self, sql: str) -> str:
+                sql_clean = sql.strip().lower().rstrip(';')
+                if sql_clean == "select pg_catalog.version()":
+                    return "SELECT 'PostgreSQL 9.3' as version"
+                if "show transaction isolation level" in sql_clean or "show transaction_isolation" in sql_clean:
+                    return "SELECT 'read committed' as transaction_isolation"
+                if "show standard_conforming_strings" in sql_clean:
+                    return "SELECT 'on' as standard_conforming_strings"
+                if "pg_backend_pid()" in sql_clean:
+                    return "SELECT 42 as pg_backend_pid"
+                return super().rewrite(sql)
+
+        # Monkeypatch DuckDBSession.execute_sql to fix substring transaction command bug in buenavista
+        from buenavista.backends.duckdb import DuckDBSession, DuckDBQueryResult
+        import sqlglot
+        
+        def patched_execute_sql(self, sql: str, params=None):
+            status = ""
+            try:
+                lsql = sqlglot.parse_one(sql).sql(comments=False)
+            except Exception:
+                lsql = sql
+
+            lsql = lsql.lower().strip()
+            
+            # Use strict token matching or startswith rather than simple substring inclusion
+            is_commit = lsql.startswith("commit") or lsql == "end"
+            is_rollback = lsql.startswith("rollback") or lsql.startswith("abort")
+            is_begin = lsql.startswith("begin") or lsql.startswith("start transaction")
+            
+            if self.in_txn:
+                if is_commit:
+                    self.in_txn = False
+                    status = "COMMIT"
+                elif is_rollback:
+                    self.in_txn = False
+                    status = "ROLLBACK"
+                elif is_begin:
+                    return DuckDBQueryResult(status="BEGIN")
+            elif is_begin:
+                self.in_txn = True
+                status = "BEGIN"
+
+            logging.getLogger("buenavista").debug("Original SQL: %s", sql)
+            sql = self.rewrite_sql(sql)
+            logging.getLogger("buenavista").debug("Rewritten SQL: %s", sql)
+            if params:
+                self._cursor.execute(sql, params)
+            else:
+                self._cursor.execute(sql)
+
+            if status:
+                return DuckDBQueryResult(status=status)
+
+            rb = None
+            if self._cursor.description:
+                if lsql.startswith("load "):
+                    self.refresh_config()
+                    status = "LOAD"
+                elif not (lsql.startswith("insert ") or lsql.startswith("update ") or lsql.startswith("delete ")):
+                    rb = self._cursor.fetch_record_batch()
+            return DuckDBQueryResult(rb, status)
+
+        DuckDBSession.execute_sql = patched_execute_sql
+
+        rewriter = DuckDBPostgresRewriter(bv_dialects.BVPostgres(), bv_dialects.BVDuckDB())
+        db = duckdb.connect(DB_NAME, config=DB_CONFIG)
+        
+        # Attach any pre-configured databases to this connection too
+        load_attached_databases_for_connection(db)
+
+        address = ("0.0.0.0", 5433)
+        server = postgres.BuenaVistaServer(
+            address, DuckDBConnection(db), rewriter=rewriter, auth=None
+        )
+        print("INFO: Buena Vista PGWire server listening on 0.0.0.0:5433", flush=True)
+        server.serve_forever()
+    except Exception as e:
+        print(f"ERROR: Buena Vista PGWire server encountered an error: {e}", flush=True)
+
+def run_quack_server():
+    try:
+        import os
+        import time
+        import duckdb
+        db = duckdb.connect(DB_NAME, config=DB_CONFIG)
+        
+        # Ensure attached databases are loaded in the server connection too
+        load_attached_databases_for_connection(db)
+        
+        db.execute("INSTALL quack FROM core_nightly;")
+        db.execute("LOAD quack;")
+        
+        token = os.environ.get("QUACK_TOKEN", "duckdb_studio_secret_token_123")
+        db.execute(f"CALL quack_serve('quack:0.0.0.0:8001', token='{token}', allow_other_hostname=True, disable_ssl=True);")
+        print("INFO: DuckDB Quack Server listening on 0.0.0.0:8001", flush=True)
+        
+        while True:
+            time.sleep(1)
+    except Exception as e:
+        print(f"ERROR: DuckDB Quack Server failed to start: {e}", flush=True)
+
+# Start Quack daemon thread
+import threading
+quack_thread = threading.Thread(target=run_quack_server, daemon=True)
+quack_thread.start()
+
+# Start Buena Vista PGWire Server Thread
+bv_thread = threading.Thread(target=run_buenavista_server, daemon=True)
+bv_thread.start()
 
 # Start Background Scheduler Thread
-import threading
 scheduler_thread = threading.Thread(target=run_background_scheduler, daemon=True)
 scheduler_thread.start()
 
 
 # Start application server
-ui.run(title='DuckDB Data Studio Explorer', port=8085, show=False, storage_secret='duckdb_studio_secret_key_1337', reload=False)
+ui.run(title='DuckDB Data Studio Explorer', port=8085, show=False, storage_secret='duckdb_studio_secret_key_1337', reload=False, reconnect_timeout=30.0)
