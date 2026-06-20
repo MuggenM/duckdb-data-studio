@@ -59,3 +59,9 @@ shared/untitled.txt
 .Trashes
 ehthumbs.db
 Thumbs.db
+
+# --- Excluded Local Helper Files ---
+optimize_gifs.py
+create_missing_gifs.py
+.antigravityignore
+api_icon_transparent.png
