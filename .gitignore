@@ -65,3 +65,4 @@ optimize_gifs.py
 create_missing_gifs.py
 .antigravityignore
 api_icon_transparent.png
+.antigravitycli/
