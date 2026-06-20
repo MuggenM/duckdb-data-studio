@@ -1,8 +1,8 @@
-# 🦆 DuckDB Studio & API Explorer
+# 🦆 DuckDB Data Studio & API Explorer
 
-**DuckDB Studio & API Explorer** is a high-performance visual IDE, microservice compiler, and automated background data pipeline manager designed specifically for **DuckDB**. It acts as a bridge between high-performance local database exploration and cloud-native microservice deployment. 
+**DuckDB Data Studio & API Explorer** is a high-performance visual IDE, microservice compiler, and automated background data pipeline manager designed specifically for **DuckDB**. It acts as a bridge between high-performance local database exploration and cloud-native microservice deployment. 
 
-With DuckDB Studio, you can seamlessly write ad-hoc analytical SQL queries, instantly wrap them as FastAPI dynamic endpoints with auto-parsed query parameters, run cron-based ETL exports directly to Parquet or partitioned directories in the background, and monitor active request health and speeds using an integrated live telemetry dashboard.
+With DuckDB Data Studio, you can seamlessly write ad-hoc analytical SQL queries, instantly wrap them as FastAPI dynamic endpoints with auto-parsed query parameters, run cron-based ETL exports directly to Parquet or partitioned directories in the background, and monitor active request health and speeds using an integrated live telemetry dashboard.
 
 ---
 
@@ -26,7 +26,7 @@ Traditional analytical workflows are highly fragmented:
 3. **Background ETL**: Automating reports requires configuring external schedulers (e.g. cron, Airflow, or Celery) and writing complex export functions.
 4. **Telemetry Logging**: Setting up metrics tables, logging speeds, and tracking endpoint errors is an afterthought that takes significant setup time.
 
-**DuckDB Studio solves all of this under a single unified dashboard**. It is the ultimate productivity suite for developers, data scientists, and analysts who want to turn local DuckDB databases into fully managed backend services in seconds.
+**DuckDB Data Studio solves all of this under a single unified dashboard**. It is the ultimate productivity suite for developers, data scientists, and analysts who want to turn local DuckDB databases into fully managed backend services in seconds.
 
 ---
 
@@ -34,49 +34,57 @@ Traditional analytical workflows are highly fragmented:
 
 ```mermaid
 graph TD
-    A[DuckDB Local Database] --> B[DuckDB Studio Core]
+    A[DuckDB Local Database] --> B[DuckDB Data Studio Core]
     B --> C[Visual SQL Editor & Explorer]
     B --> D[JupyterLab Embedded Terminal]
     B --> E[Dynamic FastAPI Creator]
     B --> F[Background Automation Scheduler]
+    B --> G[Apache Superset BI Reporting]
     
-    E --> G[OpenAPI Swagger playground]
-    E --> H[Live Telemetry Dashboard]
+    E --> H[OpenAPI Swagger playground]
+    E --> I[Live Telemetry Dashboard]
     
-    F --> I[Parquet/CSV/JSON Exports]
+    F --> J[Parquet/CSV/JSON Exports]
 ```
 
 ### 1. Visual SQL Editor & Interactive Catalog Explorer 📊
 * **High-Performance Query Execution**: Execute complex analytical SQL queries instantly against local or attached databases with NiceGUI's premium responsive layout.
+* **Safety Capped Previews**: SELECT queries automatically cap result-set fetching to a maximum of 10,000 rows, protecting the Python process memory and preventing UI freezes when querying large datasets.
+* **Dynamic Parameterized Queries**: Write dynamic templates using the double-curly brace syntax (e.g., `{{ min_age }}`). The editor dynamically renders input fields, escapes quotes, and substitutes values securely before execution.
 * **Schema Catalog Tree**: Visually browse schemas, tables, views, columns, and datatype catalogs via an interactive sidebar list, allowing fast discovery of database structures.
-* **Execution History & Snippets**: Retain a robust history of executed statements and save frequently used queries into a custom workspace library to easily rebuild your analysis pipelines.
+* **Persistent Query History**: Retain a robust history of executed statements (including run times, row counts, execution success, and errors) stored directly inside the config SQLite database. Features include quick clipboard copy and history element deletions.
 
-### 2. Embedded JupyterLab Workspace 💻
+### 2. Drag-and-Drop Data Import Wizard 📥
+* **Schema Sniffing & Live Preview**: Drag-and-drop CSV, Parquet, or JSON files to automatically sniff schema types and view a grid layout preview of the parsing structures.
+* **Interactive Column Mapping**: Rename column targets, choose delimiters, select collision handlers (Append, Replace, or Fail), and override data types (e.g. casting to `VARCHAR`, `INTEGER`, or `DOUBLE`) before writing.
+
+### 3. Embedded JupyterLab Workspace 💻
 * Embedded full-featured **JupyterLab** workspace terminal enabling seamless integration with notebooks for advanced Python, pandas, and machine learning pipelines side-by-side with your database operations.
 
-### 3. Visual Extensions Manager 🔌
+### 4. Visual Extensions Manager 🔌
 * Browse the rich DuckDB extension catalog (like `httpfs` for S3 query structures, `postgres_scanner`/`sqlite_scanner` for direct database scanners, `spatial`, and `icu`).
 * Visually click to **Install** and **Load** extensions in real-time without writing manual SQL commands.
 
-### 4. Database Seeding & Recovery Utilities 🛠️
+### 5. Database Seeding & Recovery Utilities 🛠️
 * **Catalog Backups & Restore**: Create instant catalog structure backups and restore them in one click.
 * **Custom Database Seeding**: Populate benchmark tables with custom-density test datasets in seconds to validate query architectures under scale.
 
-### 5. FastAPI Endpoint Creator (Microservices Generator) ⚡
+### 6. FastAPI Endpoint Creator (Microservices Generator) ⚡
 * **Instant Expose**: Compile any raw SQL query on-the-fly and host it as a dynamic REST API endpoint (e.g. `/api/recent-sales`).
 * **Auto-Generated Query Parameters**: Use the `$parameter_name` notation to automatically capture dynamic query parameters from incoming requests (e.g. `?min_qty=10`). Includes custom analysis tools to parse table schemas and auto-generate parameter options.
 * **Safe Metered API Pagination**: Avoid container crashes from massive responses. Enforces a default dynamic pagination limit of 100 records and a safety max limit ceiling of 10,000, automatically wrapping unbounded queries.
 
-### 6. Interactive OpenAPI Docs & Explorer 📖
+### 7. Interactive OpenAPI Docs & Explorer 📖
 * Embedded visual sandbox playground designed in a modern Swagger UI layout.
 * Inspect active dynamic endpoint schemas, input query parameters, test executions with real-time browser loopbacks, and view beautifully formatted JSON response blocks with live latency measurements.
+* Powered by a dedicated **SQLite metadata store** (`_duckdb_studio_api_endpoints`) to guarantee endpoints remain persistent across app restarts.
 
-### 7. Live API Metrics & Latency Dashboard 📈
+### 8. Live API Metrics & Latency Dashboard 📈
 * **KPI Telemetry Cards**: Monitor global health statistics, including Total API Requests, Average Latency (ms), and Global Success Rate percentage.
 * **Granular Route Analytics**: Review a performance analytics table sorting endpoint routes by invocations, average response times, min/max bounds, success ratios, and last triggered timestamps.
 * **Reset Operations**: Instantly truncate metrics log history to start fresh profiling sessions.
 
-### 8. Background Query Scheduler & Exporter ⏰
+### 9. Background Query Scheduler & Exporter ⏰
 * **Automated Data Pipelines**: Build period-based schedules (`Every Minute` to `Daily`) to automatically execute saved queries in a background thread.
 * **High-Performance Exports**: Dump scheduled query results directly to the project's local `/exports/` directory as **Parquet**, **CSV**, or **JSON** files.
 * **Native Partitioning**: Specify optional columns to partition the exported directories natively using DuckDB's ultra-fast `PARTITION_BY` option.
@@ -89,7 +97,7 @@ graph TD
 * **Frontend Framework**: [NiceGUI](https://nicegui.io/) (High-performance web interface builder based on TailwindCSS and Quasar)
 * **Backend Framework**: [FastAPI](https://fastapi.tiangolo.com/) (Asynchronous high-performance REST API routing)
 * **Database Engine**: [DuckDB](https://duckdb.org/) (In-process analytical database engine)
-* **Visual Theme**: Curated Slate & Indigo dark/light color scheme, standard responsive grid layouts, custom card shadows, and visual feedback toasts.
+* **Visual Theme**: Glassmorphic UI colors, HSL visual gradients, Outfit body typography, JetBrains Mono editor typography, custom card shadows, and visual feedback toasts.
 
 ---
 
@@ -104,9 +112,10 @@ docker compose up -d --build
 ```
 
 ### Accessing the Web Interfaces
-* **DuckDB Studio Web Dashboard**: [http://localhost:8086](http://localhost:8086)
+* **DuckDB Data Studio Web Dashboard**: [http://localhost:8086](http://localhost:8086)
 * **Dynamic REST API Base URL**: `http://localhost:8086/api/<endpoint-slug>`
 * **JupyterLab Terminal**: Access via the embedded tab or container ports.
+* **Apache Superset Workspace**: Access via the embedded reporting tab.
 
 ---
 
@@ -114,8 +123,8 @@ docker compose up -d --build
 
 * [main.py](file:///home/martin/volumes/duckdb-studio/main.py): Primary codebase containing the web application core, NiceGUI layouts, background scheduler daemon, and FastAPI routing handlers.
 * [exports/](file:///home/martin/volumes/duckdb-studio/exports): Target directory for automated background query files.
-* [databases/](file:///home/martin/volumes/duckdb-studio/databases): Mounted database folder containing the DuckDB databases.
-* [config/app_config.db](file:///home/martin/volumes/duckdb-studio/config/app_config.db): Separate SQLite database containing all app settings, configurations, schedules, and metrics.
+* [databases/](file:///home/martin/volumes/duckdb-studio/databases): Mounted database folder containing the DuckDB databases (e.g. the default primary `main.duckdb` file).
+* [config/app_config.db](file:///home/martin/volumes/duckdb-studio/config/app_config.db): Separate SQLite database containing all app settings, configurations, schedules, query histories, and metrics.
 
 ---
 
@@ -127,7 +136,8 @@ This application is a **Proof of Concept (PoC)** built using advanced agentic AI
 
 ## 🤝 Acknowledgments & Integrations
 
-DuckDB Studio integrates several powerful open-source cloud-native projects to create a unified data workspace:
-* **[Garage S3](https://garagehq.nz/)**: A lightweight, high-performance distributed object storage service implementing the Amazon S3 API. Garage allows DuckDB Studio to model, test, and run S3 data lake queries locally using standard S3 connection strings.
+DuckDB Data Studio integrates several powerful open-source cloud-native projects to create a unified data workspace:
+* **[Apache Superset](https://superset.apache.org/)**: An enterprise-grade business intelligence reporting platform. Fully integrated with embedded authentication bypasses, persistent Postgres database driver hooks (`psycopg2`), and pre-configured datasource attachments for PGWire connections.
+* **[Garage S3](https://garagehq.nz/)**: A lightweight, high-performance distributed object storage service implementing the Amazon S3 API. Garage allows DuckDB Data Studio to model, test, and run S3 data lake queries locally using standard S3 connection strings.
 * **[dbt Workbench](https://github.com/dbt-labs/dbt-core)**: An integrated interface and runtime explorer to build, test, and run dbt (data build tool) pipelines and compile data lineage DAGs directly inside the workspace.
 * **[JupyterLab](https://jupyter.org/)**: Enables embedded Python notebook workspaces directly integrated alongside the DuckDB database layers.
