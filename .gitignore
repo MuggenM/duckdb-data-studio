@@ -66,3 +66,11 @@ create_missing_gifs.py
 .antigravityignore
 api_icon_transparent.png
 .antigravitycli/
+capture_screenshots.py
+take_telemetry_screenshot.py
+check_console_errors.py
+create_analytics_dataset.py
+create_explorer_gif.py
+create_feature_traversal_gif.py
+.venv_screenshot/
+.vscode/
