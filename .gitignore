@@ -87,3 +87,6 @@ profiles/.user.yml
 # --- Temporary workspaces ---
 scratch/
 shared/garage/
+
+# --- Local SSL Certs ---
+config/certs/
