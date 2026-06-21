@@ -121,10 +121,10 @@ docker compose up -d --build
 
 ## 📂 Project Structure
 
-* [main.py](file:///home/martin/volumes/duckdb-studio/main.py): Primary codebase containing the web application core, NiceGUI layouts, background scheduler daemon, and FastAPI routing handlers.
-* [exports/](file:///home/martin/volumes/duckdb-studio/exports): Target directory for automated background query files.
-* [databases/](file:///home/martin/volumes/duckdb-studio/databases): Mounted database folder containing the DuckDB databases (e.g. the default primary `main.duckdb` file).
-* [config/app_config.db](file:///home/martin/volumes/duckdb-studio/config/app_config.db): Separate SQLite database containing all app settings, configurations, schedules, query histories, and metrics.
+* [main.py](main.py): Primary codebase containing the web application core, NiceGUI layouts, background scheduler daemon, and FastAPI routing handlers.
+* [exports/](exports/): Target directory for automated background query files.
+* [databases/](databases/): Mounted database folder containing the DuckDB databases (e.g. the default primary `main.duckdb` file).
+* [config/app_config.db](config/app_config.db): Separate SQLite database containing all app settings, configurations, schedules, query histories, and metrics.
 
 ---
 
