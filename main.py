@@ -977,6 +977,31 @@ def get_main_db_path():
 
 DB_NAME = get_main_db_path()
 
+def ensure_ssl_certs():
+    cert_dir = 'config/certs'
+    os.makedirs(cert_dir, exist_ok=True)
+    key_path = os.path.join(cert_dir, 'server.key')
+    cert_path = os.path.join(cert_dir, 'server.crt')
+    
+    if not os.path.exists(key_path) or not os.path.exists(cert_path):
+        import subprocess
+        print("Generating self-signed SSL certificate for Duckgres PGWire...")
+        cmd = [
+            "openssl", "req", "-newkey", "rsa:2048", "-new", "-nodes", "-x509",
+            "-days", "365",
+            "-subj", "/CN=localhost",
+            "-keyout", key_path,
+            "-out", cert_path
+        ]
+        try:
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            os.chmod(key_path, 0o600)
+            os.chmod(cert_path, 0o644)
+        except Exception as e:
+            print(f"Failed to generate self-signed certificate: {e}")
+
+ensure_ssl_certs()
+
 import sqlite3
 
 class SQLiteConfigManager:
