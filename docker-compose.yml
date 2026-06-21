@@ -197,7 +197,43 @@ services:
       - "traefik.http.routers.garage-webui.entrypoints=web"
       - "traefik.http.services.garage-webui.loadbalancer.server.port=3909"
 
+  superset:
+    image: apache/superset:latest
+    container_name: superset
+    user: root
+    entrypoint: >
+      bash -c "
+      pip install --target=/app/.venv/lib/python3.10/site-packages psycopg2-binary &&
+      superset db upgrade &&
+      superset fab create-admin --username admin --firstname Admin --lastname Admin --email admin@localhost --password admin &&
+      superset init &&
+      superset import-datasources -p /app/superset_datasources.yaml &&
+      /usr/bin/run-server.sh
+      "
+    ports:
+      - "8088:8088"
+    environment:
+      - TALISMAN_ENABLED=False
+      - SUPERSET_SECRET_KEY=superset_studio_secret_key_1337
+      - SUPERSET_ENV=production
+      - FLASK_APP=superset.app:create_app()
+      - PYTHONPATH=/app/pythonpath
+      - SUPERSET_PORT=8088
+    volumes:
+      - ./config/superset_config.py:/app/pythonpath/superset_config.py
+      - ./config/superset_datasources.yaml:/app/superset_datasources.yaml
+      - superset_home:/app/superset_home
+    networks:
+      - studio_jupyter_net
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.superset.rule=Host(`superset.localhost`)"
+      - "traefik.http.routers.superset.entrypoints=web"
+      - "traefik.http.services.superset.loadbalancer.server.port=8088"
+
 volumes:
   dbt_postgres_data:
   code-server-extensions:
+  superset_home:
 

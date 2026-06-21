@@ -74,3 +74,16 @@ create_explorer_gif.py
 create_feature_traversal_gif.py
 .venv_screenshot/
 .vscode/
+
+# --- Local Databases ---
+config/*.db
+config/*.db-wal
+config/*.db-shm
+
+# --- DBT targets & credentials ---
+dbt_project/target/
+profiles/.user.yml
+
+# --- Temporary workspaces ---
+scratch/
+shared/garage/

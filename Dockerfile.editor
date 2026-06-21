@@ -1,0 +1,31 @@
+FROM dbt-workbench-backend:latest
+
+USER root
+
+# Install dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    git \
+    sudo \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install code-server
+RUN curl -fsSL https://code-server.dev/install.sh | sh
+
+# Create user coder with UID 1000 and GID 1000 if not already existing, or adjust
+RUN id -u coder >/dev/null 2>&1 || useradd -u 1000 -m -s /bin/bash coder \
+    && echo "coder ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/nopasswd
+
+# Ensure coder has permissions for /home/coder
+RUN mkdir -p /home/coder/.dbt /home/coder/.local/share/code-server \
+    && chown -R coder:coder /home/coder
+
+# Fix DBT version mismatch between dbt-core and dbt-duckdb in the base image
+RUN pip install --no-cache-dir --upgrade dbt-core==1.8.9 dbt-postgres==1.8.2 dbt-duckdb==1.8.3
+
+USER coder
+WORKDIR /home/coder/project
+
+EXPOSE 8080
+
+CMD ["code-server", "--bind-addr", "0.0.0.0:8080", "--auth", "none", "/home/coder/project"]

@@ -1,0 +1,9 @@
+databases:
+  - database_name: DuckDB_PGWire
+    sqlalchemy_uri: postgresql://postgres@duckdb-studio:5433/starter
+    expose_in_sqllab: true
+    allow_run_async: false
+    allow_ctas: true
+    allow_cvas: true
+    allow_dml: true
+    extra: '{}'
