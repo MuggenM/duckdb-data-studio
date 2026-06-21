@@ -273,14 +273,15 @@ class DuckDBExplorer:
             
             if result.description is not None:
                 # SELECT / RETURNING queries
-                data = result.fetchall()
+                data = result.fetchmany(10000)
                 columns = [desc[0] for desc in result.description]
                 return {
                     'data': data,
                     'columns': columns,
                     'is_select': True,
                     'duration_ms': duration_ms,
-                    'affected_rows': len(data)
+                    'affected_rows': len(data),
+                    'truncated': len(data) >= 10000
                 }
             else:
                 # DDL / DML queries (CREATE, INSERT, UPDATE, etc.)
@@ -967,12 +968,12 @@ def list_seeding_templates():
 
 # --- APPLICATION PAGE DEFINITION ---
 def get_main_db_path():
-    """Get the path to the main DuckDB file, using /databases if running in Docker, otherwise databases/starter.duckdb."""
+    """Get the path to the main DuckDB file, using /databases if running in Docker, otherwise databases/main.duckdb."""
     if os.path.exists('/databases') and os.path.isdir('/databases'):
-        return '/databases/starter.duckdb'
+        return '/databases/main.duckdb'
     if not os.path.exists('databases'):
         os.makedirs('databases', exist_ok=True)
-    return 'databases/starter.duckdb'
+    return 'databases/main.duckdb'
 
 DB_NAME = get_main_db_path()
 
@@ -1057,6 +1058,19 @@ class SQLiteConfigManager:
                     timestamp TIMESTAMP,
                     latency_ms REAL,
                     status_code INTEGER,
+                    error_message TEXT
+                );
+            """)
+
+            # 6. Query History table
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS _duckdb_studio_query_history (
+                    id TEXT PRIMARY KEY,
+                    query_text TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    duration_ms INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    rows_count INTEGER,
                     error_message TEXT
                 );
             """)
@@ -1250,36 +1264,125 @@ def index():
     
     # Enable Tailwind glassmorphism and general layout styling
     ui.add_head_html("""
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
         <style>
             .q-tab[name="Apache Superset"] .q-tab__icon img,
             .q-tab[name="Telemetry"] .q-tab__icon img {
                 width: 30px !important;
                 height: 30px !important;
             }
+            
+            /* --- TYPOGRAPHY & SMOOTH BG GRADIENTS --- */
             body, html {
                 margin: 0 !important;
                 padding: 0 !important;
                 height: 100vh !important;
                 width: 100vw !important;
                 overflow: hidden !important;
+                font-family: 'Outfit', -apple-system, BlinkMacSystemFont, sans-serif !important;
+                background-color: #f8fafc;
+                background-image: 
+                    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.05) 0px, transparent 50%),
+                    radial-gradient(at 50% 0%, rgba(139, 92, 246, 0.04) 0px, transparent 50%),
+                    radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.04) 0px, transparent 50%);
+                background-attachment: fixed;
+                transition: background-color 0.3s ease;
             }
-            .custom-header {
-                background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-                border-bottom: 2px solid #334155;
+            .body--dark {
+                background-color: #030712 !important;
+                background-image: 
+                    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.12) 0px, transparent 50%),
+                    radial-gradient(at 50% 0%, rgba(139, 92, 246, 0.08) 0px, transparent 50%),
+                    radial-gradient(at 100% 0%, rgba(236, 72, 153, 0.08) 0px, transparent 50%) !important;
+                background-attachment: fixed;
             }
-            .sidebar-card {
-                border-right: 1px solid #e2e8f0;
-            }
-            .body--dark .sidebar-card {
-                border-right: 1px solid #1e293b;
-            }
+            
+            /* --- GLASSMORPHIC COMPONENT CARD CLASSES --- */
             .glass-card {
-                backdrop-filter: blur(10px);
-                border: 1px solid rgba(226, 232, 240, 0.8);
+                background: rgba(255, 255, 255, 0.45) !important;
+                backdrop-filter: blur(16px) saturate(120%) !important;
+                -webkit-backdrop-filter: blur(16px) saturate(120%) !important;
+                border: 1px solid rgba(255, 255, 255, 0.5) !important;
+                border-radius: 12px;
+                box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.03) !important;
+                transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
             }
             .body--dark .glass-card {
-                border: 1px solid rgba(30, 41, 59, 0.8);
+                background: rgba(17, 24, 39, 0.45) !important;
+                border: 1px solid rgba(255, 255, 255, 0.06) !important;
+                box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.24) !important;
             }
+            .glass-card:hover {
+                box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.06) !important;
+                border-color: rgba(99, 102, 241, 0.3) !important;
+            }
+            .body--dark .glass-card:hover {
+                box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.35) !important;
+                border-color: rgba(129, 140, 248, 0.15) !important;
+            }
+
+            .custom-header {
+                background: rgba(255, 255, 255, 0.6) !important;
+                backdrop-filter: blur(20px) !important;
+                -webkit-backdrop-filter: blur(20px) !important;
+                border-bottom: 1px solid rgba(226, 232, 240, 0.8) !important;
+            }
+            .body--dark .custom-header {
+                background: rgba(15, 23, 42, 0.65) !important;
+                border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+            }
+            
+            .sidebar-card {
+                background: rgba(255, 255, 255, 0.3) !important;
+                backdrop-filter: blur(12px) !important;
+                border-right: 1px solid rgba(226, 232, 240, 0.8) !important;
+            }
+            .body--dark .sidebar-card {
+                background: rgba(15, 23, 42, 0.3) !important;
+                border-right: 1px solid rgba(255, 255, 255, 0.06) !important;
+            }
+            
+            .dark-bg-panel {
+                background-color: rgba(255, 255, 255, 0.5) !important;
+                backdrop-filter: blur(8px) !important;
+                border: 1px solid rgba(226, 232, 240, 0.7) !important;
+                transition: all 0.3s ease;
+            }
+            .body--dark .dark-bg-panel {
+                background-color: rgba(17, 24, 39, 0.5) !important;
+                border: 1px solid rgba(255, 255, 255, 0.06) !important;
+            }
+            .dark-bg-flat {
+                background-color: rgba(248, 250, 252, 0.3) !important;
+                transition: all 0.3s ease;
+            }
+            .body--dark .dark-bg-flat {
+                background-color: rgba(15, 23, 42, 0.3) !important;
+            }
+
+            /* --- CUSTOM SMOOTH SCROLLBARS --- */
+            ::-webkit-scrollbar {
+                width: 6px;
+                height: 6px;
+            }
+            ::-webkit-scrollbar-track {
+                background: transparent;
+            }
+            ::-webkit-scrollbar-thumb {
+                background: rgba(156, 163, 175, 0.25);
+                border-radius: 10px;
+                transition: background 0.3s ease;
+            }
+            .body--dark ::-webkit-scrollbar-thumb {
+                background: rgba(156, 163, 175, 0.12);
+            }
+            ::-webkit-scrollbar-thumb:hover {
+                background: rgba(99, 102, 241, 0.4);
+            }
+
+            /* --- Q-TREE CUSTOM STYLING --- */
             .body--dark .q-tree .q-icon {
                 color: #818cf8 !important;
             }
@@ -1292,56 +1395,39 @@ def index():
             .body--dark .q-tree span {
                 color: #e2e8f0 !important;
             }
-            .dark-bg-panel {
-                background-color: #ffffff;
-                transition: background-color 0.3s, border-color 0.3s;
-            }
-            .body--dark .dark-bg-panel {
-                background-color: #0f172a !important;
-                border-color: #1e293b !important;
-            }
-            .dark-bg-flat {
-                background-color: #f8fafc;
-                transition: background-color 0.3s;
-            }
-            .body--dark .dark-bg-flat {
-                background-color: #0f172a !important;
-            }
             
             /* --- CodeMirror Light/Dark Theme Sync --- */
             .cm-editor {
-                background-color: #ffffff !important;
+                background-color: rgba(255, 255, 255, 0.5) !important;
                 color: #0f172a !important;
-                border: 1px solid #cbd5e1 !important;
-                border-radius: 4px;
+                border: 1px solid rgba(203, 213, 225, 0.7) !important;
+                border-radius: 8px;
+                backdrop-filter: blur(8px) !important;
             }
             .cm-editor .cm-scroller {
-                background-color: #ffffff !important;
+                background-color: transparent !important;
             }
             .cm-editor .cm-content {
                 color: #0f172a !important;
+                font-family: 'JetBrains Mono', monospace !important;
             }
             .cm-editor .cm-gutters {
-                background-color: #f1f5f9 !important;
+                background-color: rgba(241, 245, 249, 0.6) !important;
                 color: #64748b !important;
-                border-right: 1px solid #cbd5e1 !important;
+                border-right: 1px solid rgba(203, 213, 225, 0.6) !important;
             }
-
             .body--dark .cm-editor {
-                background-color: #0f172a !important;
+                background-color: rgba(15, 23, 42, 0.5) !important;
                 color: #f8fafc !important;
-                border: 1px solid #1e293b !important;
-            }
-            .body--dark .cm-editor .cm-scroller {
-                background-color: #0f172a !important;
+                border: 1px solid rgba(255, 255, 255, 0.06) !important;
             }
             .body--dark .cm-editor .cm-content {
                 color: #f8fafc !important;
             }
             .body--dark .cm-editor .cm-gutters {
-                background-color: #1e293b !important;
+                background-color: rgba(30, 41, 59, 0.5) !important;
                 color: #94a3b8 !important;
-                border-right: 1px solid #334155 !important;
+                border-right: 1px solid rgba(255, 255, 255, 0.04) !important;
             }
 
              /* --- Results Layout and Data Grid Scroll --- */
@@ -1363,6 +1449,8 @@ def index():
                  display: flex !important;
                  flex-direction: column !important;
                  flex-wrap: nowrap !important;
+                 border-radius: 8px !important;
+                 background: transparent !important;
              }
              .q-table__middle {
                  flex-grow: 1 !important;
@@ -1375,10 +1463,11 @@ def index():
                  position: sticky !important;
                  z-index: 2 !important;
                  top: 0 !important;
-                 background-color: #ffffff !important;
+                 background-color: rgba(255, 255, 255, 0.8) !important;
+                 backdrop-filter: blur(10px) !important;
              }
              .body--dark .q-table thead tr th {
-                 background-color: #0f172a !important;
+                 background-color: rgba(15, 23, 42, 0.8) !important;
                  color: #cbd5e1 !important;
              }
 
@@ -1395,7 +1484,7 @@ def index():
                  min-height: 26px !important;
                  padding: 0 4px !important;
              }
-         </style>
+        </style>
         <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
         <script>
             mermaid.initialize({ startOnLoad: false, securityLevel: 'loose', theme: 'dark' });
@@ -1495,7 +1584,7 @@ def index():
             ext = os.path.splitext(filename)[1].lower()
             table_name = sanitize_table_name(os.path.splitext(filename)[0])
             
-            target_db = import_db_select.value or 'starter'
+            target_db = import_db_select.value or 'main'
             target_schema = import_schema_select.value or 'main'
             fq_name = f'"{target_db}"."{target_schema}"."{table_name}"'
             
@@ -1529,7 +1618,7 @@ def index():
         url = url.strip()
         tbl_name = sanitize_table_name(custom_table.strip() if custom_table and custom_table.strip() else "remote_dataset")
         
-        target_db = import_db_select.value or 'starter'
+        target_db = import_db_select.value or 'main'
         target_schema = import_schema_select.value or 'main'
         fq_name = f'"{target_db}"."{target_schema}"."{tbl_name}"'
         
@@ -1575,7 +1664,7 @@ def index():
         s3_uri = s3_uri.strip()
         tbl_name = sanitize_table_name(custom_table.strip() if custom_table and custom_table.strip() else "s3_dataset")
         
-        target_db = import_db_select.value or 'starter'
+        target_db = import_db_select.value or 'main'
         target_schema = import_schema_select.value or 'main'
         fq_name = f'"{target_db}"."{target_schema}"."{tbl_name}"'
         
@@ -6987,19 +7076,75 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
         sql_editor.value = "\n".join(lines)
         ui.notify("SQL query formatted", type='info')
 
+    def delete_history_item(hist_id):
+        try:
+            config_db.execute("DELETE FROM _duckdb_studio_query_history WHERE id = ?;", [hist_id])
+            ui.notify("History item deleted", type='info')
+            update_query_history_list()
+        except Exception as e:
+            ui.notify(f"Failed to delete history item: {e}", type='negative')
+
     def update_query_history_list():
-        """Repopulate the query history list under the session history tab."""
+        """Repopulate the query history list from the SQLite database."""
+        try:
+            rows = config_db.query_all("""
+                SELECT id, query_text, timestamp, duration_ms, status, rows_count, error_message 
+                FROM _duckdb_studio_query_history 
+                ORDER BY timestamp DESC 
+                LIMIT 50;
+            """)
+        except Exception as e:
+            print(f"Failed to fetch query history: {e}")
+            rows = []
+            
         history_container.clear()
         with history_container:
-            for idx, q_sql in enumerate(reversed(query_history)):
-                # Use a specific local binding helper to prevent lambda capture loop issue
-                def make_click_handler(s=q_sql):
+            if not rows:
+                with ui.column().classes('w-full items-center justify-center py-6 text-slate-400 dark:text-slate-500'):
+                    ui.icon('history', size='lg')
+                    ui.label('No query history recorded yet').classes('text-xs mt-1')
+                return
+                
+            for r in rows:
+                q_text = r['query_text']
+                dur = r['duration_ms']
+                status = r['status']
+                ts = r['timestamp'].replace('T', ' ')[:19]
+                rows_count = r['rows_count']
+                err_msg = r['error_message']
+                hist_id = r['id']
+                
+                is_success = status == 'SUCCESS'
+                icon_name = 'check_circle' if is_success else 'cancel'
+                icon_color = 'emerald' if is_success else 'rose'
+                bg_color = 'hover:bg-slate-50 dark:hover:bg-slate-900'
+                
+                def make_restore_handler(s=q_text):
                     return lambda _: load_history_query(s)
                 
-                with ui.card().classes('w-full p-3 border rounded shadow-none hover:bg-slate-50 dark:hover:bg-slate-900 cursor-pointer transition').on('click', make_click_handler()):
+                with ui.card().classes(f'w-full p-3 border rounded shadow-none {bg_color} transition flex-col gap-2'):
                     with ui.row().classes('w-full justify-between items-center no-wrap'):
-                        ui.label(q_sql).classes('text-xs font-mono truncate flex-grow').style('max-width: 85%;')
-                        ui.icon('keyboard_arrow_right', color='slate')
+                        with ui.row().classes('items-center gap-2 flex-grow min-w-0'):
+                            ui.icon(icon_name, color=icon_color).classes('text-lg flex-none')
+                            ui.label(ts).classes('text-xs text-slate-400 font-mono flex-none')
+                            ui.label(f"{dur}ms").classes('text-xs text-indigo-500 font-mono flex-none')
+                            if is_success:
+                                ui.label(f"{rows_count:,} rows" if rows_count is not None else "0 rows").classes('text-xs text-emerald-600 font-mono flex-none')
+                            else:
+                                ui.label("Failed").classes('text-xs text-rose-500 font-mono flex-none')
+                        
+                        with ui.row().classes('items-center gap-1 flex-none'):
+                            # Clipboard copy
+                            ui.button(icon='content_copy', on_click=lambda _, q=q_text: [ui.clipboard.write(q), ui.notify('Copied to clipboard!', type='info')]).props('flat dense size=sm round color=slate')
+                            # Delete entry
+                            ui.button(icon='delete', on_click=lambda _, i=hist_id: delete_history_item(i)).props('flat dense size=sm round color=rose')
+                    
+                    with ui.row().classes('w-full justify-between items-center cursor-pointer no-wrap').on('click', make_restore_handler()):
+                        ui.label(q_text).classes('text-xs font-mono truncate flex-grow text-slate-700 dark:text-slate-300').style('max-width: 90%;')
+                        ui.icon('keyboard_arrow_right', color='slate').classes('flex-none')
+                    
+                    if not is_success and err_msg:
+                        ui.label(f"Error: {err_msg}").classes('text-xs font-mono text-rose-600 dark:text-rose-400 break-all p-1.5 bg-rose-50 dark:bg-rose-950/30 rounded w-full')
 
     def load_history_query(sql_str):
         sql_editor.value = sql_str
@@ -7030,12 +7175,7 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
             status_label.text = "Error: Overriding primary database name is blocked by policy."
             return
             
-        # Append to query history if it's new
-        if sql not in query_history:
-            query_history.append(sql)
-            if len(query_history) > 10:
-                query_history.pop(0)
-            update_query_history_list()
+
             
         status_label.text = "Running query..."
         
@@ -7078,6 +7218,26 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
 
         # Run the query in DuckDB
         res = explorer.query(sql_exec)
+        
+        # Log to Persistent SQLite Query History
+        try:
+            import uuid
+            hist_id = str(uuid.uuid4())
+            import datetime
+            ts = datetime.datetime.now().isoformat()
+            dur = res.get('duration_ms', 0)
+            status = 'ERROR' if 'error' in res else 'SUCCESS'
+            rows_cnt = len(res.get('rows', [])) if 'error' not in res else None
+            err_msg = res.get('error', None) if 'error' in res else None
+            
+            config_db.execute("""
+                INSERT INTO _duckdb_studio_query_history (id, query_text, timestamp, duration_ms, status, rows_count, error_message)
+                VALUES (?, ?, ?, ?, ?, ?, ?);
+            """, [hist_id, sql_exec, ts, dur, status, rows_cnt, err_msg])
+            
+            update_query_history_list()
+        except Exception as he:
+            print(f"Failed to log query history: {he}")
         
         # Track query latency for Telemetry Dashboard
         import datetime
@@ -7123,7 +7283,11 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
             refresh_schema_tree()
 
         # Display success metrics
-        status_label.text = f"Completed in {res['duration_ms']}ms | Rows: {res['affected_rows']}"
+        if res.get('truncated', False):
+            status_label.text = f"Completed in {res['duration_ms']}ms | Rows: {res['affected_rows']}+ (Truncated to 10,000)"
+            ui.notify('Results truncated to first 10,000 rows for performance.', type='warning', duration=5)
+        else:
+            status_label.text = f"Completed in {res['duration_ms']}ms | Rows: {res['affected_rows']}"
         
         if res['is_select']:
             cols = [{'name': name, 'label': name, 'field': name, 'sortable': True} for name in res['columns']]
@@ -7930,12 +8094,12 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
             db_rows = explorer.conn.execute("SELECT database_name FROM duckdb_databases").fetchall()
             dbs = [row[0] for row in db_rows if row[0] not in ('system', 'temp') and not row[0].startswith('__')]
             target_db_select.options = {db: db for db in dbs}
-            if 'starter' in dbs:
-                target_db_select.value = 'starter'
-            elif 'main' in dbs:
+            if 'main' in dbs:
                 target_db_select.value = 'main'
+            elif 'starter' in dbs:
+                target_db_select.value = 'starter'
             else:
-                target_db_select.value = dbs[0] if dbs else 'starter'
+                target_db_select.value = dbs[0] if dbs else 'main'
             target_db_select.update()
             
             update_import_schemas(target_db_select.value)
@@ -7964,8 +8128,8 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
             
             with ui.row().classes('w-full gap-4'):
                 target_db_select = ui.select(
-                    options={'starter': 'starter'},
-                    value='starter',
+                    options={'main': 'main'},
+                    value='main',
                     label='Target Database',
                     on_change=lambda e: update_import_schemas(e.value)
                 ).props('outlined dense').classes('flex-grow')

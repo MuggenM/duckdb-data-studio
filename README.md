@@ -139,5 +139,5 @@ This application is a **Proof of Concept (PoC)** built using advanced agentic AI
 DuckDB Data Studio integrates several powerful open-source cloud-native projects to create a unified data workspace:
 * **[Apache Superset](https://superset.apache.org/)**: An enterprise-grade business intelligence reporting platform. Fully integrated with embedded authentication bypasses, persistent Postgres database driver hooks (`psycopg2`), and pre-configured datasource attachments for PGWire connections.
 * **[Garage S3](https://garagehq.nz/)**: A lightweight, high-performance distributed object storage service implementing the Amazon S3 API. Garage allows DuckDB Data Studio to model, test, and run S3 data lake queries locally using standard S3 connection strings.
-* **[dbt Workbench](https://github.com/dbt-labs/dbt-core)**: An integrated interface and runtime explorer to build, test, and run dbt (data build tool) pipelines and compile data lineage DAGs directly inside the workspace.
+* **[dbt Workbench](https://github.com/rezer-bleede/dbt-Workbench)**: An integrated interface and runtime explorer to build, test, and run dbt (data build tool) pipelines and compile data lineage DAGs directly inside the workspace.
 * **[JupyterLab](https://jupyter.org/)**: Enables embedded Python notebook workspaces directly integrated alongside the DuckDB database layers.
