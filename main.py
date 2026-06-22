@@ -586,6 +586,7 @@ config_db = SQLiteConfigManager()
 def index():
     global DB_NAME
     ui.query('.nicegui-content').classes('p-0 gap-0')
+    
     # Scoping variables for sidebar explorers
     schema_filter_input = None
     current_snippet_category = 'All'
@@ -595,6 +596,20 @@ def index():
     import_schema_select = None
     rename_target_old_name = ''
     rename_target_path = ''
+
+    # Right slide-out Query History Drawer Panel
+    with ui.right_drawer(value=False, fixed=True, elevated=True).classes('w-96 dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-4 gap-4 flex-col').style('width: 400px;') as history_drawer:
+        with ui.row().classes('w-full justify-between items-center no-wrap pb-2 border-b border-slate-100 dark:border-slate-800'):
+            with ui.row().classes('items-center gap-2'):
+                ui.icon('history', color='primary').classes('text-xl')
+                ui.label('Query History Timeline').classes('font-bold text-slate-800 dark:text-slate-100 text-sm')
+            with ui.row().classes('items-center gap-1'):
+                ui.button(icon='cleaning_services', on_click=lambda: clear_all_history()).props('flat dense size=sm round color=slate').tooltip('Clear all history')
+                ui.button(icon='close', on_click=lambda: history_drawer.hide()).props('flat dense size=sm round color=slate')
+        
+        # History container inside drawer
+        history_container = ui.column().classes('w-full gap-3 overflow-auto flex-grow')
+
     
     # Enable Tailwind glassmorphism and general layout styling
     ui.add_head_html("""
@@ -4073,6 +4088,8 @@ def index():
                                           on_click=lambda: format_sql_query()).props('outline dense').classes('text-xs')
                                 ui.button('Clear', icon='delete_sweep', color='negative',
                                           on_click=lambda: sql_editor.set_value('')).props('flat dense').classes('text-xs')
+                                ui.button('History', icon='history', color='secondary',
+                                          on_click=lambda: history_drawer.toggle()).props('elevated dense').classes('text-xs')
                             
                             ui.label('Press Ctrl+Enter inside workspace to run').classes('text-[10px] text-slate-400 font-mono hidden md:block')
                     
@@ -4181,9 +4198,11 @@ def index():
                                     ui.label('Click "Profile Query" or use "Explain Query" to analyze execution plan.').classes('text-slate-400')
 
                             # SESSION HISTORY TAB
-                            with ui.tab_panel(history_tab).classes('p-0 pt-4 gap-2 flex-col'):
-                                ui.label('Recent Queries in this Session:').classes('text-sm text-slate-500 pb-2')
-                                history_container = ui.column().classes('w-full gap-2 overflow-auto max-h-80')
+                            with ui.tab_panel(history_tab).classes('p-0 pt-4 gap-4 flex-col items-center justify-center h-full min-h-0'):
+                                ui.icon('history', size='xl', color='slate').classes('text-slate-400')
+                                ui.label('Access Execution Query History Timeline').classes('text-sm font-semibold text-slate-700 dark:text-slate-300')
+                                ui.label('Review metrics, recover, or compare the last 50 executed queries in the side panel.').classes('text-xs text-slate-400 text-center max-w-xs')
+                                ui.button('Open History Drawer', icon='menu_open', on_click=lambda: history_drawer.show()).props('elevated color=primary').classes('px-4 py-2 mt-2')
 
                             # SYSTEM LOG TAB
                             with ui.tab_panel(log_tab).classes('p-0 pt-4 gap-4 flex-col'):
@@ -6418,6 +6437,14 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
         except Exception as e:
             ui.notify(f"Failed to delete history item: {e}", type='negative')
 
+    def clear_all_history():
+        try:
+            config_db.execute("DELETE FROM _duckdb_studio_query_history;")
+            ui.notify("Query history cleared", type='info')
+            update_query_history_list()
+        except Exception as e:
+            ui.notify(f"Failed to clear query history: {e}", type='negative')
+
     def update_query_history_list():
         """Repopulate the query history list from the SQLite database."""
         try:
@@ -6561,7 +6588,7 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
             ts = datetime.datetime.now().isoformat()
             dur = res.get('duration_ms', 0)
             status = 'ERROR' if 'error' in res else 'SUCCESS'
-            rows_cnt = len(res.get('rows', [])) if 'error' not in res else None
+            rows_cnt = res.get('affected_rows', 0) if 'error' not in res else None
             err_msg = res.get('error', None) if 'error' in res else None
             
             config_db.execute("""
