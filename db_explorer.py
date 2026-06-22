@@ -3,7 +3,10 @@ import duckdb
 from collections import defaultdict
 
 DB_CONFIG = {
-    'custom_user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+    'custom_user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+    'threads': '4',
+    'memory_limit': '2GB',
+    'preserve_insertion_order': 'false'
 }
 
 class DuckDBExplorer:

@@ -7,3 +7,5 @@ faker
 slowapi
 PyJWT
 buenavista
+uvloop
+httptools
