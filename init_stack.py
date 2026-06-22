@@ -18,7 +18,6 @@ def init_folders():
     print_step("Creating required application directories")
     dirs = [
         'databases',
-        'config',
         'config/certs',
         'exports',
         'scratch',
