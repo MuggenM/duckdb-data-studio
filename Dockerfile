@@ -16,8 +16,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application source code and initializer
-COPY init_stack.py .
-COPY main.py .
+COPY *.py .
 COPY local_file_picker/ local_file_picker/
 
 # Create volume mount points
