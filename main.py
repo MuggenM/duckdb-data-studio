@@ -6639,9 +6639,14 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                     del explorer.attached_dbs_queries[db_alias]
                     print(f"DEBUG: Removed ATTACH statement for detached database {db_alias}", flush=True)
 
-        # Force refresh of schema and databases tree if attach/detach statements are executed
-        if "attach " in sql.lower() or "detach " in sql.lower():
+        # Force refresh of schema, databases tree, and ER Diagram if DDL or attach/detach/use statements are executed
+        sql_lower = sql.lower().strip()
+        if any(keyword in sql_lower for keyword in ["attach ", "detach ", "create ", "drop ", "alter ", "use "]):
             refresh_schema_tree()
+            try:
+                refresh_er_diagram()
+            except Exception:
+                pass
 
         # Display success metrics
         if res.get('truncated', False):
