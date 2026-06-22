@@ -21,11 +21,9 @@ def init_folders():
         'config/certs',
         'exports',
         'scratch',
-        'shared',
         'shared/garage',
         'shared/garage/meta',
-        'shared/garage/data',
-        'notebooks'
+        'shared/garage/data'
     ]
     for d in dirs:
         if not os.path.exists(d):
