@@ -29,6 +29,7 @@ services:
     ports:
       - "8086:8085"
     volumes:
+      - ./init_stack.py:/app/init_stack.py
       - ./main.py:/app/main.py
       - ./local_file_picker:/app/local_file_picker
       - ./config:/config
