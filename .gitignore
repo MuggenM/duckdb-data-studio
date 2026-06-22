@@ -90,3 +90,6 @@ shared/garage/
 
 # --- Local SSL Certs ---
 config/certs/
+
+# --- Jupyter Scratchpads ---
+notebooks/Untitled.ipynb
