@@ -6727,30 +6727,106 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
         refresh_schema_tree()
 
     def trigger_csv_download():
-        """Trigger standard browser CSV download for the active query results."""
-        if not current_results['columns'] or not current_results['rows']:
-            ui.notify('No active data to export!', type='warning')
+        """Trigger native high-performance DuckDB CSV export and browser download."""
+        sql = sql_editor.value.strip()
+        if not sql:
+            ui.notify('Please write a query first!', type='warning')
             return
-        csv_bytes = get_csv_bytes(current_results['columns'], current_results['rows'])
-        ui.download(csv_bytes, f"duckdb_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
-        ui.notify('CSV Export completed successfully.', type='success')
+            
+        try:
+            params = detect_parameters(sql)
+            if params:
+                empty_params = [p for p in params if p not in parameter_input_fields or parameter_input_fields[p].value is None or str(parameter_input_fields[p].value).strip() == ""]
+                if empty_params:
+                    ui.notify(f"Please fill in all query parameters: {', '.join(empty_params)}", type='warning')
+                    return
+                param_values = {p: parameter_input_fields[p].value for p in params}
+                sql_exec = substitute_sql_parameters(sql, param_values)
+            else:
+                sql_exec = sql
+
+            # Clean trailing semicolon
+            sql_clean = sql_exec.strip()
+            if sql_clean.endswith(';'):
+                sql_clean = sql_clean[:-1].strip()
+
+            os.makedirs('exports', exist_ok=True)
+            import uuid
+            temp_path = f"exports/export_{uuid.uuid4().hex}.csv"
+
+            # Execute native COPY command
+            copy_query = f"COPY ({sql_clean}) TO '{temp_path}' (FORMAT CSV, HEADER TRUE);"
+            explorer.conn.execute(copy_query)
+
+            # Trigger standard browser download
+            ui.download(temp_path, f"duckdb_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+            ui.notify('CSV Export completed successfully.', type='success')
+
+            # Schedule garbage collection cleanup for the temporary file
+            def cleanup():
+                import time
+                time.sleep(15)
+                try:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                except Exception:
+                    pass
+            import threading
+            threading.Thread(target=cleanup, daemon=True).start()
+
+        except Exception as ex:
+            ui.notify(f"CSV Export failed: {ex}", type='negative', duration=7)
 
     def trigger_parquet_download():
-        """Trigger standard browser Parquet download for the active query results."""
-        if not current_results['columns'] or not current_results['rows']:
-            ui.notify('No active data to export!', type='warning')
+        """Trigger native high-performance DuckDB Parquet export and browser download."""
+        sql = sql_editor.value.strip()
+        if not sql:
+            ui.notify('Please write a query first!', type='warning')
             return
+            
         try:
-            import pyarrow as pa
-            import pyarrow.parquet as pq
-            table = pa.Table.from_pylist(current_results['rows'])
-            sink = pa.BufferOutputStream()
-            pq.write_table(table, sink)
-            parquet_bytes = sink.getvalue().to_pybytes()
-            ui.download(parquet_bytes, f"duckdb_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet")
+            params = detect_parameters(sql)
+            if params:
+                empty_params = [p for p in params if p not in parameter_input_fields or parameter_input_fields[p].value is None or str(parameter_input_fields[p].value).strip() == ""]
+                if empty_params:
+                    ui.notify(f"Please fill in all query parameters: {', '.join(empty_params)}", type='warning')
+                    return
+                param_values = {p: parameter_input_fields[p].value for p in params}
+                sql_exec = substitute_sql_parameters(sql, param_values)
+            else:
+                sql_exec = sql
+
+            # Clean trailing semicolon
+            sql_clean = sql_exec.strip()
+            if sql_clean.endswith(';'):
+                sql_clean = sql_clean[:-1].strip()
+
+            os.makedirs('exports', exist_ok=True)
+            import uuid
+            temp_path = f"exports/export_{uuid.uuid4().hex}.parquet"
+
+            # Execute native COPY command
+            copy_query = f"COPY ({sql_clean}) TO '{temp_path}' (FORMAT PARQUET);"
+            explorer.conn.execute(copy_query)
+
+            # Trigger standard browser download
+            ui.download(temp_path, f"duckdb_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet")
             ui.notify('Parquet Export completed successfully.', type='success')
+
+            # Schedule garbage collection cleanup for the temporary file
+            def cleanup():
+                import time
+                time.sleep(15)
+                try:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                except Exception:
+                    pass
+            import threading
+            threading.Thread(target=cleanup, daemon=True).start()
+
         except Exception as ex:
-            ui.notify(f"Parquet Export failed: {ex}", type='negative')
+            ui.notify(f"Parquet Export failed: {ex}", type='negative', duration=7)
 
     def render_chart():
         """Read the active result dataset and build a responsive Apache EChart plotting."""
