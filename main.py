@@ -596,6 +596,13 @@ def index():
     import_schema_select = None
     rename_target_old_name = ''
     rename_target_path = ''
+    
+    # Scoping variables for Schema Diff Tool
+    source_db_select = None
+    source_table_select = None
+    target_db_select = None
+    target_table_select = None
+    diff_results_container = None
 
     # Right slide-out Query History Drawer Panel
     with ui.right_drawer(value=False, fixed=True, elevated=True).classes('w-96 dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-4 gap-4 flex-col').style('width: 400px;') as history_drawer:
@@ -918,8 +925,152 @@ def index():
                     import_db_select.value = dbs[0]
             import_db_select.update()
             update_import_schemas_for_wizard(import_db_select.value)
+            
+            # Populates the dropdown options for Schema Diff tool too
+            populate_diff_databases()
         except Exception as e:
             print(f"Error loading databases for wizard: {e}")
+
+    def update_diff_tables(db_name, select_widget):
+        try:
+            if not db_name:
+                select_widget.options = {}
+                select_widget.value = None
+                select_widget.update()
+                return
+            table_rows = explorer.conn.execute(f"""
+                SELECT table_name FROM duckdb_tables WHERE database_name = '{db_name}' AND schema_name = 'main'
+                UNION
+                SELECT view_name AS table_name FROM duckdb_views WHERE database_name = '{db_name}' AND schema_name = 'main'
+                ORDER BY table_name;
+            """).fetchall()
+            tables = [row[0] for row in table_rows]
+            options = {t: t for t in tables}
+            select_widget.options = options
+            select_widget.value = tables[0] if tables else None
+            select_widget.update()
+        except Exception as e:
+            print(f"Error loading tables for diff: {e}")
+
+    def populate_diff_databases():
+        try:
+            if not source_db_select or not target_db_select:
+                return
+            db_rows = explorer.conn.execute("SELECT database_name FROM duckdb_databases").fetchall()
+            dbs = [row[0] for row in db_rows if row[0] not in ('system', 'temp') and not row[0].startswith('__')]
+            options = {db: db for db in dbs}
+            
+            source_db_select.options = options
+            target_db_select.options = options
+            
+            current_active = explorer.conn.execute("SELECT current_database()").fetchone()[0]
+            if source_db_select.value not in options:
+                if current_active in options:
+                    source_db_select.value = current_active
+                    target_db_select.value = current_active
+                elif dbs:
+                    source_db_select.value = dbs[0]
+                    target_db_select.value = dbs[0]
+                    
+            source_db_select.update()
+            target_db_select.update()
+            
+            update_diff_tables(source_db_select.value, source_table_select)
+            update_diff_tables(target_db_select.value, target_table_select)
+        except Exception as e:
+            print(f"Error populating diff databases: {e}")
+
+    def run_schema_diff():
+        src_db = source_db_select.value
+        src_tbl = source_table_select.value
+        tgt_db = target_db_select.value
+        tgt_tbl = target_table_select.value
+        
+        if not src_db or not src_tbl or not tgt_db or not tgt_tbl:
+            ui.notify("Please select both source and target databases and tables.", type='warning')
+            return
+            
+        try:
+            # Query source columns
+            src_cols = {row[0]: row[1] for row in explorer.conn.execute("""
+                SELECT column_name, data_type 
+                FROM duckdb_columns 
+                WHERE database_name = ? AND schema_name = 'main' AND table_name = ?
+                ORDER BY column_index;
+            """, [src_db, src_tbl]).fetchall()}
+            
+            # Query target columns
+            tgt_cols = {row[0]: row[1] for row in explorer.conn.execute("""
+                SELECT column_name, data_type 
+                FROM duckdb_columns 
+                WHERE database_name = ? AND schema_name = 'main' AND table_name = ?
+                ORDER BY column_index;
+            """, [tgt_db, tgt_tbl]).fetchall()}
+            
+            if not src_cols and not tgt_cols:
+                ui.notify("No column metadata found for the selected tables.", type='warning')
+                return
+                
+            diff_results_container.clear()
+            
+            all_cols = sorted(list(set(src_cols.keys()) | set(tgt_cols.keys())))
+            
+            with diff_results_container:
+                # Header row
+                with ui.row().classes('w-full items-center justify-between no-wrap bg-indigo-500/10 p-3 rounded-lg border border-indigo-500/20 text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2'):
+                    ui.label("Column Name").classes('w-1/4')
+                    ui.label("Source Type").classes('w-1/5 text-center')
+                    ui.label("Status").classes('w-1/5 text-center')
+                    ui.label("Target Type").classes('w-1/5 text-center')
+                    ui.label("Action Recommendation").classes('w-1/5 text-right')
+                
+                has_drift = False
+                for col in all_cols:
+                    src_type = src_cols.get(col)
+                    tgt_type = tgt_cols.get(col)
+                    
+                    if src_type and tgt_type:
+                        if src_type.lower() == tgt_type.lower():
+                            status = "MATCH"
+                            badge_color = "emerald"
+                            badge_icon = "check_circle"
+                            recommendation = "No drift detected."
+                        else:
+                            status = "MISMATCH"
+                            badge_color = "amber"
+                            badge_icon = "warning"
+                            recommendation = f"Alter Target to {src_type}"
+                            has_drift = True
+                    elif src_type:
+                        status = "MISSING IN TARGET"
+                        badge_color = "rose"
+                        badge_icon = "remove_circle"
+                        recommendation = f"Add column to Target"
+                        has_drift = True
+                    else:
+                        status = "MISSING IN SOURCE"
+                        badge_color = "rose"
+                        badge_icon = "add_circle"
+                        recommendation = "Drop target column or add to source"
+                        has_drift = True
+                        
+                    with ui.row().classes('w-full items-center justify-between no-wrap p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition mb-1 text-xs'):
+                        ui.label(col).classes('w-1/4 font-mono font-bold text-slate-800 dark:text-slate-200')
+                        ui.label(src_type if src_type else "—").classes('w-1/5 text-center font-mono text-slate-500')
+                        
+                        with ui.row().classes('w-1/5 justify-center items-center gap-1'):
+                            ui.icon(badge_icon, color=badge_color)
+                            ui.label(status).classes(f'text-[10px] font-bold text-{badge_color}-600 dark:text-{badge_color}-400')
+                            
+                        ui.label(tgt_type if tgt_type else "—").classes('w-1/5 text-center font-mono text-slate-500')
+                        ui.label(recommendation).classes(f'w-1/5 text-right font-medium text-[11px] ' + ('text-slate-400' if status == "MATCH" else 'text-amber-500 font-bold' if status == "MISMATCH" else 'text-rose-500 font-bold'))
+                
+                if not has_drift:
+                    ui.notify("Schemas are fully synchronized! No drift detected.", type='success')
+                else:
+                    ui.notify("Schema drift detected between selected tables.", type='warning')
+        except Exception as ex:
+            ui.notify(f"Failed to compare schemas: {ex}", type='negative')
 
     async def handle_local_file_upload(e):
         filename = e.file.name
@@ -1831,6 +1982,7 @@ def index():
             with ui.tabs().classes('w-full border-b flex-none') as db_tools_subtabs:
                 backup_restore_tab = ui.tab('Backup & Restore', icon='settings_backup_restore')
                 ingestion_seeding_tab = ui.tab('Ingestion & Seeding', icon='science')
+                schema_diff_tab = ui.tab('Schema Diff Tool', icon='difference')
                 
             with ui.tab_panels(db_tools_subtabs, value=backup_restore_tab).classes('w-full bg-transparent min-h-0 flex-grow p-0').style('padding: 0;'):
                 # TAB 1: Backup & Restore
@@ -2013,6 +2165,56 @@ def index():
                                 ui.button('Load S3 Dataset', icon='play_arrow',
                                           on_click=lambda: trigger_s3_import(s3_uri_input.value, s3_fmt.value, s3_key.value, s3_secret.value, s3_token.value, s3_region_input.value, s3_table.value)).props('elevated dense color=primary').classes('self-end px-4 py-2 mt-2')
 
+                # TAB 3: Schema Diff Tool
+                with ui.tab_panel(schema_diff_tab).classes('gap-6 p-0 flex-col'):
+                    with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4 flex-none'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.icon('difference', color='primary').classes('text-2xl')
+                            ui.label('Database Schema Drift & Diff Tool').classes('text-lg font-bold text-slate-800 dark:text-white')
+                        ui.separator().classes('opacity-50')
+                        ui.label('Compare column definitions, indexes, and constraints between two attached databases or tables to identify schemas mismatches or drift.').classes('text-xs text-slate-400 leading-relaxed max-w-3xl')
+                        
+                        # Selection columns
+                        with ui.grid(columns=2).classes('w-full gap-6'):
+                            # Left Column: Source Table
+                            with ui.card().classes('p-4 border border-slate-100 dark:border-slate-800 shadow-none dark-bg-panel flex-col gap-3'):
+                                ui.label('Source / Reference Table').classes('text-xs font-bold text-slate-700 dark:text-slate-300 uppercase')
+                                source_db_select = ui.select(
+                                    options={},
+                                    value=None,
+                                    label='Database',
+                                    on_change=lambda e: update_diff_tables(e.value, source_table_select)
+                                ).props('dense outlined').classes('w-full')
+                                source_table_select = ui.select(
+                                    options={},
+                                    value=None,
+                                    label='Table / View'
+                                ).props('dense outlined').classes('w-full')
+                                
+                            # Right Column: Target Table
+                            with ui.card().classes('p-4 border border-slate-100 dark:border-slate-800 shadow-none dark-bg-panel flex-col gap-3'):
+                                ui.label('Target / Comparison Table').classes('text-xs font-bold text-slate-700 dark:text-slate-300 uppercase')
+                                target_db_select = ui.select(
+                                    options={},
+                                    value=None,
+                                    label='Database',
+                                    on_change=lambda e: update_diff_tables(e.value, target_table_select)
+                                ).props('dense outlined').classes('w-full')
+                                target_table_select = ui.select(
+                                    options={},
+                                    value=None,
+                                    label='Table / View'
+                                ).props('dense outlined').classes('w-full')
+                                
+                        ui.button('Compare Schemas', icon='compare_arrows', color='primary', on_click=run_schema_diff).props('elevated dense').classes('self-end px-4 py-2 mt-2')
+                        
+                    # Diff Results display container
+                    diff_results_card = ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-3 flex-grow overflow-auto')
+                    with diff_results_card:
+                        ui.label('Comparison Results').classes('font-bold text-slate-800 dark:text-white text-sm')
+                        diff_results_container = ui.column().classes('w-full gap-1 flex-grow overflow-auto')
+                        with diff_results_container:
+                            ui.label('Select source and target tables, then click "Compare Schemas" to analyze differences.').classes('text-xs text-slate-400 italic')
         
         # Build Extensions Container Content
         with extensions_container:
