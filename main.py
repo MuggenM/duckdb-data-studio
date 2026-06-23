@@ -7551,6 +7551,10 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
             print(f"Error loading databases for import dialog: {e}")
         import_dialog.open()
 
+    # Table stats inspector overlay dialog
+    with ui.dialog() as inspector_dialog, ui.card().classes('w-[900px] max-w-[95vw] p-6 gap-4 border border-slate-100 dark:border-slate-800 rounded-xl dark-bg-flat'):
+        inspector_content = ui.column().classes('w-full gap-4')
+
     # Build Modal Ingestion Dialog
     with ui.dialog() as import_dialog, ui.card().classes('w-[900px] max-w-[95vw] p-6 gap-4 border border-slate-100 dark:border-slate-800 rounded-xl dark-bg-flat'):
         
