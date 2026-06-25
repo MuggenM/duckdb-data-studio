@@ -5410,7 +5410,8 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                 tree_state['expanded'] = [current_active]
                 
             tree_widget = ui.tree(nodes, label_key='label', on_select=handle_node_click).props('dense accordion').classes('text-slate-800 dark:text-slate-100')
-            tree_widget.bind_expanded_to(tree_state, 'expanded')
+            tree_widget.expanded = tree_state['expanded']
+            tree_widget.on('update:expanded', lambda e: tree_state.update(expanded=e.args))
                     
     def handle_tab_change_global(value):
         """Callback to store the selected tab globally in user session storage and trigger tab change logic."""
