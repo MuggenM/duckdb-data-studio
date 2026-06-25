@@ -5429,15 +5429,15 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
             tree_widget.on('update:expanded', lambda e: tree_state.update(expanded=e.args))
             
             with tree_widget:
-                tree_widget.add_slot('default-header', '''
+                tree_widget.add_slot('default-header', f'''
                     <div class="row items-center justify-between no-wrap full-width">
                         <div class="row items-center no-wrap">
                             <q-icon :name="props.node.icon" class="q-mr-sm" />
-                            <div>{{ props.node.label }}</div>
+                            <div>{{{{ props.node.label }}}}</div>
                         </div>
                         <q-btn v-if="props.node.id && props.node.id.split('.').length === 3" 
                                flat round dense size="xs" color="negative" icon="delete" 
-                               @click.stop="$parent.$emit('delete_node', props.node.id)">
+                               @click.stop="getElement({tree_widget.id}).$emit('delete_node', props.node.id)">
                             <q-tooltip>Drop table/view</q-tooltip>
                         </q-btn>
                     </div>
