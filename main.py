@@ -5437,7 +5437,7 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                         </div>
                         <q-btn v-if="props.node.id && props.node.id.split('.').length === 3" 
                                flat round dense size="xs" color="negative" icon="delete" 
-                               @click.stop="$emit('delete_node', props.node.id)">
+                               @click.stop="$parent.$emit('delete_node', props.node.id)">
                             <q-tooltip>Drop table/view</q-tooltip>
                         </q-btn>
                     </div>
