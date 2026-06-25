@@ -606,6 +606,13 @@ def index():
     
     # State tracking for expanded tree nodes
     tree_state = {'expanded': []}
+    
+    # State tracking for dropping tables/views
+    drop_target_db = ''
+    drop_target_schema = ''
+    drop_target_table = ''
+    drop_title_label = None
+    drop_table_dialog = None
 
     # Right slide-out Query History Drawer Panel
     with ui.right_drawer(value=False, fixed=True, elevated=True).classes('w-96 dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-4 gap-4 flex-col').style('width: 400px;') as history_drawer:
@@ -5410,28 +5417,12 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                 tree_state['expanded'] = [current_active]
                 
             def delete_table_action(table_id):
+                nonlocal drop_target_db, drop_target_schema, drop_target_table
                 parts = table_id.split('.')
                 if len(parts) == 3:
-                    db_name, schema_name, tbl_name = parts
-                    
-                    with ui.dialog() as confirm_dialog, ui.card().classes('p-6 gap-4'):
-                        ui.label(f"Drop Table/View '{db_name}.{schema_name}.{tbl_name}'?").classes('font-bold text-base')
-                        ui.label("This action will drop the table/view and delete all its data permanently. This cannot be undone.").classes('text-xs text-slate-500')
-                        with ui.row().classes('w-full justify-end gap-2'):
-                            ui.button('Cancel', on_click=confirm_dialog.close).props('flat')
-                            
-                            def perform_drop():
-                                try:
-                                    explorer.conn.execute(f"DROP TABLE IF EXISTS {db_name}.{schema_name}.{tbl_name};")
-                                    explorer.conn.execute(f"DROP VIEW IF EXISTS {db_name}.{schema_name}.{tbl_name};")
-                                    ui.notify(f"Successfully dropped table/view '{tbl_name}'", type='success')
-                                    refresh_schema_tree()
-                                    confirm_dialog.close()
-                                except Exception as ex:
-                                    ui.notify(f"Failed to drop table/view: {ex}", type='negative')
-                            
-                            ui.button('Confirm Drop', color='negative', on_click=perform_drop).props('elevated')
-                    confirm_dialog.open()
+                    drop_target_db, drop_target_schema, drop_target_table = parts
+                    drop_title_label.text = f"Drop Table/View '{drop_target_db}.{drop_target_schema}.{drop_target_table}'?"
+                    drop_table_dialog.open()
 
             tree_widget = ui.tree(nodes, label_key='label', on_select=handle_node_click).props('dense accordion').classes('text-slate-800 dark:text-slate-100')
             tree_widget.expanded = tree_state['expanded']
@@ -7937,6 +7928,26 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
         with ui.row().classes('w-full justify-end gap-2 pt-2'):
             ui.button('Cancel', on_click=save_query_dialog.close).props('flat')
             ui.button('Save Query', icon='save', color='positive', on_click=handle_save_query).props('elevated')
+
+    # Build Drop Table/View Confirmation Dialog
+    with ui.dialog() as drop_table_dialog, ui.card().classes('p-6 gap-4'):
+        drop_title_label = ui.label("").classes('font-bold text-base')
+        ui.label("This action will drop the table/view and delete all its data permanently. This cannot be undone.").classes('text-xs text-slate-500')
+        with ui.row().classes('w-full justify-end gap-2'):
+            ui.button('Cancel', on_click=drop_table_dialog.close).props('flat')
+            
+            def perform_drop_action():
+                nonlocal drop_target_db, drop_target_schema, drop_target_table
+                try:
+                    explorer.conn.execute(f"DROP TABLE IF EXISTS {drop_target_db}.{drop_target_schema}.{drop_target_table};")
+                    explorer.conn.execute(f"DROP VIEW IF EXISTS {drop_target_db}.{drop_target_schema}.{drop_target_table};")
+                    ui.notify(f"Successfully dropped table/view '{drop_target_table}'", type='success')
+                    refresh_schema_tree()
+                    drop_table_dialog.close()
+                except Exception as ex:
+                    ui.notify(f"Failed to drop table/view: {ex}", type='negative')
+                    
+            ui.button('Confirm Drop', color='negative', on_click=perform_drop_action).props('elevated')
 
     # Build Attach Database Dialog
     with ui.dialog() as attach_db_dialog, ui.card().classes('w-96 p-6 gap-4'):
