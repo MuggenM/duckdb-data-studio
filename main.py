@@ -603,6 +603,9 @@ def index():
     target_db_select = None
     target_table_select = None
     diff_results_container = None
+    
+    # State tracking for expanded tree nodes
+    tree_state = {'expanded': []}
 
     # Right slide-out Query History Drawer Panel
     with ui.right_drawer(value=False, fixed=True, elevated=True).classes('w-96 dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-4 gap-4 flex-col').style('width: 400px;') as history_drawer:
@@ -5396,9 +5399,18 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                     sql_editor.value = sql
                     run_editor_query()
                     
-            tree_widget = ui.tree(nodes, label_key='label', on_select=handle_node_click).props('dense accordion').classes('text-slate-800 dark:text-slate-100')
             if filter_text and expanded_keys:
-                tree_widget.expand(expanded_keys)
+                tree_state['expanded'] = list(set(expanded_keys))
+            elif not tree_state['expanded']:
+                current_active = 'main'
+                try:
+                    current_active = explorer.conn.execute("SELECT current_database();").fetchone()[0]
+                except Exception:
+                    pass
+                tree_state['expanded'] = [current_active]
+                
+            tree_widget = ui.tree(nodes, label_key='label', on_select=handle_node_click).props('dense accordion').classes('text-slate-800 dark:text-slate-100')
+            tree_widget.bind_expanded_to(tree_state, 'expanded')
                     
     def handle_tab_change_global(value):
         """Callback to store the selected tab globally in user session storage and trigger tab change logic."""
