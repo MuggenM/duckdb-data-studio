@@ -5409,9 +5409,49 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                     pass
                 tree_state['expanded'] = [current_active]
                 
+            def delete_table_action(table_id):
+                parts = table_id.split('.')
+                if len(parts) == 3:
+                    db_name, schema_name, tbl_name = parts
+                    
+                    with ui.dialog() as confirm_dialog, ui.card().classes('p-6 gap-4'):
+                        ui.label(f"Drop Table/View '{db_name}.{schema_name}.{tbl_name}'?").classes('font-bold text-base')
+                        ui.label("This action will drop the table/view and delete all its data permanently. This cannot be undone.").classes('text-xs text-slate-500')
+                        with ui.row().classes('w-full justify-end gap-2'):
+                            ui.button('Cancel', on_click=confirm_dialog.close).props('flat')
+                            
+                            def perform_drop():
+                                try:
+                                    explorer.conn.execute(f"DROP TABLE IF EXISTS {db_name}.{schema_name}.{tbl_name};")
+                                    explorer.conn.execute(f"DROP VIEW IF EXISTS {db_name}.{schema_name}.{tbl_name};")
+                                    ui.notify(f"Successfully dropped table/view '{tbl_name}'", type='success')
+                                    refresh_schema_tree()
+                                    confirm_dialog.close()
+                                except Exception as ex:
+                                    ui.notify(f"Failed to drop table/view: {ex}", type='negative')
+                            
+                            ui.button('Confirm Drop', color='negative', on_click=perform_drop).props('elevated')
+                    confirm_dialog.open()
+
             tree_widget = ui.tree(nodes, label_key='label', on_select=handle_node_click).props('dense accordion').classes('text-slate-800 dark:text-slate-100')
             tree_widget.expanded = tree_state['expanded']
             tree_widget.on('update:expanded', lambda e: tree_state.update(expanded=e.args))
+            
+            with tree_widget:
+                tree_widget.add_slot('default-header', '''
+                    <div class="row items-center justify-between no-wrap full-width">
+                        <div class="row items-center no-wrap">
+                            <q-icon :name="props.node.icon" class="q-mr-sm" />
+                            <div>{{ props.node.label }}</div>
+                        </div>
+                        <q-btn v-if="props.node.id && props.node.id.split('.').length === 3" 
+                               flat round dense size="xs" color="negative" icon="delete" 
+                               @click.stop="$emit('delete_node', props.node.id)">
+                            <q-tooltip>Drop table/view</q-tooltip>
+                        </q-btn>
+                    </div>
+                ''')
+            tree_widget.on('delete_node', lambda e: delete_table_action(e.args))
                     
     def handle_tab_change_global(value):
         """Callback to store the selected tab globally in user session storage and trigger tab change logic."""
