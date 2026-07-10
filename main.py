@@ -1947,13 +1947,13 @@ def index():
                 last_tab = app.storage.user.get('active_tab', 'Explorer')
             except Exception:
                 last_tab = 'Explorer'
-            if last_tab not in ['Explorer', 'JupyterLab', 'dbt Workbench', 'Code Editor', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer', 'Scheduler', 'Garage S3', 'Telemetry', 'Apache Superset', 'Settings']:
+            if last_tab not in ['Explorer', 'JupyterLab', 'Code Editor', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer', 'Scheduler', 'Garage S3', 'Telemetry', 'Apache Superset', 'Settings']:
                 last_tab = 'Explorer'
                 
             with ui.tabs(value=last_tab, on_change=lambda e: handle_tab_change_global(e.value)).props('inline-label dense align=right').classes('text-white flex-grow') as tabs:
                 studio_tab = ui.tab(name='Explorer', label='', icon='img:/explorer_colored.svg').tooltip('Explorer (SQL & Schema)')
                 jupyter_tab = ui.tab(name='JupyterLab', label='', icon='img:/jupyter_orange.svg').tooltip('JupyterLab Notebooks')
-                dbt_tab = ui.tab(name='dbt Workbench', label='', icon='img:/dbt_orange.svg').tooltip('dbt Workbench')
+                # dbt_tab = ui.tab(name='dbt Workbench', label='', icon='img:/dbt_orange.svg').tooltip('dbt Workbench')
                 editor_tab = ui.tab(name='Code Editor', label='', icon='img:/vscode_blue.svg').tooltip('Code Editor (VS Code)')
                 extensions_tab = ui.tab(name='Extensions', label='', icon='img:/extensions_teal.svg').tooltip('Extensions Manager')
                 db_tools_tab = ui.tab(name='Database Tools', label='', icon='img:/db_tools_colored.svg').tooltip('Database Tools & Seeding')
@@ -4098,7 +4098,7 @@ def index():
         # Bind visibility based on active tab
         studio_container.bind_visibility_from(tabs, 'value', value='Explorer')
         jupyter_container.bind_visibility_from(tabs, 'value', value='JupyterLab')
-        dbt_workbench_container.bind_visibility_from(tabs, 'value', value='dbt Workbench')
+        # dbt_workbench_container.bind_visibility_from(tabs, 'value', value='dbt Workbench')
         code_editor_container.bind_visibility_from(tabs, 'value', value='Code Editor')
         extensions_container.bind_visibility_from(tabs, 'value', value='Extensions')
         db_tools_container.bind_visibility_from(tabs, 'value', value='Database Tools')
