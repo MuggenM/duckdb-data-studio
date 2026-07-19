@@ -1967,7 +1967,7 @@ def index():
             
         studio_container = ui.row().classes('w-full h-full no-wrap min-h-0 flex-grow').style('margin: 0; padding: 0;')
         jupyter_container = ui.column().classes('w-full h-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
-        dbt_workbench_container = ui.column().classes('w-full h-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
+        # dbt_workbench_container = ui.column().classes('w-full h-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
         code_editor_container = ui.column().classes('w-full h-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
         extensions_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-4 flex-nowrap').style('margin: 0; padding: 0;')
         db_tools_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
@@ -2287,29 +2287,29 @@ def index():
                 })();
             ''')
 
-        # Build dbt Workbench container content
-        with dbt_workbench_container:
-            with ui.row().classes('w-full items-center justify-between bg-slate-100 dark:bg-slate-800 p-2 border-b border-slate-200 dark:border-slate-700'):
-                with ui.row().classes('items-center gap-2'):
-                    ui.icon('lan', color='primary').classes('text-xl')
-                    ui.label('dbt Project Workbench').classes('font-bold text-slate-700 dark:text-white')
-                ui.button('Show Lineage DAG', icon='lan', on_click=open_dbt_lineage_dialog).props('elevated dense color=primary')
-            ui.element('iframe').props('id="dbt-workbench-frame" sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads allow-modals"').classes('w-full h-full border-none')
-            ui.run_javascript('''
-                (function() {
-                    var host = window.location.hostname;
-                    var port = window.location.port;
-                    var proto = window.location.protocol;
-                    var targetUrl;
-                    if (host.endsWith('.localhost')) {
-                        var baseDomain = host.substring(host.indexOf('.'));
-                        targetUrl = proto + '//workbench' + baseDomain + (port ? ':' + port : '');
-                    } else {
-                        targetUrl = proto + '//' + host + ':3000';
-                    }
-                    document.getElementById("dbt-workbench-frame").src = targetUrl;
-                })();
-            ''')
+        # Build dbt Workbench container content - Commented out / Removed
+        # with dbt_workbench_container:
+        #     with ui.row().classes('w-full items-center justify-between bg-slate-100 dark:bg-slate-800 p-2 border-b border-slate-200 dark:border-slate-700'):
+        #         with ui.row().classes('items-center gap-2'):
+        #             ui.icon('lan', color='primary').classes('text-xl')
+        #             ui.label('dbt Project Workbench').classes('font-bold text-slate-700 dark:text-white')
+        #         ui.button('Show Lineage DAG', icon='lan', on_click=open_dbt_lineage_dialog).props('elevated dense color=primary')
+        #     ui.element('iframe').props('id="dbt-workbench-frame" sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads allow-modals"').classes('w-full h-full border-none')
+        #     ui.run_javascript('''
+        #         (function() {
+        #             var host = window.location.hostname;
+        #             var port = window.location.port;
+        #             var proto = window.location.protocol;
+        #             var targetUrl;
+        #             if (host.endsWith('.localhost')) {
+        #                 var baseDomain = host.substring(host.indexOf('.'));
+        #                 targetUrl = proto + '//workbench' + baseDomain + (port ? ':' + port : '');
+        #             } else {
+        #                 targetUrl = proto + '//' + host + ':3000';
+        #             }
+        #             document.getElementById("dbt-workbench-frame").src = targetUrl;
+        #         })();
+        #     ''')
 
         # Build Code Editor container content
         with code_editor_container:
