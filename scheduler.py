@@ -37,9 +37,21 @@ def run_background_scheduler(db_name=None):
         
     db_path = db_name if db_name else get_main_db_path()
     
+    # Track S3 Delta catalog sync timing
+    last_s3_sync = datetime.datetime.min
+    
     while True:
         try:
             now = datetime.datetime.now()
+            
+            # Periodically synchronize S3 Delta tables as DuckDB views (every 60 seconds)
+            if (now - last_s3_sync).total_seconds() >= 60:
+                try:
+                    from s3_catalog_sync import sync_catalog
+                    sync_catalog()
+                    last_s3_sync = now
+                except Exception as sync_ex:
+                    print(f"ERROR: Background S3 Delta Catalog Sync failed: {sync_ex}", flush=True)
             # Fetch active jobs from SQLite
             jobs = config_db.query_all("""
                 SELECT 

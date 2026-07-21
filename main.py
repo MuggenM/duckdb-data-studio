@@ -1993,6 +1993,7 @@ def index():
                 backup_restore_tab = ui.tab('Backup & Restore', icon='settings_backup_restore')
                 ingestion_seeding_tab = ui.tab('Ingestion & Seeding', icon='science')
                 schema_diff_tab = ui.tab('Schema Diff Tool', icon='difference')
+                s3_delta_tab = ui.tab('S3 Delta Catalog', icon='cloud_sync')
                 
             with ui.tab_panels(db_tools_subtabs, value=backup_restore_tab).classes('w-full bg-transparent min-h-0 flex-grow p-0').style('padding: 0;'):
                 # TAB 1: Backup & Restore
@@ -2225,6 +2226,30 @@ def index():
                         diff_results_container = ui.column().classes('w-full gap-1 flex-grow overflow-auto')
                         with diff_results_container:
                             ui.label('Select source and target tables, then click "Compare Schemas" to analyze differences.').classes('text-xs text-slate-400 italic')
+
+                # TAB 4: S3 Delta Catalog
+                with ui.tab_panel(s3_delta_tab).classes('gap-6 p-0 flex-col'):
+                    with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.icon('cloud_sync', color='primary').classes('text-2xl')
+                            ui.label('S3 Delta Tables Catalog Sync').classes('text-lg font-bold text-slate-800 dark:text-white')
+                        ui.separator().classes('opacity-50')
+                        ui.label('Manually trigger a synchronization to scan the S3 bucket prefixes and auto-generate DuckDB Views for S3 Delta tables in the s3_delta_catalog schema.').classes('text-xs text-slate-400 leading-relaxed')
+                        
+                        async def run_manual_sync():
+                            ui.notify('Starting S3 Delta Catalog Sync...', type='info')
+                            try:
+                                from s3_catalog_sync import sync_catalog
+                                loop = asyncio.get_event_loop()
+                                success = await loop.run_in_executor(None, sync_catalog)
+                                if success:
+                                    ui.notify('S3 Delta Catalog successfully synchronized!', type='success')
+                                else:
+                                    ui.notify('S3 Delta Catalog synchronization failed. Check logs.', type='negative')
+                            except Exception as ex:
+                                ui.notify(f'Error running sync: {ex}', type='negative')
+                                
+                        ui.button('Sync Now', icon='sync', on_click=run_manual_sync).props('elevated color=primary').classes('px-6 py-2 text-sm font-bold rounded-lg self-start')
         
         # Build Extensions Container Content
         with extensions_container:
