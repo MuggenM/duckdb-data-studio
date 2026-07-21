@@ -31,6 +31,7 @@ services:
     volumes:
       - ./init_stack.py:/app/init_stack.py
       - ./main.py:/app/main.py
+      - ./s3_catalog_sync.py:/app/s3_catalog_sync.py
       - ./local_file_picker:/app/local_file_picker
       - ./config:/config
       - ./templates:/templates
@@ -43,6 +44,11 @@ services:
       - STORAGE_SECRET=duckdb_studio_secret_key_1337
       - JUPYTER_URL=http://jupyter.localhost:8880
       - JUPYTER_TOKEN=analytics_secret
+      - AWS_ACCESS_KEY_ID=GK2713753aca1d72db5325f212
+      - AWS_SECRET_ACCESS_KEY=afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ENDPOINT_URL=http://garage:3900
+      - AWS_S3_ALLOW_UNSAFE_RENAME=true
     networks:
       - studio_jupyter_net
     restart: unless-stopped
@@ -68,7 +74,17 @@ services:
       - studio_jupyter_net
     ports:
       - "127.0.0.1:8889:8888"
-    command: ["jupyter", "lab", "--allow-root", "--ServerApp.token=analytics_secret", "--IdentityProvider.token=analytics_secret", "--ServerApp.tornado_settings={'headers': {'Content-Security-Policy': \"frame-ancestors 'self' http://studio.localhost:8880 http://localhost:8085 http://localhost:8086 http://127.0.0.1:8085 http://127.0.0.1:8086\"}}"]
+    environment:
+      - AWS_ACCESS_KEY_ID=GK2713753aca1d72db5325f212
+      - AWS_SECRET_ACCESS_KEY=afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ENDPOINT_URL=http://garage:3900
+      - AWS_S3_ALLOW_UNSAFE_RENAME=true
+    command: >
+      bash -c "
+      pip install duckdb==1.5.3 duckrun &&
+      jupyter lab --allow-root --ServerApp.token=analytics_secret --IdentityProvider.token=analytics_secret --ServerApp.tornado_settings='{\"headers\": {\"Content-Security-Policy\": \"frame-ancestors \\'self\\' http://studio.localhost:8880 http://localhost:8085 http://localhost:8086 http://127.0.0.1:8085 http://127.0.0.1:8086\"}}'
+      "
     restart: unless-stopped
     deploy:
       resources:
