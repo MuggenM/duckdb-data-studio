@@ -31,6 +31,8 @@ services:
     volumes:
       - ./init_stack.py:/app/init_stack.py
       - ./main.py:/app/main.py
+      - ./s3_catalog_sync.py:/app/s3_catalog_sync.py
+      - ./api_generator.py:/app/api_generator.py
       - ./local_file_picker:/app/local_file_picker
       - ./config:/config
       - ./templates:/templates
@@ -43,6 +45,12 @@ services:
       - STORAGE_SECRET=duckdb_studio_secret_key_1337
       - JUPYTER_URL=http://jupyter.localhost:8880
       - JUPYTER_TOKEN=analytics_secret
+      - AWS_ACCESS_KEY_ID=GK2713753aca1d72db5325f212
+      - AWS_SECRET_ACCESS_KEY=afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ENDPOINT_URL=http://garage:3900
+      - AWS_S3_ALLOW_UNSAFE_RENAME=true
+      - AWS_ALLOW_HTTP=true
     networks:
       - studio_jupyter_net
     restart: unless-stopped
@@ -53,7 +61,7 @@ services:
       - "traefik.http.services.studio.loadbalancer.server.port=8085"
 
   jupyter:
-    image: arrowflight-jupyter:latest
+    image: jupyter/base-notebook:latest
     container_name: jupyter_lab
     user: root
     entrypoint: ["tini", "-g", "--"]
@@ -68,7 +76,20 @@ services:
       - studio_jupyter_net
     ports:
       - "127.0.0.1:8889:8888"
-    command: ["jupyter", "lab", "--allow-root", "--ServerApp.token=analytics_secret", "--IdentityProvider.token=analytics_secret", "--ServerApp.tornado_settings={'headers': {'Content-Security-Policy': \"frame-ancestors 'self' http://studio.localhost:8880 http://localhost:8085 http://localhost:8086 http://127.0.0.1:8085 http://127.0.0.1:8086\"}}"]
+    environment:
+      - AWS_ACCESS_KEY_ID=GK2713753aca1d72db5325f212
+      - AWS_SECRET_ACCESS_KEY=afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ENDPOINT_URL=http://garage:3900
+      - AWS_S3_ALLOW_UNSAFE_RENAME=true
+      - AWS_ALLOW_HTTP=true
+    command:
+      - /bin/bash
+      - -c
+      - |
+        pip install uv
+        uv pip install --system --break-system-packages --no-cache duckdb==1.5.4 duckrun>=0.4.31 pandas sqlframe[duckdb] psycopg2-binary
+        exec jupyter lab --allow-root --ServerApp.token=analytics_secret --IdentityProvider.token=analytics_secret --ServerApp.tornado_settings="{\"headers\": {\"Content-Security-Policy\": \"frame-ancestors 'self' http://studio.localhost:8880 http://localhost:8085 http://localhost:8086 http://127.0.0.1:8085 http://127.0.0.1:8086\"}}"
     restart: unless-stopped
     deploy:
       resources:
@@ -80,79 +101,89 @@ services:
       - "traefik.http.routers.jupyter.entrypoints=web"
       - "traefik.http.services.jupyter.loadbalancer.server.port=8888"
 
-  dbt-workbench-db:
-    image: postgres:13
-    container_name: dbt-workbench-db
-    ports:
-      - "5435:5432"
-    environment:
-      - POSTGRES_DB=dbt_workbench
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-    volumes:
-      - dbt_postgres_data:/var/lib/postgresql/data
-    networks:
-      - studio_jupyter_net
-    restart: unless-stopped
-
-  dbt-workbench-backend:
-    image: dbt-workbench-backend:latest
-    container_name: dbt-workbench-backend
-    ports:
-      - "8000:8000"
-    depends_on:
-      - dbt-workbench-db
-    environment:
-      - POSTGRES_HOST=dbt-workbench-db
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=dbt_workbench
-      - DBT_ARTIFACTS_PATH=/app/data/artifacts
-      - DBT_PROJECT_PATH=/app/data/repos/default
-      - BACKEND_PORT=8000
-      - SQL_WORKSPACE_DEFAULT_CONNECTION_URL=postgresql://user:password@dbt-workbench-db:5432/dbt_workbench
-      - AI_ENABLED=true
-      - AI_DEFAULT_MODE=direct
-      - AI_DEFAULT_DIRECT_PROVIDER=openai
-      - AI_ALLOW_SESSION_PROVIDER_OVERRIDE=true
-      - AI_MCP_LOCAL_ALLOWLIST_JSON={}
-    volumes:
-      - ./dbt_data:/app/data
-      - ./dbt_data/artifacts:/app/data/artifacts
-      - ./dbt_data/repos:/app/data/repos
-      - ./dbt_project:/app/data/repos/default
-      - ./profiles:/app/data/profiles
-    networks:
-      - studio_jupyter_net
-    restart: unless-stopped
-
-  dbt-workbench-frontend:
-    image: dbt-workbench-frontend:latest
-    container_name: dbt-workbench-frontend
-    ports:
-      - "3000:3000"
-    environment:
-      - VITE_API_BASE_URL=http://dbt-workbench-backend:8000
-    depends_on:
-      - dbt-workbench-backend
-    networks:
-      - studio_jupyter_net
-    restart: unless-stopped
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.workbench.rule=Host(`workbench.localhost`)"
-      - "traefik.http.routers.workbench.entrypoints=web"
-      - "traefik.http.services.workbench.loadbalancer.server.port=3000"
+#   dbt-workbench-db:
+#     image: postgres:13
+#     container_name: dbt-workbench-db
+#     ports:
+#       - "5435:5432"
+#     environment:
+#       - POSTGRES_DB=dbt_workbench
+#       - POSTGRES_USER=user
+#       - POSTGRES_PASSWORD=password
+#     volumes:
+#       - dbt_postgres_data:/var/lib/postgresql/data
+#     networks:
+#       - studio_jupyter_net
+#     restart: unless-stopped
+# 
+#   dbt-workbench-backend:
+#     image: dbt-workbench-backend:latest
+#     container_name: dbt-workbench-backend
+#     ports:
+#       - "8000:8000"
+#     depends_on:
+#       - dbt-workbench-db
+#     environment:
+#       - POSTGRES_HOST=dbt-workbench-db
+#       - POSTGRES_USER=user
+#       - POSTGRES_PASSWORD=password
+#       - POSTGRES_DB=dbt_workbench
+#       - DBT_ARTIFACTS_PATH=/app/data/artifacts
+#       - DBT_PROJECT_PATH=/app/data/repos/default
+#       - BACKEND_PORT=8000
+#       - SQL_WORKSPACE_DEFAULT_CONNECTION_URL=postgresql://user:password@dbt-workbench-db:5432/dbt_workbench
+#       - AI_ENABLED=true
+#       - AI_DEFAULT_MODE=direct
+#       - AI_DEFAULT_DIRECT_PROVIDER=openai
+#       - AI_ALLOW_SESSION_PROVIDER_OVERRIDE=true
+#       - AI_MCP_LOCAL_ALLOWLIST_JSON={}
+#     volumes:
+#       - ./dbt_data:/app/data
+#       - ./dbt_data/artifacts:/app/data/artifacts
+#       - ./dbt_data/repos:/app/data/repos
+#       - ./dbt_project:/app/data/repos/default
+#       - ./profiles:/app/data/profiles
+#     networks:
+#       - studio_jupyter_net
+#     restart: unless-stopped
+# 
+#   dbt-workbench-frontend:
+#     image: dbt-workbench-frontend:latest
+#     container_name: dbt-workbench-frontend
+#     ports:
+#       - "3000:3000"
+#     environment:
+#       - VITE_API_BASE_URL=http://dbt-workbench-backend:8000
+#     depends_on:
+#       - dbt-workbench-backend
+#     networks:
+#       - studio_jupyter_net
+#     restart: unless-stopped
+#     labels:
+#       - "traefik.enable=true"
+#       - "traefik.http.routers.workbench.rule=Host(`workbench.localhost`)"
+#       - "traefik.http.routers.workbench.entrypoints=web"
+#       - "traefik.http.services.workbench.loadbalancer.server.port=3000"
 
   dbt-code-server:
-    image: codercom/code-server:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.codeserver
     container_name: dbt-code-server
     ports:
       - "8443:8080"
     volumes:
       - ./dbt_project:/home/coder/project
       - ./profiles:/home/coder/.dbt
+      - ./dbt_data:/app/data
       - code-server-extensions:/home/coder/.local/share/code-server
+    environment:
+      - AWS_ACCESS_KEY_ID=GK2713753aca1d72db5325f212
+      - AWS_SECRET_ACCESS_KEY=afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ENDPOINT_URL=http://garage:3900
+      - AWS_S3_ALLOW_UNSAFE_RENAME=true
+      - AWS_ALLOW_HTTP=true
     command: ["--auth", "none", "/home/coder/project"]
     networks:
       - studio_jupyter_net
@@ -184,7 +215,7 @@ services:
     container_name: garage-webui
     environment:
       - API_BASE_URL=http://garage:3903
-      - S3_ENDPOINT_URL=http://s3.localhost:8880
+      - S3_ENDPOINT_URL=http://garage:3900
     depends_on:
       - garage
     volumes:

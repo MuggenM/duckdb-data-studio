@@ -41,6 +41,16 @@ def get_dynamic_rate_limit(request: Request = None) -> str:
     return APP_SETTINGS.get("default_rate_limit", "5/minute")
 
 
+@app.get("/api/list-endpoints")
+def list_endpoints():
+    config_db = SQLiteConfigManager()
+    try:
+        endpoints = config_db.query_all("SELECT path, description FROM _duckdb_studio_api_endpoints;")
+        return [dict(row) for row in endpoints]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @app.get("/api/{endpoint_path:path}/stream", include_in_schema=False)
 @limiter.limit(get_dynamic_rate_limit)
 def handle_streaming_endpoint(endpoint_path: str, request: Request):

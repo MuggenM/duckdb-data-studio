@@ -1,5 +1,5 @@
 nicegui==3.2.0
-duckdb==1.3.2
+duckdb==1.5.4
 pyyaml
 pandas
 pyarrow
@@ -7,3 +7,8 @@ faker
 slowapi
 PyJWT
 buenavista
+uvloop
+httptools
+pytz
+duckrun>=0.4.31
+boto3

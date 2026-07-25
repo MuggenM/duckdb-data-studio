@@ -1,0 +1,11 @@
+FROM codercom/code-server:latest
+
+USER root
+RUN apt-get update && apt-get install -y python3 python3-pip python3-venv curl && \
+    curl -LsSf https://astral.sh/uv/install.sh | sh && \
+    mv /root/.local/bin/uv /usr/local/bin/ && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN uv pip install --system --break-system-packages --no-cache duckdb==1.5.4 duckrun>=0.4.31 dbt-core dbt-duckdb pandas sqlframe[duckdb]
+
+USER coder

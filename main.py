@@ -596,6 +596,23 @@ def index():
     import_schema_select = None
     rename_target_old_name = ''
     rename_target_path = ''
+    
+    # Scoping variables for Schema Diff Tool
+    source_db_select = None
+    source_table_select = None
+    target_db_select = None
+    target_table_select = None
+    diff_results_container = None
+    
+    # State tracking for expanded tree nodes
+    tree_state = {'expanded': []}
+    
+    # State tracking for dropping tables/views
+    drop_target_db = ''
+    drop_target_schema = ''
+    drop_target_table = ''
+    drop_title_label = None
+    drop_table_dialog = None
 
     # Right slide-out Query History Drawer Panel
     with ui.right_drawer(value=False, fixed=True, elevated=True).classes('w-96 dark:bg-slate-900 border-l border-slate-200 dark:border-slate-800 p-4 gap-4 flex-col').style('width: 400px;') as history_drawer:
@@ -918,8 +935,152 @@ def index():
                     import_db_select.value = dbs[0]
             import_db_select.update()
             update_import_schemas_for_wizard(import_db_select.value)
+            
+            # Populates the dropdown options for Schema Diff tool too
+            populate_diff_databases()
         except Exception as e:
             print(f"Error loading databases for wizard: {e}")
+
+    def update_diff_tables(db_name, select_widget):
+        try:
+            if not db_name:
+                select_widget.options = {}
+                select_widget.value = None
+                select_widget.update()
+                return
+            table_rows = explorer.conn.execute(f"""
+                SELECT table_name FROM duckdb_tables WHERE database_name = '{db_name}' AND schema_name = 'main'
+                UNION
+                SELECT view_name AS table_name FROM duckdb_views WHERE database_name = '{db_name}' AND schema_name = 'main'
+                ORDER BY table_name;
+            """).fetchall()
+            tables = [row[0] for row in table_rows]
+            options = {t: t for t in tables}
+            select_widget.options = options
+            select_widget.value = tables[0] if tables else None
+            select_widget.update()
+        except Exception as e:
+            print(f"Error loading tables for diff: {e}")
+
+    def populate_diff_databases():
+        try:
+            if not source_db_select or not target_db_select:
+                return
+            db_rows = explorer.conn.execute("SELECT database_name FROM duckdb_databases").fetchall()
+            dbs = [row[0] for row in db_rows if row[0] not in ('system', 'temp') and not row[0].startswith('__')]
+            options = {db: db for db in dbs}
+            
+            source_db_select.options = options
+            target_db_select.options = options
+            
+            current_active = explorer.conn.execute("SELECT current_database()").fetchone()[0]
+            if source_db_select.value not in options:
+                if current_active in options:
+                    source_db_select.value = current_active
+                    target_db_select.value = current_active
+                elif dbs:
+                    source_db_select.value = dbs[0]
+                    target_db_select.value = dbs[0]
+                    
+            source_db_select.update()
+            target_db_select.update()
+            
+            update_diff_tables(source_db_select.value, source_table_select)
+            update_diff_tables(target_db_select.value, target_table_select)
+        except Exception as e:
+            print(f"Error populating diff databases: {e}")
+
+    def run_schema_diff():
+        src_db = source_db_select.value
+        src_tbl = source_table_select.value
+        tgt_db = target_db_select.value
+        tgt_tbl = target_table_select.value
+        
+        if not src_db or not src_tbl or not tgt_db or not tgt_tbl:
+            ui.notify("Please select both source and target databases and tables.", type='warning')
+            return
+            
+        try:
+            # Query source columns
+            src_cols = {row[0]: row[1] for row in explorer.conn.execute("""
+                SELECT column_name, data_type 
+                FROM duckdb_columns 
+                WHERE database_name = ? AND schema_name = 'main' AND table_name = ?
+                ORDER BY column_index;
+            """, [src_db, src_tbl]).fetchall()}
+            
+            # Query target columns
+            tgt_cols = {row[0]: row[1] for row in explorer.conn.execute("""
+                SELECT column_name, data_type 
+                FROM duckdb_columns 
+                WHERE database_name = ? AND schema_name = 'main' AND table_name = ?
+                ORDER BY column_index;
+            """, [tgt_db, tgt_tbl]).fetchall()}
+            
+            if not src_cols and not tgt_cols:
+                ui.notify("No column metadata found for the selected tables.", type='warning')
+                return
+                
+            diff_results_container.clear()
+            
+            all_cols = sorted(list(set(src_cols.keys()) | set(tgt_cols.keys())))
+            
+            with diff_results_container:
+                # Header row
+                with ui.row().classes('w-full items-center justify-between no-wrap bg-indigo-500/10 p-3 rounded-lg border border-indigo-500/20 text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2'):
+                    ui.label("Column Name").classes('w-1/4')
+                    ui.label("Source Type").classes('w-1/5 text-center')
+                    ui.label("Status").classes('w-1/5 text-center')
+                    ui.label("Target Type").classes('w-1/5 text-center')
+                    ui.label("Action Recommendation").classes('w-1/5 text-right')
+                
+                has_drift = False
+                for col in all_cols:
+                    src_type = src_cols.get(col)
+                    tgt_type = tgt_cols.get(col)
+                    
+                    if src_type and tgt_type:
+                        if src_type.lower() == tgt_type.lower():
+                            status = "MATCH"
+                            badge_color = "emerald"
+                            badge_icon = "check_circle"
+                            recommendation = "No drift detected."
+                        else:
+                            status = "MISMATCH"
+                            badge_color = "amber"
+                            badge_icon = "warning"
+                            recommendation = f"Alter Target to {src_type}"
+                            has_drift = True
+                    elif src_type:
+                        status = "MISSING IN TARGET"
+                        badge_color = "rose"
+                        badge_icon = "remove_circle"
+                        recommendation = f"Add column to Target"
+                        has_drift = True
+                    else:
+                        status = "MISSING IN SOURCE"
+                        badge_color = "rose"
+                        badge_icon = "add_circle"
+                        recommendation = "Drop target column or add to source"
+                        has_drift = True
+                        
+                    with ui.row().classes('w-full items-center justify-between no-wrap p-2.5 rounded-lg border border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900 transition mb-1 text-xs'):
+                        ui.label(col).classes('w-1/4 font-mono font-bold text-slate-800 dark:text-slate-200')
+                        ui.label(src_type if src_type else "—").classes('w-1/5 text-center font-mono text-slate-500')
+                        
+                        with ui.row().classes('w-1/5 justify-center items-center gap-1'):
+                            ui.icon(badge_icon, color=badge_color)
+                            ui.label(status).classes(f'text-[10px] font-bold text-{badge_color}-600 dark:text-{badge_color}-400')
+                            
+                        ui.label(tgt_type if tgt_type else "—").classes('w-1/5 text-center font-mono text-slate-500')
+                        ui.label(recommendation).classes(f'w-1/5 text-right font-medium text-[11px] ' + ('text-slate-400' if status == "MATCH" else 'text-amber-500 font-bold' if status == "MISMATCH" else 'text-rose-500 font-bold'))
+                
+                if not has_drift:
+                    ui.notify("Schemas are fully synchronized! No drift detected.", type='success')
+                else:
+                    ui.notify("Schema drift detected between selected tables.", type='warning')
+        except Exception as ex:
+            ui.notify(f"Failed to compare schemas: {ex}", type='negative')
 
     async def handle_local_file_upload(e):
         filename = e.file.name
@@ -1786,13 +1947,13 @@ def index():
                 last_tab = app.storage.user.get('active_tab', 'Explorer')
             except Exception:
                 last_tab = 'Explorer'
-            if last_tab not in ['Explorer', 'JupyterLab', 'dbt Workbench', 'Code Editor', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer', 'Scheduler', 'Garage S3', 'Telemetry', 'Apache Superset', 'Settings']:
+            if last_tab not in ['Explorer', 'JupyterLab', 'Code Editor', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer', 'Scheduler', 'Garage S3', 'Telemetry', 'Apache Superset', 'Settings']:
                 last_tab = 'Explorer'
                 
             with ui.tabs(value=last_tab, on_change=lambda e: handle_tab_change_global(e.value)).props('inline-label dense align=right').classes('text-white flex-grow') as tabs:
                 studio_tab = ui.tab(name='Explorer', label='', icon='img:/explorer_colored.svg').tooltip('Explorer (SQL & Schema)')
                 jupyter_tab = ui.tab(name='JupyterLab', label='', icon='img:/jupyter_orange.svg').tooltip('JupyterLab Notebooks')
-                dbt_tab = ui.tab(name='dbt Workbench', label='', icon='img:/dbt_orange.svg').tooltip('dbt Workbench')
+                # dbt_tab = ui.tab(name='dbt Workbench', label='', icon='img:/dbt_orange.svg').tooltip('dbt Workbench')
                 editor_tab = ui.tab(name='Code Editor', label='', icon='img:/vscode_blue.svg').tooltip('Code Editor (VS Code)')
                 extensions_tab = ui.tab(name='Extensions', label='', icon='img:/extensions_teal.svg').tooltip('Extensions Manager')
                 db_tools_tab = ui.tab(name='Database Tools', label='', icon='img:/db_tools_colored.svg').tooltip('Database Tools & Seeding')
@@ -1804,18 +1965,18 @@ def index():
                 superset_tab = ui.tab(name='Apache Superset', label='', icon='img:/superset_logo.svg').tooltip('Apache Superset BI Reporting')
                 settings_tab = ui.tab(name='Settings', label='', icon='img:/settings_colored.svg').tooltip('Studio Settings')
             
-        studio_container = ui.row().classes('w-full no-wrap min-h-0 flex-grow').style('margin: 0; padding: 0;')
-        jupyter_container = ui.column().classes('w-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
-        dbt_workbench_container = ui.column().classes('w-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
-        code_editor_container = ui.column().classes('w-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
+        studio_container = ui.row().classes('w-full h-full no-wrap min-h-0 flex-grow').style('margin: 0; padding: 0;')
+        jupyter_container = ui.column().classes('w-full h-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
+        # dbt_workbench_container = ui.column().classes('w-full h-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
+        code_editor_container = ui.column().classes('w-full h-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
         extensions_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-4 flex-nowrap').style('margin: 0; padding: 0;')
         db_tools_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         api_creator_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         api_docs_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         scheduler_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
-        garage_container = ui.column().classes('w-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
+        garage_container = ui.column().classes('w-full h-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
         telemetry_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
-        superset_container = ui.column().classes('w-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
+        superset_container = ui.column().classes('w-full h-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
         settings_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         
         # Build Database Tools Container Content
@@ -1831,6 +1992,8 @@ def index():
             with ui.tabs().classes('w-full border-b flex-none') as db_tools_subtabs:
                 backup_restore_tab = ui.tab('Backup & Restore', icon='settings_backup_restore')
                 ingestion_seeding_tab = ui.tab('Ingestion & Seeding', icon='science')
+                schema_diff_tab = ui.tab('Schema Diff Tool', icon='difference')
+                s3_delta_tab = ui.tab('S3 Delta Catalog', icon='cloud_sync')
                 
             with ui.tab_panels(db_tools_subtabs, value=backup_restore_tab).classes('w-full bg-transparent min-h-0 flex-grow p-0').style('padding: 0;'):
                 # TAB 1: Backup & Restore
@@ -2013,6 +2176,80 @@ def index():
                                 ui.button('Load S3 Dataset', icon='play_arrow',
                                           on_click=lambda: trigger_s3_import(s3_uri_input.value, s3_fmt.value, s3_key.value, s3_secret.value, s3_token.value, s3_region_input.value, s3_table.value)).props('elevated dense color=primary').classes('self-end px-4 py-2 mt-2')
 
+                # TAB 3: Schema Diff Tool
+                with ui.tab_panel(schema_diff_tab).classes('gap-6 p-0 flex-col'):
+                    with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4 flex-none'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.icon('difference', color='primary').classes('text-2xl')
+                            ui.label('Database Schema Drift & Diff Tool').classes('text-lg font-bold text-slate-800 dark:text-white')
+                        ui.separator().classes('opacity-50')
+                        ui.label('Compare column definitions, indexes, and constraints between two attached databases or tables to identify schemas mismatches or drift.').classes('text-xs text-slate-400 leading-relaxed max-w-3xl')
+                        
+                        # Selection columns
+                        with ui.grid(columns=2).classes('w-full gap-6'):
+                            # Left Column: Source Table
+                            with ui.card().classes('p-4 border border-slate-100 dark:border-slate-800 shadow-none dark-bg-panel flex-col gap-3'):
+                                ui.label('Source / Reference Table').classes('text-xs font-bold text-slate-700 dark:text-slate-300 uppercase')
+                                source_db_select = ui.select(
+                                    options={},
+                                    value=None,
+                                    label='Database',
+                                    on_change=lambda e: update_diff_tables(e.value, source_table_select)
+                                ).props('dense outlined').classes('w-full')
+                                source_table_select = ui.select(
+                                    options={},
+                                    value=None,
+                                    label='Table / View'
+                                ).props('dense outlined').classes('w-full')
+                                
+                            # Right Column: Target Table
+                            with ui.card().classes('p-4 border border-slate-100 dark:border-slate-800 shadow-none dark-bg-panel flex-col gap-3'):
+                                ui.label('Target / Comparison Table').classes('text-xs font-bold text-slate-700 dark:text-slate-300 uppercase')
+                                target_db_select = ui.select(
+                                    options={},
+                                    value=None,
+                                    label='Database',
+                                    on_change=lambda e: update_diff_tables(e.value, target_table_select)
+                                ).props('dense outlined').classes('w-full')
+                                target_table_select = ui.select(
+                                    options={},
+                                    value=None,
+                                    label='Table / View'
+                                ).props('dense outlined').classes('w-full')
+                                
+                        ui.button('Compare Schemas', icon='compare_arrows', color='primary', on_click=run_schema_diff).props('elevated dense').classes('self-end px-4 py-2 mt-2')
+                        
+                    # Diff Results display container
+                    diff_results_card = ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-3 flex-grow overflow-auto')
+                    with diff_results_card:
+                        ui.label('Comparison Results').classes('font-bold text-slate-800 dark:text-white text-sm')
+                        diff_results_container = ui.column().classes('w-full gap-1 flex-grow overflow-auto')
+                        with diff_results_container:
+                            ui.label('Select source and target tables, then click "Compare Schemas" to analyze differences.').classes('text-xs text-slate-400 italic')
+
+                # TAB 4: S3 Delta Catalog
+                with ui.tab_panel(s3_delta_tab).classes('gap-6 p-0 flex-col'):
+                    with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.icon('cloud_sync', color='primary').classes('text-2xl')
+                            ui.label('S3 Delta Tables Catalog Sync').classes('text-lg font-bold text-slate-800 dark:text-white')
+                        ui.separator().classes('opacity-50')
+                        ui.label('Manually trigger a synchronization to scan the S3 bucket prefixes and auto-generate DuckDB Views for S3 Delta tables in the s3_delta_catalog schema.').classes('text-xs text-slate-400 leading-relaxed')
+                        
+                        async def run_manual_sync():
+                            ui.notify('Starting S3 Delta Catalog Sync...', type='info')
+                            try:
+                                from s3_catalog_sync import sync_catalog
+                                loop = asyncio.get_event_loop()
+                                success = await loop.run_in_executor(None, sync_catalog)
+                                if success:
+                                    ui.notify('S3 Delta Catalog successfully synchronized!', type='success')
+                                else:
+                                    ui.notify('S3 Delta Catalog synchronization failed. Check logs.', type='negative')
+                            except Exception as ex:
+                                ui.notify(f'Error running sync: {ex}', type='negative')
+                                
+                        ui.button('Sync Now', icon='sync', on_click=run_manual_sync).props('elevated color=primary').classes('px-6 py-2 text-sm font-bold rounded-lg self-start')
         
         # Build Extensions Container Content
         with extensions_container:
@@ -2075,29 +2312,29 @@ def index():
                 })();
             ''')
 
-        # Build dbt Workbench container content
-        with dbt_workbench_container:
-            with ui.row().classes('w-full items-center justify-between bg-slate-100 dark:bg-slate-800 p-2 border-b border-slate-200 dark:border-slate-700'):
-                with ui.row().classes('items-center gap-2'):
-                    ui.icon('lan', color='primary').classes('text-xl')
-                    ui.label('dbt Project Workbench').classes('font-bold text-slate-700 dark:text-white')
-                ui.button('Show Lineage DAG', icon='lan', on_click=open_dbt_lineage_dialog).props('elevated dense color=primary')
-            ui.element('iframe').props('id="dbt-workbench-frame" sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads allow-modals"').classes('w-full h-full border-none')
-            ui.run_javascript('''
-                (function() {
-                    var host = window.location.hostname;
-                    var port = window.location.port;
-                    var proto = window.location.protocol;
-                    var targetUrl;
-                    if (host.endsWith('.localhost')) {
-                        var baseDomain = host.substring(host.indexOf('.'));
-                        targetUrl = proto + '//workbench' + baseDomain + (port ? ':' + port : '');
-                    } else {
-                        targetUrl = proto + '//' + host + ':3000';
-                    }
-                    document.getElementById("dbt-workbench-frame").src = targetUrl;
-                })();
-            ''')
+        # Build dbt Workbench container content - Commented out / Removed
+        # with dbt_workbench_container:
+        #     with ui.row().classes('w-full items-center justify-between bg-slate-100 dark:bg-slate-800 p-2 border-b border-slate-200 dark:border-slate-700'):
+        #         with ui.row().classes('items-center gap-2'):
+        #             ui.icon('lan', color='primary').classes('text-xl')
+        #             ui.label('dbt Project Workbench').classes('font-bold text-slate-700 dark:text-white')
+        #         ui.button('Show Lineage DAG', icon='lan', on_click=open_dbt_lineage_dialog).props('elevated dense color=primary')
+        #     ui.element('iframe').props('id="dbt-workbench-frame" sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-downloads allow-modals"').classes('w-full h-full border-none')
+        #     ui.run_javascript('''
+        #         (function() {
+        #             var host = window.location.hostname;
+        #             var port = window.location.port;
+        #             var proto = window.location.protocol;
+        #             var targetUrl;
+        #             if (host.endsWith('.localhost')) {
+        #                 var baseDomain = host.substring(host.indexOf('.'));
+        #                 targetUrl = proto + '//workbench' + baseDomain + (port ? ':' + port : '');
+        #             } else {
+        #                 targetUrl = proto + '//' + host + ':3000';
+        #             }
+        #             document.getElementById("dbt-workbench-frame").src = targetUrl;
+        #         })();
+        #     ''')
 
         # Build Code Editor container content
         with code_editor_container:
@@ -3886,7 +4123,7 @@ def index():
         # Bind visibility based on active tab
         studio_container.bind_visibility_from(tabs, 'value', value='Explorer')
         jupyter_container.bind_visibility_from(tabs, 'value', value='JupyterLab')
-        dbt_workbench_container.bind_visibility_from(tabs, 'value', value='dbt Workbench')
+        # dbt_workbench_container.bind_visibility_from(tabs, 'value', value='dbt Workbench')
         code_editor_container.bind_visibility_from(tabs, 'value', value='Code Editor')
         extensions_container.bind_visibility_from(tabs, 'value', value='Extensions')
         db_tools_container.bind_visibility_from(tabs, 'value', value='Database Tools')
@@ -5194,9 +5431,47 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                     sql_editor.value = sql
                     run_editor_query()
                     
-            tree_widget = ui.tree(nodes, label_key='label', on_select=handle_node_click).props('dense accordion').classes('text-slate-800 dark:text-slate-100')
             if filter_text and expanded_keys:
-                tree_widget.expand(expanded_keys)
+                tree_state['expanded'] = list(set(expanded_keys))
+            elif not tree_state['expanded']:
+                current_active = 'main'
+                try:
+                    current_active = explorer.conn.execute("SELECT current_database();").fetchone()[0]
+                except Exception:
+                    pass
+                tree_state['expanded'] = [current_active]
+                
+            def delete_table_action(table_id):
+                nonlocal drop_target_db, drop_target_schema, drop_target_table
+                parts = table_id.split('.')
+                if len(parts) == 3:
+                    drop_target_db, drop_target_schema, drop_target_table = parts
+                    drop_title_label.text = f"Drop Table/View '{drop_target_db}.{drop_target_schema}.{drop_target_table}'?"
+                    drop_table_dialog.open()
+
+            tree_widget = ui.tree(
+                nodes, 
+                label_key='label', 
+                on_select=handle_node_click,
+                on_expand=lambda e: tree_state.update(expanded=e.value)
+            ).props('dense accordion').classes('text-slate-800 dark:text-slate-100')
+            tree_widget._props['expanded'] = tree_state['expanded']
+            
+            with tree_widget:
+                tree_widget.add_slot('default-header', f'''
+                    <div class="row items-center justify-between no-wrap full-width">
+                        <div class="row items-center no-wrap">
+                            <q-icon :name="props.node.icon" class="q-mr-sm" />
+                            <div>{{{{ props.node.label }}}}</div>
+                        </div>
+                        <q-btn v-if="props.node.id && props.node.id.split('.').length === 3" 
+                               flat round dense size="xs" color="negative" icon="delete" 
+                               @click.stop="getElement({tree_widget.id}).$emit('delete_node', props.node.id)">
+                            <q-tooltip>Drop table/view</q-tooltip>
+                        </q-btn>
+                    </div>
+                ''')
+            tree_widget.on('delete_node', lambda e: delete_table_action(e.args))
                     
     def handle_tab_change_global(value):
         """Callback to store the selected tab globally in user session storage and trigger tab change logic."""
@@ -6639,9 +6914,14 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                     del explorer.attached_dbs_queries[db_alias]
                     print(f"DEBUG: Removed ATTACH statement for detached database {db_alias}", flush=True)
 
-        # Force refresh of schema and databases tree if attach/detach statements are executed
-        if "attach " in sql.lower() or "detach " in sql.lower():
+        # Force refresh of schema, databases tree, and ER Diagram if DDL or attach/detach/use statements are executed
+        sql_lower = sql.lower().strip()
+        if any(keyword in sql_lower for keyword in ["attach ", "detach ", "create ", "drop ", "alter ", "use "]):
             refresh_schema_tree()
+            try:
+                refresh_er_diagram()
+            except Exception:
+                pass
 
         # Display success metrics
         if res.get('truncated', False):
@@ -6722,30 +7002,106 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
         refresh_schema_tree()
 
     def trigger_csv_download():
-        """Trigger standard browser CSV download for the active query results."""
-        if not current_results['columns'] or not current_results['rows']:
-            ui.notify('No active data to export!', type='warning')
+        """Trigger native high-performance DuckDB CSV export and browser download."""
+        sql = sql_editor.value.strip()
+        if not sql:
+            ui.notify('Please write a query first!', type='warning')
             return
-        csv_bytes = get_csv_bytes(current_results['columns'], current_results['rows'])
-        ui.download(csv_bytes, f"duckdb_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
-        ui.notify('CSV Export completed successfully.', type='success')
+            
+        try:
+            params = detect_parameters(sql)
+            if params:
+                empty_params = [p for p in params if p not in parameter_input_fields or parameter_input_fields[p].value is None or str(parameter_input_fields[p].value).strip() == ""]
+                if empty_params:
+                    ui.notify(f"Please fill in all query parameters: {', '.join(empty_params)}", type='warning')
+                    return
+                param_values = {p: parameter_input_fields[p].value for p in params}
+                sql_exec = substitute_sql_parameters(sql, param_values)
+            else:
+                sql_exec = sql
+
+            # Clean trailing semicolon
+            sql_clean = sql_exec.strip()
+            if sql_clean.endswith(';'):
+                sql_clean = sql_clean[:-1].strip()
+
+            os.makedirs('exports', exist_ok=True)
+            import uuid
+            temp_path = f"exports/export_{uuid.uuid4().hex}.csv"
+
+            # Execute native COPY command
+            copy_query = f"COPY ({sql_clean}) TO '{temp_path}' (FORMAT CSV, HEADER TRUE);"
+            explorer.conn.execute(copy_query)
+
+            # Trigger standard browser download
+            ui.download(temp_path, f"duckdb_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+            ui.notify('CSV Export completed successfully.', type='success')
+
+            # Schedule garbage collection cleanup for the temporary file
+            def cleanup():
+                import time
+                time.sleep(15)
+                try:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                except Exception:
+                    pass
+            import threading
+            threading.Thread(target=cleanup, daemon=True).start()
+
+        except Exception as ex:
+            ui.notify(f"CSV Export failed: {ex}", type='negative', duration=7)
 
     def trigger_parquet_download():
-        """Trigger standard browser Parquet download for the active query results."""
-        if not current_results['columns'] or not current_results['rows']:
-            ui.notify('No active data to export!', type='warning')
+        """Trigger native high-performance DuckDB Parquet export and browser download."""
+        sql = sql_editor.value.strip()
+        if not sql:
+            ui.notify('Please write a query first!', type='warning')
             return
+            
         try:
-            import pyarrow as pa
-            import pyarrow.parquet as pq
-            table = pa.Table.from_pylist(current_results['rows'])
-            sink = pa.BufferOutputStream()
-            pq.write_table(table, sink)
-            parquet_bytes = sink.getvalue().to_pybytes()
-            ui.download(parquet_bytes, f"duckdb_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet")
+            params = detect_parameters(sql)
+            if params:
+                empty_params = [p for p in params if p not in parameter_input_fields or parameter_input_fields[p].value is None or str(parameter_input_fields[p].value).strip() == ""]
+                if empty_params:
+                    ui.notify(f"Please fill in all query parameters: {', '.join(empty_params)}", type='warning')
+                    return
+                param_values = {p: parameter_input_fields[p].value for p in params}
+                sql_exec = substitute_sql_parameters(sql, param_values)
+            else:
+                sql_exec = sql
+
+            # Clean trailing semicolon
+            sql_clean = sql_exec.strip()
+            if sql_clean.endswith(';'):
+                sql_clean = sql_clean[:-1].strip()
+
+            os.makedirs('exports', exist_ok=True)
+            import uuid
+            temp_path = f"exports/export_{uuid.uuid4().hex}.parquet"
+
+            # Execute native COPY command
+            copy_query = f"COPY ({sql_clean}) TO '{temp_path}' (FORMAT PARQUET);"
+            explorer.conn.execute(copy_query)
+
+            # Trigger standard browser download
+            ui.download(temp_path, f"duckdb_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet")
             ui.notify('Parquet Export completed successfully.', type='success')
+
+            # Schedule garbage collection cleanup for the temporary file
+            def cleanup():
+                import time
+                time.sleep(15)
+                try:
+                    if os.path.exists(temp_path):
+                        os.remove(temp_path)
+                except Exception:
+                    pass
+            import threading
+            threading.Thread(target=cleanup, daemon=True).start()
+
         except Exception as ex:
-            ui.notify(f"Parquet Export failed: {ex}", type='negative')
+            ui.notify(f"Parquet Export failed: {ex}", type='negative', duration=7)
 
     def render_chart():
         """Read the active result dataset and build a responsive Apache EChart plotting."""
@@ -7470,6 +7826,10 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
             print(f"Error loading databases for import dialog: {e}")
         import_dialog.open()
 
+    # Table stats inspector overlay dialog
+    with ui.dialog() as inspector_dialog, ui.card().classes('w-[900px] max-w-[95vw] p-6 gap-4 border border-slate-100 dark:border-slate-800 rounded-xl dark-bg-flat'):
+        inspector_content = ui.column().classes('w-full gap-4')
+
     # Build Modal Ingestion Dialog
     with ui.dialog() as import_dialog, ui.card().classes('w-[900px] max-w-[95vw] p-6 gap-4 border border-slate-100 dark:border-slate-800 rounded-xl dark-bg-flat'):
         
@@ -7597,6 +7957,26 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
         with ui.row().classes('w-full justify-end gap-2 pt-2'):
             ui.button('Cancel', on_click=save_query_dialog.close).props('flat')
             ui.button('Save Query', icon='save', color='positive', on_click=handle_save_query).props('elevated')
+
+    # Build Drop Table/View Confirmation Dialog
+    with ui.dialog() as drop_table_dialog, ui.card().classes('p-6 gap-4'):
+        drop_title_label = ui.label("").classes('font-bold text-base')
+        ui.label("This action will drop the table/view and delete all its data permanently. This cannot be undone.").classes('text-xs text-slate-500')
+        with ui.row().classes('w-full justify-end gap-2'):
+            ui.button('Cancel', on_click=drop_table_dialog.close).props('flat')
+            
+            def perform_drop_action():
+                nonlocal drop_target_db, drop_target_schema, drop_target_table
+                try:
+                    explorer.conn.execute(f"DROP TABLE IF EXISTS {drop_target_db}.{drop_target_schema}.{drop_target_table};")
+                    explorer.conn.execute(f"DROP VIEW IF EXISTS {drop_target_db}.{drop_target_schema}.{drop_target_table};")
+                    ui.notify(f"Successfully dropped table/view '{drop_target_table}'", type='success')
+                    refresh_schema_tree()
+                    drop_table_dialog.close()
+                except Exception as ex:
+                    ui.notify(f"Failed to drop table/view: {ex}", type='negative')
+                    
+            ui.button('Confirm Drop', color='negative', on_click=perform_drop_action).props('elevated')
 
     # Build Attach Database Dialog
     with ui.dialog() as attach_db_dialog, ui.card().classes('w-96 p-6 gap-4'):
