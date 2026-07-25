@@ -32,6 +32,7 @@ services:
       - ./init_stack.py:/app/init_stack.py
       - ./main.py:/app/main.py
       - ./s3_catalog_sync.py:/app/s3_catalog_sync.py
+      - ./api_generator.py:/app/api_generator.py
       - ./local_file_picker:/app/local_file_picker
       - ./config:/config
       - ./templates:/templates
