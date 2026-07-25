@@ -172,6 +172,7 @@ services:
     volumes:
       - ./dbt_project:/home/coder/project
       - ./profiles:/home/coder/.dbt
+      - ./dbt_data:/app/data
       - code-server-extensions:/home/coder/.local/share/code-server
     environment:
       - AWS_ACCESS_KEY_ID=GK2713753aca1d72db5325f212
