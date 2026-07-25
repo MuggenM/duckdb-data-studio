@@ -162,7 +162,9 @@ services:
 #       - "traefik.http.services.workbench.loadbalancer.server.port=3000"
 
   dbt-code-server:
-    image: codercom/code-server:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.codeserver
     container_name: dbt-code-server
     ports:
       - "8443:8080"
@@ -170,6 +172,12 @@ services:
       - ./dbt_project:/home/coder/project
       - ./profiles:/home/coder/.dbt
       - code-server-extensions:/home/coder/.local/share/code-server
+    environment:
+      - AWS_ACCESS_KEY_ID=GK2713753aca1d72db5325f212
+      - AWS_SECRET_ACCESS_KEY=afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e
+      - AWS_DEFAULT_REGION=us-east-1
+      - AWS_ENDPOINT_URL=http://garage:3900
+      - AWS_S3_ALLOW_UNSAFE_RENAME=true
     command: ["--auth", "none", "/home/coder/project"]
     networks:
       - studio_jupyter_net
