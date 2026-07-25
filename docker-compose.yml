@@ -84,7 +84,8 @@ services:
       - /bin/bash
       - -c
       - |
-        pip install duckdb==1.5.3 duckrun
+        pip install uv
+        uv pip install --system --break-system-packages --no-cache duckdb==1.5.3 duckrun pandas sqlframe[duckdb]
         exec jupyter lab --allow-root --ServerApp.token=analytics_secret --IdentityProvider.token=analytics_secret --ServerApp.tornado_settings="{\"headers\": {\"Content-Security-Policy\": \"frame-ancestors 'self' http://studio.localhost:8880 http://localhost:8085 http://localhost:8086 http://127.0.0.1:8085 http://127.0.0.1:8086\"}}"
     restart: unless-stopped
     deploy:
