@@ -22,18 +22,17 @@ def sync_catalog():
         bucket_name = "devbucket"
         bucket = s3.Bucket(bucket_name)
         
-        # Discover Delta tables directories (supporting schemas like /tables/main/stg_orders)
+        # Discover Delta tables directories (supporting recursively nested schemas/subfolders before _delta_log)
         delta_tables = {}
         for obj in bucket.objects.filter(Prefix="tables/"):
             key = obj.key
             if "_delta_log/" in key:
-                parts = key.split("/")
-                # Expecting 'tables/<schema>/<table_name>/_delta_log/...' -> len(parts) >= 4
-                if len(parts) >= 4:
-                    schema_name = parts[1]
-                    table_name = parts[2]
-                    view_name = f"{schema_name}_{table_name}"
-                    s3_path = f"s3://{bucket_name}/tables/{schema_name}/{table_name}"
+                prefix_part = key.split("_delta_log/")[0].rstrip("/")
+                parts = prefix_part.split("/")
+                if len(parts) >= 3:
+                    sub_parts = parts[1:]
+                    view_name = "_".join(sub_parts)
+                    s3_path = f"s3://{bucket_name}/{prefix_part}"
                     delta_tables[view_name] = s3_path
     except Exception as e:
         print(f"ERROR: Failed to scan S3 bucket: {e}", flush=True)
