@@ -5449,9 +5449,13 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                     drop_title_label.text = f"Drop Table/View '{drop_target_db}.{drop_target_schema}.{drop_target_table}'?"
                     drop_table_dialog.open()
 
-            tree_widget = ui.tree(nodes, label_key='label', on_select=handle_node_click).props('dense accordion').classes('text-slate-800 dark:text-slate-100')
-            tree_widget.expanded = tree_state['expanded']
-            tree_widget.on('update:expanded', lambda e: tree_state.update(expanded=e.args[0] if e.args else []))
+            tree_widget = ui.tree(
+                nodes, 
+                label_key='label', 
+                on_select=handle_node_click,
+                on_expand=lambda e: tree_state.update(expanded=e.value)
+            ).props('dense accordion').classes('text-slate-800 dark:text-slate-100')
+            tree_widget._props['expanded'] = tree_state['expanded']
             
             with tree_widget:
                 tree_widget.add_slot('default-header', f'''
