@@ -6,6 +6,6 @@ RUN apt-get update && apt-get install -y python3 python3-pip python3-venv curl &
     mv /root/.local/bin/uv /usr/local/bin/ && \
     rm -rf /var/lib/apt/lists/*
 
-RUN uv pip install --system --break-system-packages --no-cache duckdb==1.5.3 duckrun dbt-core dbt-duckdb pandas sqlframe[duckdb]
+RUN uv pip install --system --break-system-packages --no-cache duckdb==1.5.4 duckrun>=0.4.31 dbt-core dbt-duckdb pandas sqlframe[duckdb]
 
 USER coder
