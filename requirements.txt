@@ -1,5 +1,5 @@
 nicegui==3.2.0
-duckdb==1.5.3
+duckdb==1.5.4
 pyyaml
 pandas
 pyarrow
@@ -10,5 +10,5 @@ buenavista
 uvloop
 httptools
 pytz
-duckrun
+duckrun>=0.4.31
 boto3
