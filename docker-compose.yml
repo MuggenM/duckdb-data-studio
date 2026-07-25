@@ -49,6 +49,7 @@ services:
       - AWS_DEFAULT_REGION=us-east-1
       - AWS_ENDPOINT_URL=http://garage:3900
       - AWS_S3_ALLOW_UNSAFE_RENAME=true
+      - AWS_ALLOW_HTTP=true
     networks:
       - studio_jupyter_net
     restart: unless-stopped
@@ -80,6 +81,7 @@ services:
       - AWS_DEFAULT_REGION=us-east-1
       - AWS_ENDPOINT_URL=http://garage:3900
       - AWS_S3_ALLOW_UNSAFE_RENAME=true
+      - AWS_ALLOW_HTTP=true
     command:
       - /bin/bash
       - -c
@@ -180,6 +182,7 @@ services:
       - AWS_DEFAULT_REGION=us-east-1
       - AWS_ENDPOINT_URL=http://garage:3900
       - AWS_S3_ALLOW_UNSAFE_RENAME=true
+      - AWS_ALLOW_HTTP=true
     command: ["--auth", "none", "/home/coder/project"]
     networks:
       - studio_jupyter_net

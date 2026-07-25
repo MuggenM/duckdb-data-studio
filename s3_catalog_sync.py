@@ -22,20 +22,24 @@ def sync_catalog():
         bucket_name = "devbucket"
         bucket = s3.Bucket(bucket_name)
         
-        # Discover Delta tables directories
-        delta_tables = set()
+        # Discover Delta tables directories (supporting schemas like /tables/main/stg_orders)
+        delta_tables = {}
         for obj in bucket.objects.filter(Prefix="tables/"):
             key = obj.key
             if "_delta_log/" in key:
                 parts = key.split("/")
-                if len(parts) >= 3:
-                    table_name = parts[1]
-                    delta_tables.add(table_name)
+                # Expecting 'tables/<schema>/<table_name>/_delta_log/...' -> len(parts) >= 4
+                if len(parts) >= 4:
+                    schema_name = parts[1]
+                    table_name = parts[2]
+                    view_name = f"{schema_name}_{table_name}"
+                    s3_path = f"s3://{bucket_name}/tables/{schema_name}/{table_name}"
+                    delta_tables[view_name] = s3_path
     except Exception as e:
         print(f"ERROR: Failed to scan S3 bucket: {e}", flush=True)
         return False
         
-    print(f"INFO: Discovered Delta tables: {list(delta_tables)}", flush=True)
+    print(f"INFO: Discovered Delta tables: {list(delta_tables.keys())}", flush=True)
     
     # Connect to DuckDB database
     from config_manager import get_main_db_path
@@ -50,12 +54,14 @@ def sync_catalog():
         
         # Create S3 secrets natively in DuckDB
         conn.execute(f"""
-            CREATE SECRET IF NOT EXISTS s3_sync_secret (
+            CREATE OR REPLACE SECRET s3_sync_secret (
                 TYPE S3,
                 KEY_ID '{access_key}',
                 SECRET '{secret_key}',
                 ENDPOINT '{endpoint_url.replace("http://", "").replace("https://", "")}',
-                USE_SSL false
+                REGION '{region_name}',
+                USE_SSL false,
+                URL_STYLE 'path'
             );
         """)
         
@@ -71,13 +77,12 @@ def sync_catalog():
         existing_views = {row[0] for row in existing_views_rows}
         
         # Create views for active tables
-        for table in delta_tables:
-            s3_path = f"s3://{bucket_name}/tables/{table}"
-            conn.execute(f"CREATE OR REPLACE VIEW s3_delta_catalog.{table} AS SELECT * FROM delta_scan('{s3_path}');")
-            print(f"INFO: Created/updated view s3_delta_catalog.{table}", flush=True)
+        for view_name, s3_path in delta_tables.items():
+            conn.execute(f"CREATE OR REPLACE VIEW s3_delta_catalog.{view_name} AS SELECT * FROM delta_scan('{s3_path}');")
+            print(f"INFO: Created/updated view s3_delta_catalog.{view_name} -> {s3_path}", flush=True)
             
         # Drop obsolete views
-        for obsolete_view in existing_views - delta_tables:
+        for obsolete_view in existing_views - set(delta_tables.keys()):
             conn.execute(f"DROP VIEW IF EXISTS s3_delta_catalog.{obsolete_view};")
             print(f"INFO: Dropped obsolete view s3_delta_catalog.{obsolete_view}", flush=True)
             
