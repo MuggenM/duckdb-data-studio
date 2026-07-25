@@ -5,6 +5,10 @@ test_project:
       type: duckdb
       path: '/app/data/test_project.duckdb'
       threads: 1
+    s3_delta:
+      type: duckrun
+      root_path: 's3://devbucket/tables'
+      threads: 4
     postgres:
       type: postgres
       host: dbt-workbench-db
