@@ -80,11 +80,12 @@ services:
       - AWS_DEFAULT_REGION=us-east-1
       - AWS_ENDPOINT_URL=http://garage:3900
       - AWS_S3_ALLOW_UNSAFE_RENAME=true
-    command: >
-      bash -c "
-      pip install duckdb==1.5.3 duckrun &&
-      jupyter lab --allow-root --ServerApp.token=analytics_secret --IdentityProvider.token=analytics_secret --ServerApp.tornado_settings='{\"headers\": {\"Content-Security-Policy\": \"frame-ancestors \\'self\\' http://studio.localhost:8880 http://localhost:8085 http://localhost:8086 http://127.0.0.1:8085 http://127.0.0.1:8086\"}}'
-      "
+    command:
+      - /bin/bash
+      - -c
+      - |
+        pip install duckdb==1.5.3 duckrun
+        exec jupyter lab --allow-root --ServerApp.token=analytics_secret --IdentityProvider.token=analytics_secret --ServerApp.tornado_settings="{\"headers\": {\"Content-Security-Policy\": \"frame-ancestors 'self' http://studio.localhost:8880 http://localhost:8085 http://localhost:8086 http://127.0.0.1:8085 http://127.0.0.1:8086\"}}"
     restart: unless-stopped
     deploy:
       resources:
