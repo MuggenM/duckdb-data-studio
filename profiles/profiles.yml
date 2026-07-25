@@ -9,6 +9,25 @@ test_project:
       type: duckrun
       root_path: 's3://devbucket/tables'
       threads: 4
+      extensions:
+        - httpfs
+        - delta
+      storage_options:
+        AWS_ACCESS_KEY_ID: "{{ env_var('AWS_ACCESS_KEY_ID') }}"
+        AWS_SECRET_ACCESS_KEY: "{{ env_var('AWS_SECRET_ACCESS_KEY') }}"
+        AWS_ENDPOINT_URL: "{{ env_var('AWS_ENDPOINT_URL') }}"
+        AWS_REGION: "{{ env_var('AWS_DEFAULT_REGION', 'us-east-1') }}"
+        allow_http: 'true'
+        AWS_S3_ALLOW_UNSAFE_RENAME: 'true'
+        AWS_S3_USE_PATH_STYLE: 'true'
+      secrets:
+        - type: s3
+          region: "us-east-1"
+          key_id: "{{ env_var('AWS_ACCESS_KEY_ID') }}"
+          secret: "{{ env_var('AWS_SECRET_ACCESS_KEY') }}"
+          endpoint: "garage:3900"
+          use_ssl: false
+          url_style: path
     postgres:
       type: postgres
       host: dbt-workbench-db
