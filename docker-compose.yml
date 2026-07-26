@@ -55,6 +55,11 @@ services:
     networks:
       - studio_jupyter_net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          # cpus: '4.0' # Fails on hosts where the kernel lacks CPU CFS scheduler support
+          memory: 4G
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.studio.rule=Host(`studio.localhost`)"
@@ -178,6 +183,7 @@ services:
       - ./profiles:/home/coder/.dbt
       - ./dbt_data:/app/data
       - code-server-extensions:/home/coder/.local/share/code-server
+      - ./entrypoint_codeserver.sh:/app/entrypoint_codeserver.sh
     environment:
       - AWS_ACCESS_KEY_ID=GK2713753aca1d72db5325f212
       - AWS_SECRET_ACCESS_KEY=afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e
@@ -185,7 +191,8 @@ services:
       - AWS_ENDPOINT_URL=http://garage:3900
       - AWS_S3_ALLOW_UNSAFE_RENAME=true
       - AWS_ALLOW_HTTP=true
-    command: ["--auth", "none", "/home/coder/project"]
+    entrypoint: ["/bin/bash", "/app/entrypoint_codeserver.sh"]
+    command: ["--auth", "none", "--bind-addr", "0.0.0.0:8080", "/home/coder/project"]
     networks:
       - studio_jupyter_net
     restart: unless-stopped

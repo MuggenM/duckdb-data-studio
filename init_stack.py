@@ -183,6 +183,31 @@ def init_sqlite():
     except Exception as e:
         print_error(f"Failed to initialize SQLite config: {e}")
 
+def fix_dbt_project_permissions():
+    print_step("Fixing dbt project file permissions for code-server")
+    dbt_project_dir = '/app/dbt_project'
+    if os.path.exists(dbt_project_dir):
+        try:
+            # Change ownership to UID 1000 (coder inside container)
+            subprocess.run(["chown", "-R", "1000:1000", dbt_project_dir], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            for root, dirs, files in os.walk(dbt_project_dir):
+                for d in dirs:
+                    try:
+                        os.chmod(os.path.join(root, d), 0o777)
+                    except PermissionError:
+                        pass
+                for f in files:
+                    try:
+                        os.chmod(os.path.join(root, f), 0o666)
+                    except PermissionError:
+                        pass
+            print_success("dbt project permissions correction")
+        except Exception as e:
+            print_error(f"Failed to correct dbt project permissions: {e}")
+    else:
+        print("  dbt_project directory does not exist, skipping permissions check.")
+
 def main():
     print("=========================================================")
     print("      🦆 DUCKDB DATA STUDIO STACK INITIALIZATION 🦆       ")
@@ -190,6 +215,7 @@ def main():
     init_folders()
     init_tls()
     init_sqlite()
+    fix_dbt_project_permissions()
     print("=========================================================")
     print("[+] Stack initialization complete. Ready to launch!")
     print("=========================================================")
