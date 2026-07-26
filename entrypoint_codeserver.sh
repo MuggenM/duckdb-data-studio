@@ -20,4 +20,4 @@ if target in code and 'isinstance' not in code:
 fi
 
 # Execute the default code-server entrypoint
-exec dumb-init /usr/bin/code-server "$@"
+exec /usr/bin/entrypoint.sh "$@"
