@@ -58,6 +58,7 @@ services:
     deploy:
       resources:
         limits:
+          # cpus: '4.0' # Fails on hosts where the kernel lacks CPU CFS scheduler support
           memory: 4G
     labels:
       - "traefik.enable=true"
