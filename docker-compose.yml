@@ -192,7 +192,7 @@ services:
       - AWS_S3_ALLOW_UNSAFE_RENAME=true
       - AWS_ALLOW_HTTP=true
     entrypoint: ["/bin/bash", "/app/entrypoint_codeserver.sh"]
-    command: ["--auth", "none", "/home/coder/project"]
+    command: ["--auth", "none", "--bind-addr", "0.0.0.0:8080", "/home/coder/project"]
     networks:
       - studio_jupyter_net
     restart: unless-stopped
