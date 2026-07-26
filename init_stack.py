@@ -188,6 +188,9 @@ def fix_dbt_project_permissions():
     dbt_project_dir = '/app/dbt_project'
     if os.path.exists(dbt_project_dir):
         try:
+            # Change ownership to UID 1000 (coder inside container)
+            subprocess.run(["chown", "-R", "1000:1000", dbt_project_dir], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
             for root, dirs, files in os.walk(dbt_project_dir):
                 for d in dirs:
                     try:
