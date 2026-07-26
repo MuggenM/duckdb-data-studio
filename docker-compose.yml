@@ -55,6 +55,10 @@ services:
     networks:
       - studio_jupyter_net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 4G
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.studio.rule=Host(`studio.localhost`)"
