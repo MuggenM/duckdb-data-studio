@@ -77,6 +77,12 @@ def run_background_scheduler(db_name=None):
             if jobs:
                 ddb_conn = duckdb.connect(db_path, config=DB_CONFIG)
                 try:
+                    ddb_conn.execute("SET http_keep_alive=true;")
+                    ddb_conn.execute("SET enable_object_cache=true;")
+                    ddb_conn.execute("SET http_timeout=10;")
+                except Exception as set_ex:
+                    print(f"WARNING: failed to configure HTTP/S3 settings in scheduler jobs: {set_ex}", flush=True)
+                try:
                     for job in jobs:
                         j_id = job['id']
                         j_name = job['name']

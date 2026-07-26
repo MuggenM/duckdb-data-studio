@@ -8,7 +8,10 @@ DB_CONFIG = {
     'custom_user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
     'threads': '4',
     'memory_limit': '2GB',
-    'preserve_insertion_order': 'false'
+    'preserve_insertion_order': 'false',
+    'http_keep_alive': 'true',
+    'enable_object_cache': 'true',
+    'http_timeout': '10'
 }
 
 def get_config_db_path():
