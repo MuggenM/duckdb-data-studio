@@ -37,8 +37,9 @@ def run_background_scheduler(db_name=None):
         
     db_path = db_name if db_name else get_main_db_path()
     
-    # Track S3 Delta catalog sync timing
+    # Track S3 Delta catalog sync and database cleanup timing
     last_s3_sync = datetime.datetime.min
+    last_cleanup = datetime.datetime.min
     
     while True:
         try:
@@ -52,6 +53,18 @@ def run_background_scheduler(db_name=None):
                     last_s3_sync = now
                 except Exception as sync_ex:
                     print(f"ERROR: Background S3 Delta Catalog Sync failed: {sync_ex}", flush=True)
+                    
+            # Periodically clean up telemetry and logs older than 7 days (every 1 hour)
+            if (now - last_cleanup).total_seconds() >= 3600:
+                try:
+                    cutoff_time = (now - datetime.timedelta(days=7)).isoformat()
+                    config_db.execute("DELETE FROM _duckdb_studio_api_metrics WHERE timestamp < ?;", [cutoff_time])
+                    config_db.execute("DELETE FROM _duckdb_studio_scheduler_logs WHERE executed_at < ?;", [cutoff_time])
+                    config_db.execute("DELETE FROM _duckdb_studio_query_history WHERE timestamp < ?;", [cutoff_time])
+                    print("INFO: Telemetry and logs cleanup completed (pruned data older than 7 days).", flush=True)
+                    last_cleanup = now
+                except Exception as clean_ex:
+                    print(f"ERROR: Background telemetry cleanup failed: {clean_ex}", flush=True)
             # Fetch active jobs from SQLite
             jobs = config_db.query_all("""
                 SELECT 
