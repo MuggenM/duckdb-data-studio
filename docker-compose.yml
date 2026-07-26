@@ -183,6 +183,7 @@ services:
       - ./profiles:/home/coder/.dbt
       - ./dbt_data:/app/data
       - code-server-extensions:/home/coder/.local/share/code-server
+      - ./entrypoint_codeserver.sh:/app/entrypoint_codeserver.sh
     environment:
       - AWS_ACCESS_KEY_ID=GK2713753aca1d72db5325f212
       - AWS_SECRET_ACCESS_KEY=afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e
@@ -190,6 +191,7 @@ services:
       - AWS_ENDPOINT_URL=http://garage:3900
       - AWS_S3_ALLOW_UNSAFE_RENAME=true
       - AWS_ALLOW_HTTP=true
+    entrypoint: ["/bin/bash", "/app/entrypoint_codeserver.sh"]
     command: ["--auth", "none", "/home/coder/project"]
     networks:
       - studio_jupyter_net
