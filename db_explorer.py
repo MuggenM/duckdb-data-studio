@@ -6,7 +6,10 @@ DB_CONFIG = {
     'custom_user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
     'threads': '4',
     'memory_limit': '2GB',
-    'preserve_insertion_order': 'false'
+    'preserve_insertion_order': 'false',
+    'http_keep_alive': 'true',
+    'enable_object_cache': 'true',
+    'http_timeout': '10'
 }
 
 class DuckDBExplorer:
@@ -19,6 +22,12 @@ class DuckDBExplorer:
     def conn(self):
         if self._conn is None:
             self._conn = duckdb.connect(self.db_file, config=DB_CONFIG)
+            try:
+                self._conn.execute("SET http_keep_alive=true;")
+                self._conn.execute("SET enable_object_cache=true;")
+                self._conn.execute("SET http_timeout=10;")
+            except Exception as e:
+                print(f"Error configuring HTTP/S3 settings in explorer: {e}", flush=True)
         return self._conn
         
     @property

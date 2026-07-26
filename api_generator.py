@@ -63,6 +63,12 @@ def handle_streaming_endpoint(endpoint_path: str, request: Request):
     conn = None
     try:
         conn = duckdb.connect(db_path, config=DB_CONFIG)
+        try:
+            conn.execute("SET http_keep_alive=true;")
+            conn.execute("SET enable_object_cache=true;")
+            conn.execute("SET http_timeout=10;")
+        except Exception as set_ex:
+            print(f"WARNING: failed to configure HTTP/S3 settings in streaming API: {set_ex}", flush=True)
         load_attached_databases_for_connection(conn)
         
         # Load the endpoint query from SQLite database
@@ -176,6 +182,12 @@ def handle_dynamic_endpoint(endpoint_path: str, request: Request):
     conn = None
     try:
         conn = duckdb.connect(db_path, config=DB_CONFIG)
+        try:
+            conn.execute("SET http_keep_alive=true;")
+            conn.execute("SET enable_object_cache=true;")
+            conn.execute("SET http_timeout=10;")
+        except Exception as set_ex:
+            print(f"WARNING: failed to configure HTTP/S3 settings in dynamic API: {set_ex}", flush=True)
         load_attached_databases_for_connection(conn)
         
         # Load the endpoint query from SQLite database

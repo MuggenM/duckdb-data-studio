@@ -48,6 +48,12 @@ def sync_catalog():
     conn = None
     try:
         conn = duckdb.connect(db_path, config=DB_CONFIG)
+        try:
+            conn.execute("SET http_keep_alive=true;")
+            conn.execute("SET enable_object_cache=true;")
+            conn.execute("SET http_timeout=10;")
+        except Exception as set_ex:
+            print(f"WARNING: failed to configure HTTP/S3 settings in sync script: {set_ex}", flush=True)
         conn.execute("INSTALL httpfs; LOAD httpfs;")
         conn.execute("INSTALL delta; LOAD delta;")
         
