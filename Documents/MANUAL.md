@@ -87,7 +87,7 @@ An embedded full-featured VS Code IDE server (`dbt-code-server` container runnin
 
 #### Integrated dbt Development Workflow:
 This tab exposes the complete `dbt_project/` workspace folder, enabling developers to build, compile, and document modular SQL models out-of-the-box.
-* **dbt-core Engine**: The container has `dbt-core` and the `dbt-duckdb` adapter installed natively.
+* **dbt-core Engine**: The container has `dbt-core` and the `dbt-duckrun` adapter installed natively.
 * **dbt Power User Integration**: Pre-loaded with the **dbt Power User** extension (`innoverio.vscode-dbt-power-user`), providing:
   * **Model Compilation & Running**: Compile models on-the-fly (`Ctrl + '`) and run individual queries directly inside the workspace view.
   * **Lineage & Dependency Trees**: Generates visual dependency graphs mapping relationships between your staging, intermediate, and dimensional models.
