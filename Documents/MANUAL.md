@@ -20,12 +20,13 @@ DuckDB Studio organizes its workspaces into specialized tabs:
 | :--- | :---: | :--- |
 | **[1. Explorer](#1-explorer)** | `query_stats` | Database schema catalog browser, visual query builder, optimized S3 connections, and SQL editor. |
 | **[2. JupyterLab](#2-jupyterlab)** | `terminal` | Embedded JupyterLab notebook interface running on system python with `duckrun` integration. |
-| **[3. Extensions](#3-extensions)** | `extension` | Graphical extension installer/loader for DuckDB's runtime libraries (spatial, httpfs, etc.). |
-| **[4. Database Tools](#4-database-tools)** | `construction` | Data migration utilities including backup, structure restore, CSV/Parquet import, and scaling data seeders. |
-| **[5. API Endpoints](#5-api-endpoints)** | `api` | SQL-to-REST API creator, dynamic auto-parameter parser, JWT security controls, and telemetry dashboard. |
-| **[6. API Docs & Explorer](#6-api-docs--explorer)** | `menu_book` | OpenAPI interactive Swagger interface and dynamic testing sandbox. |
-| **[7. Scheduler](#7-scheduler)** | `schedule` | Automated query scheduler, folder exporter, and telemetry logs retention clean-up agent. |
-| **[8. Settings](#8-settings)** | `settings` | Global system settings and credentials manager. |
+| **[3. dbt Code Server](#3-dbt-code-server)** | `vscode_blue` | Integrated VS Code editor environment pre-configured for dbt model development. |
+| **[4. Extensions](#4-extensions)** | `extension` | Graphical extension installer/loader for DuckDB's runtime libraries (spatial, httpfs, etc.). |
+| **[5. Database Tools](#5-database-tools)** | `construction` | Data migration utilities including backup, structure restore, CSV/Parquet import, and scaling data seeders. |
+| **[6. API Endpoints](#6-api-endpoints)** | `api` | SQL-to-REST API creator, dynamic auto-parameter parser, JWT security controls, and telemetry dashboard. |
+| **[7. API Docs & Explorer](#7-api-docs--explorer)** | `menu_book` | OpenAPI interactive Swagger interface and dynamic testing sandbox. |
+| **[8. Scheduler](#8-scheduler)** | `schedule` | Automated query scheduler, folder exporter, and telemetry logs retention clean-up agent. |
+| **[9. Settings](#9-settings)** | `settings` | Global system settings and credentials manager. |
 
 ---
 
@@ -78,7 +79,28 @@ An integrated interactive data science environment running on the host system py
 
 ---
 
-### 3. Extensions
+### 3. dbt Code Server
+
+An embedded full-featured VS Code IDE server (`dbt-code-server` container running on port `8443` and routed through `editor.localhost:8880`), custom-tailored for dbt (data build tool) development against DuckDB/S3 Delta table catalogs.
+
+<img src="./assets/code_editor_tab.png" width="650" />
+
+#### Integrated dbt Development Workflow:
+This tab exposes the complete `dbt_project/` workspace folder, enabling developers to build, compile, and document modular SQL models out-of-the-box.
+* **dbt-core Engine**: The container has `dbt-core` and the `dbt-duckdb` adapter installed natively.
+* **dbt Power User Integration**: Pre-loaded with the **dbt Power User** extension (`innoverio.vscode-dbt-power-user`), providing:
+  * **Model Compilation & Running**: Compile models on-the-fly (`Ctrl + '`) and run individual queries directly inside the workspace view.
+  * **Lineage & Dependency Trees**: Generates visual dependency graphs mapping relationships between your staging, intermediate, and dimensional models.
+  * **Interactive Code Autocomplete**: Auto-completes dbt Jinja macros such as `ref()`, `source()`, and `config()`.
+* **Automatic sqlfmt Formatting**: Configured to use the system-installed `shandy-sqlfmt[jinjafmt]` formatter. Whenever a Jinja-SQL file is saved, it is automatically formatted according to the pre-configured workspace rules (`.vscode/settings.json` default formatting engine).
+
+#### Robust Compatibility Workarounds (Included):
+* **Self-Healing Ownership**: Automatically runs a recursive `chown` to assign workspace files to the container's unprivileged user (`coder` UID `1000`) and a `chmod` to grant world-write access, resolving rootless Docker permission conflicts on startup.
+* **Python 3.13 Serialization Fix**: Includes an automatic startup patch that overrides the extension's JSON encoder, preventing compilation crashes caused by thread lock serialization changes on Python 3.13.
+
+---
+
+### 4. Extensions
 
 A visual manager for DuckDB's runtime plugins, enabling one-click library installation and loading.
 
@@ -91,7 +113,7 @@ A visual manager for DuckDB's runtime plugins, enabling one-click library instal
 
 ---
 
-### 4. Database Tools
+### 5. Database Tools
 
 A backup, restore, file importer, and scalability benchmarker for DuckDB databases.
 
@@ -104,7 +126,7 @@ A backup, restore, file importer, and scalability benchmarker for DuckDB databas
 
 ---
 
-### 5. API Endpoints
+### 6. API Endpoints
 
 Turn any SQL select query into an active REST API microservice and monitor live metrics.
 
@@ -132,7 +154,7 @@ Turn any SQL select query into an active REST API microservice and monitor live 
 
 ---
 
-### 6. API Docs & Explorer
+### 7. API Docs & Explorer
 
 An embedded Swagger-style sandbox to document and run loops against dynamic APIs.
 
@@ -149,7 +171,7 @@ An embedded Swagger-style sandbox to document and run loops against dynamic APIs
 
 ---
 
-### 7. Scheduler
+### 8. Scheduler
 
 Automate your query reporting and data extraction pipelines.
 
@@ -172,7 +194,7 @@ Automate your query reporting and data extraction pipelines.
 
 ---
 
-### 8. Settings
+### 9. Settings
 
 A centralized control panel to manage global application parameters, safety overrides, telemetry settings, security keys, and external notebook credentials.
 
