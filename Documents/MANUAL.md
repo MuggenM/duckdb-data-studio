@@ -93,6 +93,9 @@ This tab exposes the complete `dbt_project/` workspace folder, enabling develope
   * **Lineage & Dependency Trees**: Generates visual dependency graphs mapping relationships between your staging, intermediate, and dimensional models.
   * **Interactive Code Autocomplete**: Auto-completes dbt Jinja macros such as `ref()`, `source()`, and `config()`.
 * **Automatic sqlfmt Formatting**: Configured to use the system-installed `shandy-sqlfmt[jinjafmt]` formatter. Whenever a Jinja-SQL file is saved, it is automatically formatted according to the pre-configured workspace rules (`.vscode/settings.json` default formatting engine).
+* **Delta Lake on Garage S3 Storage**: Models compiled and run via the `s3_delta` target (using the `dbt-duckrun` adapter) are written and stored directly as **Delta Lake tables** inside the local **Garage S3** cluster (`s3://devbucket/tables/`).
+  * **Directory Structure**: Stored in standard Delta directory format (Parquet data segments accompanied by a transaction log folder `_delta_log/`).
+  * **Catalog Auto-Discovery**: When dbt builds these tables, the application's periodic background sync task automatically registers them as views inside the `s3_delta_catalog` database, making them queryable instantly from the Explorer tab without manual intervention.
 
 #### Robust Compatibility Workarounds (Included):
 * **Self-Healing Ownership**: Automatically runs a recursive `chown` to assign workspace files to the container's unprivileged user (`coder` UID `1000`) and a `chmod` to grant world-write access, resolving rootless Docker permission conflicts on startup.
