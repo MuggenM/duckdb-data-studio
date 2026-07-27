@@ -6,7 +6,7 @@ Welcome to the official, complete user manual for **DuckDB Studio & API Explorer
 
 ## 🚀 Live Studio Feature Traversal Walkthrough
 
-Below is a live, automated walk-through demonstrating rapid traversal across all 7 workspace tabs inside **DuckDB Studio** in real-time:
+Below is a live, automated walk-through demonstrating rapid traversal across all workspace tabs inside **DuckDB Studio** in real-time, showing the modernized interface:
 
 <img src="./assets/feature_traversal.gif" width="650" />
 
@@ -25,7 +25,7 @@ DuckDB Studio organizes its workspaces into specialized tabs:
 | **[5. API Endpoints](#5-api-endpoints)** | `api` | SQL-to-REST API creator, dynamic auto-parameter parser, JWT security controls, and telemetry dashboard. |
 | **[6. API Docs & Explorer](#6-api-docs--explorer)** | `menu_book` | OpenAPI interactive Swagger interface and dynamic testing sandbox. |
 | **[7. Scheduler](#7-scheduler)** | `schedule` | Automated query scheduler, folder exporter, and telemetry logs retention clean-up agent. |
-| **[8. Settings](#8-settings)** | `settings` | Global configurations for rate limiters, pagination size, JWT signature keys, and telemetry metrics. |
+| **[8. Settings](#8-settings)** | `settings` | Global system settings and credentials manager. |
 
 ---
 
@@ -37,26 +37,20 @@ The core SQL IDE of DuckDB Studio. It features a dual-column layout dividing the
 
 <img src="./assets/explorer_tab.png" width="650" />
 
-#### Catalog Tree & Schema Browser
-Browse attached databases, schemas, tables, views, columns, and data types recursively. Clicking any table node automatically queries it and displays a preview in the query output pane.
+#### Live Explorer Walkthrough:
+Below is a walk-through demonstrating database schema catalog browser traversal, visual query building, and sql query execution:
 
-<img src="./assets/schema_browser.gif" width="650" />
+<img src="./assets/explorer_traversal.gif" width="650" />
 
-#### Visual Query Builder
-Build projection queries dynamically by checking columns, configuring sort options (`ASC`/`DESC`), and adding filter clauses in the UI without writing raw SQL.
-
-<img src="./assets/interactive_visual_query_builder.gif" width="650" />
-
-#### SQL Console & Presets
+#### Key Capabilities:
 * **Ad-Hoc Editor**: Write standard or complex SQL statements with hot-reloaded autocomplete and execute them using `Ctrl + Enter` or the **Run Query** button.
+* **Database Catalog Tree**: Visually trace attached databases, schemas, tables, views, columns, and data types. Click any table node to automatically preview its data.
+* **Visual Query Builder**: Build projection queries dynamically by checking columns, configuring sort options (`ASC`/`DESC`), and adding filter clauses in the UI.
 * **Save Presets**: Save SQL queries directly into internal storage. Saved queries can be loaded back into the editor with one click.
 * **Session History**: Trace and review recently run query metrics, timing, and latencies.
+* **Execution Plan Visualizer**: Run logical and physical optimizer tracing via **Explain Plan** or trace dynamic execution profiling with **Explain Analyze**.
 
-#### Execution Plan Visualizer
-* **Explain Plan**: Run logical and physical optimizer tracing on your query without executing it.
-* **Explain Analyze**: Trace dynamic execution timing and profile node statistics inside the catalog.
-
-#### Latest Features & Optimizations in Explorer:
+#### Latest Features & Optimizations:
 * **S3 Delta Tables Catalog Sync**: On container startup and every 60 seconds in the background, S3 Delta table formats in the target bucket (`devbucket`) are automatically scanned and registered as views inside the `s3_delta_catalog` database.
 * **HTTP Keep-Alive & Metadata Cache**: Every database connection is optimized with socket reuse (`http_keep_alive = true`), Parquet footer metadata memory caching (`enable_object_cache = true`), and socket timeouts (`http_timeout = 10`) to speed up S3/OneLake Delta reads and fail fast on network drops.
 
@@ -68,10 +62,13 @@ An integrated interactive data science environment running on the host system py
 
 <img src="./assets/jupyterlab_tab.png" width="650" />
 
-#### Python & Pandas Data Science
+#### Live JupyterLab Walkthrough:
+<img src="./assets/jupyterlab.gif" width="650" />
+
+#### Python & Pandas Data Science:
 * **Notebooks**: Launch Jupyter notebook kernels to write advanced Python code alongside your DuckDB instance.
 * **`duckrun` Integration**: Utilize `duckrun` inside notebooks to query Delta tables on S3 storage.
-* **Local Dataframe Queries**: Register Pandas DataFrames directly in the underlying database session catalog using `conn.con.register("name", df)`.
+* **Local Dataframe Queries**: Register Pandas DataFrames directly in the underlying database catalog using `conn.con.register("name", df)`.
 * **S3 Secret Provisioning**: S3 credentials can be configured natively inside the notebook connection:
   ```python
   import duckrun
@@ -85,7 +82,7 @@ An integrated interactive data science environment running on the host system py
 
 A visual manager for DuckDB's runtime plugins, enabling one-click library installation and loading.
 
-<img src="./assets/extensions.gif" width="650" />
+<img src="./assets/extensions_tab.png" width="650" />
 
 #### Functions:
 * **Extension Grid**: Visual status cards for extensions (`httpfs`, `postgres_scanner`, `sqlite_scanner`, `spatial`, `icu`, `json`, `ducklake`).
@@ -98,16 +95,11 @@ A visual manager for DuckDB's runtime plugins, enabling one-click library instal
 
 A backup, restore, file importer, and scalability benchmarker for DuckDB databases.
 
-<img src="./assets/database_tools.gif" width="650" />
+<img src="./assets/database_tools_tab.png" width="650" />
 
-#### CSV/Parquet File Importing
-Use the file picker to import CSV, JSON, or Parquet files directly from your workspace directory into your active database catalog:
-
-<img src="./assets/import_file.gif" width="650" />
-
-#### Catalog Backup & Restore
-* **Backup Utilities**: Export the structural database catalog into clean SQL recovery files.
-* **Restore Catalog**: Execute a selected backup SQL file to instantly restore schemas, tables, and views structure.
+#### Capabilities:
+* **CSV/Parquet File Importing**: Use the file picker to import CSV, JSON, or Parquet files directly from your workspace directory into your active database catalog.
+* **Catalog Backup & Restore**: Export the structural database catalog into recovery SQL files and execute them to restore schemas, tables, and views structure.
 * **Scalability Seeding**: Move the record density slider from `100` to `100,000` rows and click **Trigger Seed Generation** to populate test tables, allowing you to validate performance metrics under realistic data scale.
 
 ---
@@ -118,21 +110,24 @@ Turn any SQL select query into an active REST API microservice and monitor live 
 
 <img src="./assets/api_endpoints_tab.png" width="650" />
 
-#### Dynamic REST APIs
+#### Live API Endpoints Walkthrough:
+<img src="./assets/api_endpoints.gif" width="650" />
+
+#### Dynamic REST APIs:
 * **Auto-Generated Query Parameters**: Use the `$parameter_name` notation to automatically capture dynamic query parameters from incoming requests (e.g. `?min_qty=10`).
 * **Column Analysis Filter Creator**: Under the SQL editor, click **Analyze Columns for Auto-Params** to parse the schema of your target database table and auto-generate parameter logic based on dynamic ranges.
 * **API Route Listing**: View all registered endpoints at `/api/list-endpoints` before catch-all wildcards hijack paths.
 
-#### Security & Auth
+#### Security & Auth:
 * **JWT Authentication Toggle**: Enable or disable JWT verification on-the-fly. When enabled, requests require passing the Bearer token in the header (`Authorization: Bearer <token>`), verified using `HS256` symmetric signing with the global `STORAGE_SECRET`.
 
-#### High-Performance Streaming
+#### High-Performance Streaming:
 * **NDJSON Streaming**: Append `/stream` to any endpoint URL (e.g. `/api/orders/stream`) to stream massive datasets row-by-row in Newline Delimited JSON (`application/x-ndjson`) using HTTP chunked transfer encoding, maintaining a flat memory footprint.
 
-#### Rate Limiting & Throttling
+#### Rate Limiting & Throttling:
 * **SlowAPI Integration**: Define specific request throttle limits per endpoint (e.g. `10/minute`, `100/hour`) to prevent server overload.
 
-#### Telemetry Dashboard
+#### Telemetry Dashboard:
 * Monitor overall KPI metrics (Total requests, average response speeds, success rates) and audit detailed routes logs (Min/Max Latency, Success Ratios, and Trigger times) directly.
 
 ---
@@ -143,7 +138,10 @@ An embedded Swagger-style sandbox to document and run loops against dynamic APIs
 
 <img src="./assets/api_docs_tab.png" width="650" />
 
-#### API Documentation Sandbox
+#### Live API Docs Walkthrough:
+<img src="./assets/api_docs_explorer.gif" width="650" />
+
+#### Interactive Docs Sandbox:
 * **Interactive Sandbox**: Auto-detects endpoint parameters and generates input forms inside the UI.
 * **JWT Testing Sandbox**: Paste authorization tokens into the token field to test secured endpoints directly.
 * **Loopback Executor**: Executes requests via internal HTTP loops, measuring request latency, status codes, and absolute URLs.
@@ -157,7 +155,10 @@ Automate your query reporting and data extraction pipelines.
 
 <img src="./assets/scheduler_tab.png" width="650" />
 
-#### Job Automation
+#### Live Scheduler Walkthrough:
+<img src="./assets/scheduler.gif" width="650" />
+
+#### Job Automation:
 * **Preset Loader**: Pull queries from Saved Queries into the form with one click.
 * **Interval Scheduler**: Configure intervals (`Every Minute`, `Every Hour`, `Daily`, etc.) to trigger background tasks.
 * **Export Configurations**: Select Parquet, CSV, or JSON formats. Type in a partition column (e.g. `category`) to partition the folder natively using DuckDB's fast `PARTITION_BY` system.
