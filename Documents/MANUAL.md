@@ -52,7 +52,7 @@ Below is a walk-through demonstrating database schema catalog browser traversal,
 * **Execution Plan Visualizer**: Run logical and physical optimizer tracing via **Explain Plan** or trace dynamic execution profiling with **Explain Analyze**.
 
 #### Latest Features & Optimizations:
-* **S3 Delta Tables Catalog Sync**: On container startup and every 60 seconds in the background, S3 Delta table formats in the target bucket (`devbucket`) are automatically scanned and registered as views inside the `s3_delta_catalog` database.
+* **S3 Delta Tables Catalog Sync**: On container startup and every 60 seconds in the background, S3 Delta table formats in the target bucket (`devbucket`) are automatically scanned and registered as views inside the database `main_db` in schema `s3_delta_catalog`.
 * **HTTP Keep-Alive & Metadata Cache**: Every database connection is optimized with socket reuse (`http_keep_alive = true`), Parquet footer metadata memory caching (`enable_object_cache = true`), and socket timeouts (`http_timeout = 10`) to speed up S3/OneLake Delta reads and fail fast on network drops.
 
 ---
@@ -95,7 +95,7 @@ This tab exposes the complete `dbt_project/` workspace folder, enabling develope
 * **Automatic sqlfmt Formatting**: Configured to use the system-installed `shandy-sqlfmt[jinjafmt]` formatter. Whenever a Jinja-SQL file is saved, it is automatically formatted according to the pre-configured workspace rules (`.vscode/settings.json` default formatting engine).
 * **Delta Lake on Garage S3 Storage**: Models compiled and run via the `s3_delta` target (using the `dbt-duckrun` adapter) are written and stored directly as **Delta Lake tables** inside the local **Garage S3** cluster (`s3://devbucket/tables/`).
   * **Directory Structure**: Stored in standard Delta directory format (Parquet data segments accompanied by a transaction log folder `_delta_log/`).
-  * **Catalog Auto-Discovery**: When dbt builds these tables, the application's periodic background sync task automatically registers them as views inside the `s3_delta_catalog` database, making them queryable instantly from the Explorer tab without manual intervention.
+  * **Catalog Auto-Discovery**: When dbt builds these tables, the application's periodic background sync task automatically registers them as views inside the database `main_db` in schema `s3_delta_catalog`, making them queryable instantly from the Explorer tab without manual intervention.
 
 #### Robust Compatibility Workarounds (Included):
 * **Self-Healing Ownership**: Automatically runs a recursive `chown` to assign workspace files to the container's unprivileged user (`coder` UID `1000`) and a `chmod` to grant world-write access, resolving rootless Docker permission conflicts on startup.
