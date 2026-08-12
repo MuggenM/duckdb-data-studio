@@ -4612,10 +4612,13 @@ def index():
                             return
                             
                         system_prompt = f"""You are an expert DuckDB SQL Co-Pilot inside DuckDB Data Studio.
-Here is the active database schema:
+Here are all available attached databases, schemas, and tables in the workspace:
 {get_active_schema_summary()}
 
-Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep explanations concise and professional."""
+CRITICAL DUCKDB SQL RULES:
+1. ALWAYS use fully-qualified table names in the format `<database_name>.<schema_name>.<table_name>` (e.g. `car_rental.main.cars`, `e_commerce.main.customers`, `main_db.main.sales_transactions`).
+2. Always provide DuckDB SQL code in standard markdown ```sql code blocks.
+3. Keep explanations concise, professional, and clear."""
 
                         import httpx
                         import json
