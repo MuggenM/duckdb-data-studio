@@ -4630,7 +4630,19 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                                 if not url.endswith('/v1'):
                                     url = url + '/v1'
                                 url = url + '/chat/completions'
-                                    
+                                
+                            # Prepare candidate URLs for Docker container -> host connectivity
+                            candidate_urls = [url]
+                            # If url contains host.docker.internal, localhost, or 127.0.0.1, also try 10.0.2.2 (rootless docker gateway)
+                            for host_alias in ('host.docker.internal', 'localhost', '127.0.0.1'):
+                                if host_alias in url:
+                                    fallback = url.replace(host_alias, '10.0.2.2')
+                                    if fallback not in candidate_urls:
+                                        candidate_urls.append(fallback)
+                                    fallback_ip = url.replace(host_alias, '172.17.0.1')
+                                    if fallback_ip not in candidate_urls:
+                                        candidate_urls.append(fallback_ip)
+                                        
                             headers = {
                                 "Content-Type": "application/json"
                             }
@@ -4647,31 +4659,41 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                                 "stream": True
                             }
                             
-                            try:
-                                async with httpx.AsyncClient(timeout=60.0) as client:
-                                    async with client.stream("POST", url, json=payload, headers=headers) as resp:
-                                        if resp.status_code == 200:
-                                            async for line in resp.aiter_lines():
-                                                line_clean = line.strip()
-                                                if not line_clean:
-                                                    continue
-                                                print(f"DEBUG: AI Stream Line: {line_clean}", flush=True)
-                                                if line_clean.startswith("data:"):
-                                                    data_str = line_clean[5:].strip()
-                                                    if data_str == "[DONE]":
-                                                        break
-                                                    try:
-                                                        chunk = json.loads(data_str)
-                                                        delta = chunk.get('choices', [{}])[0].get('delta', {})
-                                                        if 'content' in delta:
-                                                            yield delta['content']
-                                                    except Exception as parse_ex:
-                                                        print(f"DEBUG: JSON parse error: {parse_ex} on {data_str}", flush=True)
-                                        else:
-                                            err_text = await resp.aread()
-                                            yield f"Error from LLM Provider: {resp.status_code} - {err_text.decode(errors='ignore')}"
-                            except Exception as ex:
-                                yield f"Failed to connect to LLM Provider: {ex}"
+                            connected = False
+                            last_error = ""
+                            for target_url in candidate_urls:
+                                print(f"INFO: AI Copilot attempting stream POST to: {target_url}", flush=True)
+                                try:
+                                    async with httpx.AsyncClient(timeout=60.0) as client:
+                                        async with client.stream("POST", target_url, json=payload, headers=headers) as resp:
+                                            if resp.status_code == 200:
+                                                connected = True
+                                                async for line in resp.aiter_lines():
+                                                    line_clean = line.strip()
+                                                    if not line_clean:
+                                                        continue
+                                                    if line_clean.startswith("data:"):
+                                                        data_str = line_clean[5:].strip()
+                                                        if data_str == "[DONE]":
+                                                            break
+                                                        try:
+                                                            chunk = json.loads(data_str)
+                                                            delta = chunk.get('choices', [{}])[0].get('delta', {})
+                                                            if 'content' in delta:
+                                                                yield delta['content']
+                                                        except Exception as parse_ex:
+                                                            print(f"DEBUG: JSON parse error: {parse_ex} on {data_str}", flush=True)
+                                                break # Successfully completed stream
+                                            else:
+                                                err_bytes = await resp.aread()
+                                                last_error = f"Error from LLM Provider ({resp.status_code}): {err_bytes.decode(errors='ignore')}"
+                                                print(f"WARNING: {last_error}", flush=True)
+                                except Exception as ex:
+                                    last_error = f"Failed to connect to {target_url}: {ex}"
+                                    print(f"WARNING: {last_error}", flush=True)
+                                    
+                            if not connected and last_error:
+                                yield last_error
                                 
                         elif provider == 'anthropic':
                             url = "https://api.anthropic.com/v1/messages"
@@ -4696,7 +4718,7 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                                         res_json = resp.json()
                                         yield res_json['content'][0]['text']
                                     else:
-                                        yield f"Error from Anthropic: {resp.status_code} - {resp.text}"
+                                        yield f"Error from Anthropic ({resp.status_code}): {resp.text}"
                             except Exception as ex:
                                 yield f"Failed to connect to Anthropic: {ex}"
                                 
@@ -4711,25 +4733,19 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                         
                         with chat_history_container:
                             ui.chat_message(text=text, name='User', sent=True)
-                        with chat_history_container:
-                            typing_msg = ui.chat_message(text='', name='Copilot', sent=False)
+                            with ui.chat_message(name='Copilot', avatar='https://api.dicebear.com/7.x/bottts/svg?seed=copilot', sent=False):
+                                typing_md = ui.markdown('Thinking...')
                             
                         chat_history_area.scroll_to(percent=1.0)
                         
-                        import time
                         full_response = ""
-                        last_update = time.time()
                         async for chunk in send_ai_request_stream(text):
                             full_response += chunk
-                            now = time.time()
-                            if now - last_update > 0.15:
-                                typing_msg.text = full_response
-                                typing_msg.update()
-                                chat_history_area.scroll_to(percent=1.0)
-                                last_update = now
+                            typing_md.content = full_response
+                            chat_history_area.scroll_to(percent=1.0)
                         
-                        typing_msg.text = full_response
-                        typing_msg.update()
+                        if not full_response:
+                            typing_md.content = "*No response received from AI model.*"
                         chat_history_area.scroll_to(percent=1.0)
                         
                     async def run_ai_action(action):
@@ -4750,25 +4766,19 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                             
                         with chat_history_container:
                             ui.chat_message(text=f"Requesting query {action}...", name='User', sent=True)
-                        with chat_history_container:
-                            typing_msg = ui.chat_message(text='', name='Copilot', sent=False)
+                            with ui.chat_message(name='Copilot', avatar='https://api.dicebear.com/7.x/bottts/svg?seed=copilot', sent=False):
+                                typing_md = ui.markdown('Thinking...')
                             
                         chat_history_area.scroll_to(percent=1.0)
                         
-                        import time
                         full_response = ""
-                        last_update = time.time()
                         async for chunk in send_ai_request_stream(prompt):
                             full_response += chunk
-                            now = time.time()
-                            if now - last_update > 0.15:
-                                typing_msg.text = full_response
-                                typing_msg.update()
-                                chat_history_area.scroll_to(percent=1.0)
-                                last_update = now
+                            typing_md.content = full_response
+                            chat_history_area.scroll_to(percent=1.0)
                                 
-                        typing_msg.text = full_response
-                        typing_msg.update()
+                        if not full_response:
+                            typing_md.content = "*No response received from AI model.*"
                         chat_history_area.scroll_to(percent=1.0)
 
     # --- CALLBACKS ENCAPSULATED INSIDE INDEX CLIENT CONTEXT ---
