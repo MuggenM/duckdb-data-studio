@@ -8875,5 +8875,150 @@ scheduler_thread = threading.Thread(target=run_background_scheduler, daemon=True
 scheduler_thread.start()
 
 
+# --- EMBEDDED MCP (MODEL CONTEXT PROTOCOL) SERVER ---
+try:
+    from mcp.server.mcpserver import MCPServer
+    
+    mcp_app = MCPServer(
+        "DuckDB Data Studio",
+        instructions="Official MCP Server for DuckDB Data Studio workspace engine. Allows AI assistants to inspect schemas, execute SQL queries, and manage attached databases."
+    )
+    
+    def _get_mcp_db_conn():
+        import duckdb
+        conn = duckdb.connect(DB_NAME, config=DB_CONFIG)
+        load_attached_databases_for_connection(conn)
+        return conn
+
+    @mcp_app.tool()
+    def execute_sql(sql: str) -> str:
+        """Execute a DuckDB SQL query against the DuckDB Data Studio workspace connection.
+        
+        Args:
+            sql: DuckDB SQL query string (e.g. 'SELECT * FROM main_db.main.sales_transactions LIMIT 10;')
+        """
+        sql_clean = sql.strip()
+        if not sql_clean:
+            return "Error: Empty SQL query provided."
+        import time
+        start_t = time.time()
+        conn = _get_mcp_db_conn()
+        try:
+            rel = conn.execute(sql_clean)
+            elapsed_ms = round((time.time() - start_t) * 1000, 1)
+            if rel.description:
+                cols = [desc[0] for desc in rel.description]
+                rows = rel.fetchmany(50)
+                row_count = len(rows)
+                headers = " | ".join(cols)
+                separators = " | ".join(["---"] * len(cols))
+                table_lines = [f"| {headers} |", f"| {separators} |"]
+                for r in rows:
+                    vals = " | ".join(str(val) for val in r)
+                    table_lines.append(f"| {vals} |")
+                table_md = "\n".join(table_lines)
+                return f"⚡ Query executed successfully in {elapsed_ms}ms ({row_count} rows returned):\n\n{table_md}"
+            else:
+                return f"⚡ Query executed successfully in {elapsed_ms}ms (DML/DDL output)."
+        except Exception as ex:
+            return f"⚠️ DuckDB Execution Error: {ex}"
+        finally:
+            conn.close()
+
+    @mcp_app.tool()
+    def list_databases_and_tables() -> str:
+        """List all attached databases, schemas, tables, and column data types in the DuckDB Data Studio workspace."""
+        conn = _get_mcp_db_conn()
+        try:
+            cols_rows = conn.execute("""
+                SELECT database_name, schema_name, table_name, column_name, data_type 
+                FROM duckdb_columns 
+                WHERE database_name NOT IN ('temp', 'system')
+                ORDER BY database_name, schema_name, table_name, column_index;
+            """).fetchall()
+            
+            if not cols_rows:
+                return "No tables found in attached databases."
+                
+            dbs = {}
+            for db, sch, tbl, col, dtype in cols_rows:
+                db_key = f"{db}.{sch}"
+                if db_key not in dbs:
+                    dbs[db_key] = {}
+                if tbl not in dbs[db_key]:
+                    dbs[db_key][tbl] = []
+                dbs[db_key][tbl].append(f"{col} ({dtype})")
+                
+            summary = ["DuckDB Workspace Catalog Breakdown:"]
+            for db_key, tables in dbs.items():
+                summary.append(f"\n📂 Database/Schema: `{db_key}`")
+                for tbl, cols in tables.items():
+                    summary.append(f"  • Table `{tbl}`: {', '.join(cols)}")
+            return "\n".join(summary)
+        except Exception as ex:
+            return f"Error listing workspace catalog: {ex}"
+        finally:
+            conn.close()
+
+    @mcp_app.tool()
+    def describe_table(table_name: str, database_name: str = "main_db", schema_name: str = "main") -> str:
+        """Get column specifications, nullability, and total row count for a table.
+        
+        Args:
+            table_name: Name of the table
+            database_name: Database name (defaults to main_db)
+            schema_name: Schema name (defaults to main)
+        """
+        conn = _get_mcp_db_conn()
+        try:
+            fq_name = f"{database_name}.{schema_name}.{table_name}"
+            count_row = conn.execute(f"SELECT COUNT(*) FROM {fq_name};").fetchone()
+            row_cnt = count_row[0] if count_row else 0
+            
+            col_rows = conn.execute("""
+                SELECT column_name, data_type, is_nullable 
+                FROM duckdb_columns 
+                WHERE database_name = ? AND schema_name = ? AND table_name = ?
+                ORDER BY column_index;
+            """, [database_name, schema_name, table_name]).fetchall()
+            
+            if not col_rows:
+                return f"Table `{fq_name}` not found in catalog."
+                
+            lines = [f"📊 Schema Specification for `{fq_name}` (Total Rows: {row_cnt}):\n"]
+            lines.append("| Column Name | Data Type | Nullable |")
+            lines.append("| --- | --- | --- |")
+            for cname, dtype, nullable in col_rows:
+                lines.append(f"| {cname} | {dtype} | {nullable} |")
+            return "\n".join(lines)
+        except Exception as ex:
+            return f"Error describing table `{database_name}.{schema_name}.{table_name}`: {ex}"
+        finally:
+            conn.close()
+
+    @mcp_app.tool()
+    def get_system_info() -> str:
+        """Get system version, attached database paths, and workspace configuration."""
+        conn = _get_mcp_db_conn()
+        try:
+            import duckdb
+            dbs = conn.execute("SELECT database_name, path FROM duckdb_databases();").fetchall()
+            db_lines = [f"  • `{db}`: `{path}`" for db, path in dbs if db not in ('temp', 'system')]
+            return (
+                f"⚡ DuckDB Data Studio Workspace System Info:\n"
+                f"  • DuckDB Engine Version: {duckdb.__version__}\n"
+                f"  • Attached Databases ({len(db_lines)}):\n" + "\n".join(db_lines)
+            )
+        except Exception as ex:
+            return f"Error fetching system info: {ex}"
+        finally:
+            conn.close()
+
+    app.mount("/mcp", mcp_app.sse_app())
+    print("INFO: Embedded MCP (Model Context Protocol) Server mounted at /mcp/sse and /mcp/messages", flush=True)
+except Exception as mcp_ex:
+    print(f"WARNING: Could not initialize embedded MCP server: {mcp_ex}", flush=True)
+
+
 # Start application server
 ui.run(title='DuckDB Data Studio Explorer', port=8085, show=False, storage_secret='duckdb_studio_secret_key_1337', reload=False, reconnect_timeout=30.0)

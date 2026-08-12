@@ -12,3 +12,4 @@ httptools
 pytz
 duckrun>=0.4.31
 boto3
+mcp>=1.0.0
