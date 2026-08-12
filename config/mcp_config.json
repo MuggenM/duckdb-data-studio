@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "duckdb-data-studio": {
+      "url": "http://localhost:8086/mcp/sse"
+    }
+  }
+}

@@ -119,6 +119,36 @@ docker compose up -d --build
 
 ---
 
+## 🔌 Model Context Protocol (MCP) Server
+
+DuckDB Data Studio includes a built-in **Model Context Protocol (MCP)** server, allowing AI assistants (such as Antigravity, Claude Desktop, Cursor, or VS Code Copilot) to programmatically inspect database schemas, execute SQL queries, profile performance, and manage attached data lakes.
+
+### 🧰 Available MCP Tools
+
+| Tool Name | Action | Parameters |
+|---|---|---|
+| **`execute_sql`** | Executes any DuckDB SQL query against the workspace and returns formatted markdown tables. | `sql` |
+| **`list_databases_and_tables`** | Returns a complete tree breakdown of all attached databases, schemas, tables, and column types. | *None* |
+| **`describe_table`** | Returns detailed column metadata, data types, nullability, and row count for a table. | `database_name`, `table_name`, `schema_name` |
+| **`export_query_results`** | Exports SQL query results to Parquet, CSV, or JSON files. | `sql`, `file_path`, `file_format` |
+| **`attach_database`** | Dynamically attaches a DuckDB or SQLite database file to the workspace. | `database_name`, `file_path`, `read_only` |
+| **`explain_query`** | Generates DuckDB physical execution plans (`EXPLAIN` / `EXPLAIN ANALYZE`). | `sql`, `analyze` |
+| **`get_query_history`** | Retrieves recent SQL query execution history, durations, and row counts. | `limit` |
+| **`run_dbt_model`** | Triggers a `dbt-duckrun` model build execution in the workspace container. | `model_name` |
+| **`get_system_info`** | Returns DuckDB engine version and all attached database storage paths. | *None* |
+
+### 💻 Connecting External AI Clients
+
+* **HTTP SSE Endpoint**: `http://localhost:8086/mcp/sse` (or `http://studio.localhost:8880/mcp/sse`)
+* **Standalone Stdio Script**: `python3 /path/to/duckdb-studio/mcp_server_duckdb.py`
+
+#### Sample Client Configurations:
+* **Antigravity / Gemini CLI**: Pre-configured in [`config/mcp_config.json`](config/mcp_config.json).
+* **VS Code / Cursor**: Pre-configured in [`.vscode/mcp.json`](.vscode/mcp.json).
+* **Claude Desktop**: Pre-configured template in [`config/claude_desktop_config.json`](config/claude_desktop_config.json).
+
+---
+
 ## 📂 Project Structure
 
 * [main.py](main.py): Primary codebase containing the web application core, NiceGUI layouts, background scheduler daemon, and FastAPI routing handlers.
