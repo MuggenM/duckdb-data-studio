@@ -4523,7 +4523,10 @@ def index():
                             with ui.row().classes('items-center gap-1.5'):
                                 ui.icon('auto_awesome', color='primary').classes('text-lg')
                                 ui.label('AI SQL Copilot').classes('font-bold text-slate-800 dark:text-white text-sm')
-                            ui.button(icon='close', on_click=lambda: toggle_ai_panel()).props('flat round dense size=sm').classes('text-slate-500')
+                            with ui.row().classes('items-center gap-1'):
+                                auto_run_switch = ui.switch('Auto-Run').props('dense size=xs color=amber').tooltip('Automatically execute generated SQL queries in DuckDB')
+                                auto_run_switch.bind_value(app.storage.user, 'ai_auto_execute')
+                                ui.button(icon='close', on_click=lambda: toggle_ai_panel()).props('flat round dense size=sm').classes('text-slate-500')
                             
                         # Chat history scroll area
                         chat_history_area = ui.scroll_area().classes('w-full flex-grow min-h-0 pr-1')
@@ -4725,13 +4728,55 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                         else:
                             yield "Unsupported AI Provider."
 
-                    def render_copilot_code_actions(container, full_text):
-                        import re, json
+                    def extract_sql_blocks(full_text):
+                        import re
                         sql_blocks = re.findall(r"```sql\s*(.*?)\s*```", full_text, flags=re.DOTALL)
                         if not sql_blocks:
                             candidates = re.findall(r"```\s*(.*?)\s*```", full_text, flags=re.DOTALL)
                             sql_blocks = [c for c in candidates if any(k in c.upper() for k in ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'SHOW', 'DESCRIBE', 'ATTACH', 'DETACH'))]
+                        return sql_blocks
+
+                    def auto_execute_copilot_query(sql_code):
+                        is_auto = auto_run_switch.value or app.storage.user.get('ai_auto_execute', False)
+                        if not is_auto:
+                            return None, None
+                        sql_clean = sql_code.strip()
+                        if not sql_clean:
+                            return None, None
+                        import time
+                        start_t = time.time()
+                        try:
+                            sql_editor.set_value(sql_clean)
+                            try:
+                                workspace_sub_tabs.value = 'SQL Workspace'
+                            except Exception:
+                                pass
+                            run_editor_query()
+                            elapsed_ms = round((time.time() - start_t) * 1000, 1)
                             
+                            rel = explorer.conn.execute(sql_clean)
+                            if rel.description:
+                                cols = [desc[0] for desc in rel.description]
+                                rows = rel.fetchmany(5)
+                                if not rows:
+                                    return f"\n\n---\n⚡ **Auto-Executed in {elapsed_ms}ms**: Query executed successfully (0 rows returned).", None
+                                    
+                                headers = " | ".join(cols[:5])
+                                separators = " | ".join(["---"] * min(len(cols), 5))
+                                table_lines = [f"| {headers} |", f"| {separators} |"]
+                                for r in rows:
+                                    vals = " | ".join(str(val) for val in r[:5])
+                                    table_lines.append(f"| {vals} |")
+                                table_md = "\n".join(table_lines)
+                                return f"\n\n---\n⚡ **Auto-Executed in {elapsed_ms}ms**:\n{table_md}\n*(Full results loaded into SQL Workspace Data Grid)*", None
+                            else:
+                                return f"\n\n---\n⚡ **Auto-Executed in {elapsed_ms}ms**: Query executed successfully.", None
+                        except Exception as ex:
+                            return f"\n\n---\n⚠️ **Auto-Execution Error**: `{ex}`", str(ex)
+
+                    def render_copilot_code_actions(container, full_text):
+                        import json
+                        sql_blocks = extract_sql_blocks(full_text)
                         if not sql_blocks:
                             return
 
@@ -4799,6 +4844,35 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                             typing_md.content = "*No response received from AI model.*"
                         else:
                             render_copilot_code_actions(action_container, full_response)
+                            sql_blocks = extract_sql_blocks(full_response)
+                            is_auto = auto_run_switch.value or app.storage.user.get('ai_auto_execute', False)
+                            if sql_blocks and is_auto:
+                                auto_summary, auto_err = auto_execute_copilot_query(sql_blocks[0])
+                                if auto_summary:
+                                    typing_md.content = full_response + auto_summary
+                                    
+                                if auto_err:
+                                    # --- PHASE 3: SELF-HEALING AUTO-FIX LOOP ---
+                                    with chat_history_container:
+                                        with ui.chat_message(name='Copilot (Auto-Fix)', avatar='https://api.dicebear.com/7.x/bottts/svg?seed=copilot-fix', sent=False):
+                                            fix_md = ui.markdown('⚡ *Error detected. Auto-fixing query...*')
+                                            fix_action_container = ui.column().classes('w-full p-0 gap-1')
+                                    chat_history_area.scroll_to(percent=1.0)
+                                    
+                                    fix_prompt = f"The query below failed in DuckDB with this error: `{auto_err}`\n\nQuery:\n```sql\n{sql_blocks[0]}\n```\n\nPlease provide a corrected SQL query that fixes this error."
+                                    
+                                    fix_response = ""
+                                    async for chunk in send_ai_request_stream(fix_prompt):
+                                        fix_response += chunk
+                                        fix_md.content = fix_response
+                                        chat_history_area.scroll_to(percent=1.0)
+                                        
+                                    render_copilot_code_actions(fix_action_container, fix_response)
+                                    fixed_blocks = extract_sql_blocks(fix_response)
+                                    if fixed_blocks:
+                                        fixed_summary, _ = auto_execute_copilot_query(fixed_blocks[0])
+                                        if fixed_summary:
+                                            fix_md.content = fix_response + fixed_summary
                         chat_history_area.scroll_to(percent=1.0)
                         
                     async def run_ai_action(action):
@@ -4835,6 +4909,11 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                             typing_md.content = "*No response received from AI model.*"
                         else:
                             render_copilot_code_actions(action_container, full_response)
+                            sql_blocks = extract_sql_blocks(full_response)
+                            if sql_blocks and app.storage.user.get('ai_auto_execute', False):
+                                auto_summary, auto_err = auto_execute_copilot_query(sql_blocks[0])
+                                if auto_summary:
+                                    typing_md.content = full_response + auto_summary
                         chat_history_area.scroll_to(percent=1.0)
 
     # --- CALLBACKS ENCAPSULATED INSIDE INDEX CLIENT CONTEXT ---
