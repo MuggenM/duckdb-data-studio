@@ -638,6 +638,27 @@ def index():
             .q-tab[name="Telemetry"] .q-tab__icon img {
                 width: 30px !important;
                 height: 30px !important;
+            /* --- COPILOT CHAT EXPANDED FULL-WIDTH STYLING --- */
+            .q-message-container {
+                max-width: 100% !important;
+                width: 100% !important;
+            }
+            .q-message-text {
+                max-width: 100% !important;
+                width: 100% !important;
+                padding: 10px 14px !important;
+                border-radius: 12px !important;
+            }
+            .q-message-text-content {
+                width: 100% !important;
+            }
+            .q-message-label, .q-message-name {
+                font-size: 11px !important;
+                font-weight: 700 !important;
+                margin-bottom: 2px !important;
+            }
+            .q-message-avatar {
+                display: none !important;
             }
             
             /* --- TYPOGRAPHY & SMOOTH BG GRADIENTS --- */
@@ -4516,7 +4537,7 @@ def index():
                     left_workspace_col.__exit__(None, None, None)
 
                     # Right AI Assistant Panel Column (collapsible)
-                    ai_panel_col = ui.column().classes('h-full w-80 flex-none gap-2 flex-nowrap overflow-hidden p-3 border border-slate-200 dark:border-slate-800 rounded-xl dark-bg-panel shadow-sm min-h-0')
+                    ai_panel_col = ui.column().classes('h-full w-[440px] max-w-[500px] flex-none gap-2 flex-nowrap overflow-hidden p-3 border border-slate-200 dark:border-slate-800 rounded-xl dark-bg-panel shadow-sm min-h-0')
                     ai_panel_col.visible = app.storage.user.get('ai_panel_visible', False)
                     with ai_panel_col:
                         with ui.row().classes('w-full items-center justify-between border-b pb-2 flex-none'):
@@ -4536,7 +4557,6 @@ def index():
                                 ui.chat_message(
                                     text='Hello! I am your AI SQL Copilot. I can write queries, explain them, or fix errors. Configure your API key in Settings to get started!',
                                     name='Copilot',
-                                    avatar='https://api.dicebear.com/7.x/bottts/svg?seed=copilot',
                                     sent=False
                                 )
                                 
@@ -4830,7 +4850,7 @@ CRITICAL DUCKDB SQL RULES:
                         
                         with chat_history_container:
                             ui.chat_message(text=text, name='User', sent=True)
-                            with ui.chat_message(name='Copilot', avatar='https://api.dicebear.com/7.x/bottts/svg?seed=copilot', sent=False):
+                            with ui.chat_message(name='Copilot', sent=False):
                                 typing_md = ui.markdown('Thinking...')
                                 action_container = ui.column().classes('w-full p-0 gap-1')
                             
@@ -4856,7 +4876,7 @@ CRITICAL DUCKDB SQL RULES:
                                 if auto_err:
                                     # --- PHASE 3: SELF-HEALING AUTO-FIX LOOP ---
                                     with chat_history_container:
-                                        with ui.chat_message(name='Copilot (Auto-Fix)', avatar='https://api.dicebear.com/7.x/bottts/svg?seed=copilot-fix', sent=False):
+                                        with ui.chat_message(name='Copilot (Auto-Fix)', sent=False):
                                             fix_md = ui.markdown('⚡ *Error detected. Auto-fixing query...*')
                                             fix_action_container = ui.column().classes('w-full p-0 gap-1')
                                     chat_history_area.scroll_to(percent=1.0)
@@ -4895,7 +4915,7 @@ CRITICAL DUCKDB SQL RULES:
                             
                         with chat_history_container:
                             ui.chat_message(text=f"Requesting query {action}...", name='User', sent=True)
-                            with ui.chat_message(name='Copilot', avatar='https://api.dicebear.com/7.x/bottts/svg?seed=copilot', sent=False):
+                            with ui.chat_message(name='Copilot', sent=False):
                                 typing_md = ui.markdown('Thinking...')
                                 action_container = ui.column().classes('w-full p-0 gap-1')
                             
