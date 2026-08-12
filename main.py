@@ -5489,7 +5489,7 @@ CRITICAL DUCKDB SQL RULES:
                     
                 db_node = {
                     'id': db_name,
-                    'label': f"Database: {db_name}",
+                    'label': db_name,
                     'icon': 'storage',  # storage icon for database/lakehouse
                     'expanded': False,
                     'children': []
@@ -5498,7 +5498,7 @@ CRITICAL DUCKDB SQL RULES:
                 for schema_name, tables in schemas.items():
                     schema_node = {
                         'id': f"{db_name}.{schema_name}",
-                        'label': f"Schema: {schema_name}",
+                        'label': schema_name,
                         'icon': 'folder',
                         'expanded': False,
                         'children': []
