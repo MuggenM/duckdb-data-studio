@@ -4523,7 +4523,10 @@ def index():
                             with ui.row().classes('items-center gap-1.5'):
                                 ui.icon('auto_awesome', color='primary').classes('text-lg')
                                 ui.label('AI SQL Copilot').classes('font-bold text-slate-800 dark:text-white text-sm')
-                            ui.button(icon='close', on_click=lambda: toggle_ai_panel()).props('flat round dense size=sm').classes('text-slate-500')
+                            with ui.row().classes('items-center gap-1'):
+                                auto_run_switch = ui.switch('Auto-Run').props('dense size=xs color=amber').tooltip('Automatically execute generated SQL queries in DuckDB')
+                                auto_run_switch.bind_value(app.storage.user, 'ai_auto_execute')
+                                ui.button(icon='close', on_click=lambda: toggle_ai_panel()).props('flat round dense size=sm').classes('text-slate-500')
                             
                         # Chat history scroll area
                         chat_history_area = ui.scroll_area().classes('w-full flex-grow min-h-0 pr-1')
@@ -4570,31 +4573,30 @@ def index():
 
                     def get_active_schema_summary():
                         try:
-                            active_db = 'main'
-                            try:
-                                active_db = explorer.conn.execute("SELECT current_database();").fetchone()[0]
-                            except Exception:
-                                pass
-                            
                             cols_rows = explorer.conn.execute("""
-                                SELECT table_name, column_name, data_type 
+                                SELECT database_name, schema_name, table_name, column_name, data_type 
                                 FROM duckdb_columns 
-                                WHERE database_name = ? AND schema_name = 'main'
-                                ORDER BY table_name, column_index;
-                            """, [active_db]).fetchall()
+                                WHERE database_name NOT IN ('temp', 'system')
+                                ORDER BY database_name, schema_name, table_name, column_index;
+                            """).fetchall()
                             
                             if not cols_rows:
-                                return "No tables found in active schema."
+                                return "No tables found in attached databases."
                                 
-                            tables = {}
-                            for tbl, col, dtype in cols_rows:
-                                if tbl not in tables:
-                                    tables[tbl] = []
-                                tables[tbl].append(f"{col} ({dtype})")
+                            dbs = {}
+                            for db, sch, tbl, col, dtype in cols_rows:
+                                db_key = f"{db}.{sch}"
+                                if db_key not in dbs:
+                                    dbs[db_key] = {}
+                                if tbl not in dbs[db_key]:
+                                    dbs[db_key][tbl] = []
+                                dbs[db_key][tbl].append(f"{col} ({dtype})")
                                 
                             summary = []
-                            for tbl, cols in tables.items():
-                                summary.append(f"Table '{tbl}' columns: {', '.join(cols)}")
+                            for db_key, tables in dbs.items():
+                                summary.append(f"Database/Schema '{db_key}':")
+                                for tbl, cols in tables.items():
+                                    summary.append(f"  • Table '{tbl}': {', '.join(cols)}")
                             return "\n".join(summary)
                         except Exception as ex:
                             return f"Error gathering schema context: {ex}"
@@ -4610,10 +4612,13 @@ def index():
                             return
                             
                         system_prompt = f"""You are an expert DuckDB SQL Co-Pilot inside DuckDB Data Studio.
-Here is the active database schema:
+Here are all available attached databases, schemas, and tables in the workspace:
 {get_active_schema_summary()}
 
-Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep explanations concise and professional."""
+CRITICAL DUCKDB SQL RULES:
+1. ALWAYS use fully-qualified table names in the format `<database_name>.<schema_name>.<table_name>` (e.g. `car_rental.main.cars`, `e_commerce.main.customers`, `main_db.main.sales_transactions`).
+2. Always provide DuckDB SQL code in standard markdown ```sql code blocks.
+3. Keep explanations concise, professional, and clear."""
 
                         import httpx
                         import json
@@ -4630,7 +4635,19 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                                 if not url.endswith('/v1'):
                                     url = url + '/v1'
                                 url = url + '/chat/completions'
-                                    
+                                
+                            # Prepare candidate URLs for Docker container -> host connectivity
+                            candidate_urls = [url]
+                            # If url contains host.docker.internal, localhost, or 127.0.0.1, also try 10.0.2.2 (rootless docker gateway)
+                            for host_alias in ('host.docker.internal', 'localhost', '127.0.0.1'):
+                                if host_alias in url:
+                                    fallback = url.replace(host_alias, '10.0.2.2')
+                                    if fallback not in candidate_urls:
+                                        candidate_urls.append(fallback)
+                                    fallback_ip = url.replace(host_alias, '172.17.0.1')
+                                    if fallback_ip not in candidate_urls:
+                                        candidate_urls.append(fallback_ip)
+                                        
                             headers = {
                                 "Content-Type": "application/json"
                             }
@@ -4647,31 +4664,41 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                                 "stream": True
                             }
                             
-                            try:
-                                async with httpx.AsyncClient(timeout=60.0) as client:
-                                    async with client.stream("POST", url, json=payload, headers=headers) as resp:
-                                        if resp.status_code == 200:
-                                            async for line in resp.aiter_lines():
-                                                line_clean = line.strip()
-                                                if not line_clean:
-                                                    continue
-                                                print(f"DEBUG: AI Stream Line: {line_clean}", flush=True)
-                                                if line_clean.startswith("data:"):
-                                                    data_str = line_clean[5:].strip()
-                                                    if data_str == "[DONE]":
-                                                        break
-                                                    try:
-                                                        chunk = json.loads(data_str)
-                                                        delta = chunk.get('choices', [{}])[0].get('delta', {})
-                                                        if 'content' in delta:
-                                                            yield delta['content']
-                                                    except Exception as parse_ex:
-                                                        print(f"DEBUG: JSON parse error: {parse_ex} on {data_str}", flush=True)
-                                        else:
-                                            err_text = await resp.aread()
-                                            yield f"Error from LLM Provider: {resp.status_code} - {err_text.decode(errors='ignore')}"
-                            except Exception as ex:
-                                yield f"Failed to connect to LLM Provider: {ex}"
+                            connected = False
+                            last_error = ""
+                            for target_url in candidate_urls:
+                                print(f"INFO: AI Copilot attempting stream POST to: {target_url}", flush=True)
+                                try:
+                                    async with httpx.AsyncClient(timeout=60.0) as client:
+                                        async with client.stream("POST", target_url, json=payload, headers=headers) as resp:
+                                            if resp.status_code == 200:
+                                                connected = True
+                                                async for line in resp.aiter_lines():
+                                                    line_clean = line.strip()
+                                                    if not line_clean:
+                                                        continue
+                                                    if line_clean.startswith("data:"):
+                                                        data_str = line_clean[5:].strip()
+                                                        if data_str == "[DONE]":
+                                                            break
+                                                        try:
+                                                            chunk = json.loads(data_str)
+                                                            delta = chunk.get('choices', [{}])[0].get('delta', {})
+                                                            if 'content' in delta:
+                                                                yield delta['content']
+                                                        except Exception as parse_ex:
+                                                            print(f"DEBUG: JSON parse error: {parse_ex} on {data_str}", flush=True)
+                                                break # Successfully completed stream
+                                            else:
+                                                err_bytes = await resp.aread()
+                                                last_error = f"Error from LLM Provider ({resp.status_code}): {err_bytes.decode(errors='ignore')}"
+                                                print(f"WARNING: {last_error}", flush=True)
+                                except Exception as ex:
+                                    last_error = f"Failed to connect to {target_url}: {ex}"
+                                    print(f"WARNING: {last_error}", flush=True)
+                                    
+                            if not connected and last_error:
+                                yield last_error
                                 
                         elif provider == 'anthropic':
                             url = "https://api.anthropic.com/v1/messages"
@@ -4696,12 +4723,104 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                                         res_json = resp.json()
                                         yield res_json['content'][0]['text']
                                     else:
-                                        yield f"Error from Anthropic: {resp.status_code} - {resp.text}"
+                                        yield f"Error from Anthropic ({resp.status_code}): {resp.text}"
                             except Exception as ex:
                                 yield f"Failed to connect to Anthropic: {ex}"
                                 
                         else:
                             yield "Unsupported AI Provider."
+
+                    def extract_sql_blocks(full_text):
+                        import re
+                        sql_blocks = re.findall(r"```sql\s*(.*?)\s*```", full_text, flags=re.DOTALL)
+                        if not sql_blocks:
+                            candidates = re.findall(r"```\s*(.*?)\s*```", full_text, flags=re.DOTALL)
+                            sql_blocks = [c for c in candidates if any(k in c.upper() for k in ('SELECT', 'INSERT', 'UPDATE', 'DELETE', 'CREATE', 'ALTER', 'SHOW', 'DESCRIBE', 'ATTACH', 'DETACH'))]
+                        return sql_blocks
+
+                    def auto_execute_copilot_query(sql_code):
+                        is_auto = auto_run_switch.value or app.storage.user.get('ai_auto_execute', False)
+                        if not is_auto:
+                            return None, None
+                        sql_clean = sql_code.strip()
+                        if not sql_clean:
+                            return None, None
+                        import time
+                        start_t = time.time()
+                        try:
+                            sql_editor.set_value(sql_clean)
+                            try:
+                                workspace_sub_tabs.value = 'SQL Workspace'
+                            except Exception:
+                                pass
+                            run_editor_query()
+                            elapsed_ms = round((time.time() - start_t) * 1000, 1)
+                            
+                            rel = explorer.conn.execute(sql_clean)
+                            if rel.description:
+                                cols = [desc[0] for desc in rel.description]
+                                rows = rel.fetchmany(5)
+                                if not rows:
+                                    return f"\n\n---\n⚡ **Auto-Executed in {elapsed_ms}ms**: Query executed successfully (0 rows returned).", None
+                                    
+                                headers = " | ".join(cols[:5])
+                                separators = " | ".join(["---"] * min(len(cols), 5))
+                                table_lines = [f"| {headers} |", f"| {separators} |"]
+                                for r in rows:
+                                    vals = " | ".join(str(val) for val in r[:5])
+                                    table_lines.append(f"| {vals} |")
+                                table_md = "\n".join(table_lines)
+                                return f"\n\n---\n⚡ **Auto-Executed in {elapsed_ms}ms**:\n{table_md}\n*(Full results loaded into SQL Workspace Data Grid)*", None
+                            else:
+                                return f"\n\n---\n⚡ **Auto-Executed in {elapsed_ms}ms**: Query executed successfully.", None
+                        except Exception as ex:
+                            return f"\n\n---\n⚠️ **Auto-Execution Error**: `{ex}`", str(ex)
+
+                    def render_copilot_code_actions(container, full_text):
+                        import json
+                        sql_blocks = extract_sql_blocks(full_text)
+                        if not sql_blocks:
+                            return
+
+                        with container:
+                            for idx, sql_code in enumerate(sql_blocks):
+                                sql_clean = sql_code.strip()
+                                if not sql_clean:
+                                    continue
+                                with ui.row().classes('w-full items-center gap-1.5 pt-1.5 flex-wrap border-t border-slate-200 dark:border-slate-800 mt-1'):
+                                    if len(sql_blocks) > 1:
+                                        ui.label(f'Query #{idx+1}:').classes('text-[10px] font-bold text-slate-500')
+                                    
+                                    def make_run_cb(code=sql_clean):
+                                        def cb():
+                                            sql_editor.set_value(code)
+                                            try:
+                                                workspace_sub_tabs.value = 'SQL Workspace'
+                                            except Exception:
+                                                pass
+                                            run_editor_query()
+                                            ui.notify('Executing query in SQL Workspace...', type='positive', icon='play_arrow')
+                                        return cb
+                                        
+                                    def make_send_cb(code=sql_clean):
+                                        def cb():
+                                            sql_editor.set_value(code)
+                                            try:
+                                                workspace_sub_tabs.value = 'SQL Workspace'
+                                            except Exception:
+                                                pass
+                                            ui.notify('Copied query to SQL Editor!', type='info', icon='edit_note')
+                                        return cb
+                                        
+                                    def make_copy_cb(code=sql_clean):
+                                        def cb():
+                                            ui.run_javascript(f'navigator.clipboard.writeText({json.dumps(code)})')
+                                            ui.notify('Copied SQL to clipboard!', type='positive', icon='content_copy')
+                                        return cb
+
+                                    ui.button('Run Query', icon='play_arrow', on_click=make_run_cb()).props('unelevated dense size=xs color=positive').classes('text-[10px] font-bold px-2')
+                                    ui.button('To Editor', icon='edit_note', on_click=make_send_cb()).props('outline dense size=xs color=primary').classes('text-[10px] font-bold px-1.5')
+                                    ui.button('Copy', icon='content_copy', on_click=make_copy_cb()).props('flat dense size=xs color=secondary').classes('text-[10px] font-bold px-1.5')
 
                     async def send_chat_message():
                         text = chat_input.value.strip()
@@ -4711,25 +4830,51 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                         
                         with chat_history_container:
                             ui.chat_message(text=text, name='User', sent=True)
-                        with chat_history_container:
-                            typing_msg = ui.chat_message(text='', name='Copilot', sent=False)
+                            with ui.chat_message(name='Copilot', avatar='https://api.dicebear.com/7.x/bottts/svg?seed=copilot', sent=False):
+                                typing_md = ui.markdown('Thinking...')
+                                action_container = ui.column().classes('w-full p-0 gap-1')
                             
                         chat_history_area.scroll_to(percent=1.0)
                         
-                        import time
                         full_response = ""
-                        last_update = time.time()
                         async for chunk in send_ai_request_stream(text):
                             full_response += chunk
-                            now = time.time()
-                            if now - last_update > 0.15:
-                                typing_msg.text = full_response
-                                typing_msg.update()
-                                chat_history_area.scroll_to(percent=1.0)
-                                last_update = now
+                            typing_md.content = full_response
+                            chat_history_area.scroll_to(percent=1.0)
                         
-                        typing_msg.text = full_response
-                        typing_msg.update()
+                        if not full_response:
+                            typing_md.content = "*No response received from AI model.*"
+                        else:
+                            render_copilot_code_actions(action_container, full_response)
+                            sql_blocks = extract_sql_blocks(full_response)
+                            is_auto = auto_run_switch.value or app.storage.user.get('ai_auto_execute', False)
+                            if sql_blocks and is_auto:
+                                auto_summary, auto_err = auto_execute_copilot_query(sql_blocks[0])
+                                if auto_summary:
+                                    typing_md.content = full_response + auto_summary
+                                    
+                                if auto_err:
+                                    # --- PHASE 3: SELF-HEALING AUTO-FIX LOOP ---
+                                    with chat_history_container:
+                                        with ui.chat_message(name='Copilot (Auto-Fix)', avatar='https://api.dicebear.com/7.x/bottts/svg?seed=copilot-fix', sent=False):
+                                            fix_md = ui.markdown('⚡ *Error detected. Auto-fixing query...*')
+                                            fix_action_container = ui.column().classes('w-full p-0 gap-1')
+                                    chat_history_area.scroll_to(percent=1.0)
+                                    
+                                    fix_prompt = f"The query below failed in DuckDB with this error: `{auto_err}`\n\nQuery:\n```sql\n{sql_blocks[0]}\n```\n\nPlease provide a corrected SQL query that fixes this error."
+                                    
+                                    fix_response = ""
+                                    async for chunk in send_ai_request_stream(fix_prompt):
+                                        fix_response += chunk
+                                        fix_md.content = fix_response
+                                        chat_history_area.scroll_to(percent=1.0)
+                                        
+                                    render_copilot_code_actions(fix_action_container, fix_response)
+                                    fixed_blocks = extract_sql_blocks(fix_response)
+                                    if fixed_blocks:
+                                        fixed_summary, _ = auto_execute_copilot_query(fixed_blocks[0])
+                                        if fixed_summary:
+                                            fix_md.content = fix_response + fixed_summary
                         chat_history_area.scroll_to(percent=1.0)
                         
                     async def run_ai_action(action):
@@ -4750,25 +4895,27 @@ Always provide DuckDB SQL code in standard markdown ```sql code blocks. Keep exp
                             
                         with chat_history_container:
                             ui.chat_message(text=f"Requesting query {action}...", name='User', sent=True)
-                        with chat_history_container:
-                            typing_msg = ui.chat_message(text='', name='Copilot', sent=False)
+                            with ui.chat_message(name='Copilot', avatar='https://api.dicebear.com/7.x/bottts/svg?seed=copilot', sent=False):
+                                typing_md = ui.markdown('Thinking...')
+                                action_container = ui.column().classes('w-full p-0 gap-1')
                             
                         chat_history_area.scroll_to(percent=1.0)
                         
-                        import time
                         full_response = ""
-                        last_update = time.time()
                         async for chunk in send_ai_request_stream(prompt):
                             full_response += chunk
-                            now = time.time()
-                            if now - last_update > 0.15:
-                                typing_msg.text = full_response
-                                typing_msg.update()
-                                chat_history_area.scroll_to(percent=1.0)
-                                last_update = now
+                            typing_md.content = full_response
+                            chat_history_area.scroll_to(percent=1.0)
                                 
-                        typing_msg.text = full_response
-                        typing_msg.update()
+                        if not full_response:
+                            typing_md.content = "*No response received from AI model.*"
+                        else:
+                            render_copilot_code_actions(action_container, full_response)
+                            sql_blocks = extract_sql_blocks(full_response)
+                            if sql_blocks and app.storage.user.get('ai_auto_execute', False):
+                                auto_summary, auto_err = auto_execute_copilot_query(sql_blocks[0])
+                                if auto_summary:
+                                    typing_md.content = full_response + auto_summary
                         chat_history_area.scroll_to(percent=1.0)
 
     # --- CALLBACKS ENCAPSULATED INSIDE INDEX CLIENT CONTEXT ---

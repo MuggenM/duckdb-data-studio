@@ -1,227 +1,208 @@
 # 📖 DuckDB Studio & API Explorer Manual
 
-Welcome to the official, complete user manual for **DuckDB Studio & API Explorer**. This document covers every single screen, utility, and dynamic capability built into the application, complete with live pixel-perfect screenshots and high-fidelity animated walkthroughs captured directly from the local running server environment.
+Welcome to the official, complete user manual for **DuckDB Studio & API Explorer**. This document covers every screen, utility, and dynamic capability built into the application. It highlights all the latest system optimizations, permission fixes, and new features.
 
 ---
 
 ## 🚀 Live Studio Feature Traversal Walkthrough
 
-Below is a live, automated walk-through demonstrating rapid traversal across all 7 workspace tabs inside **DuckDB Studio** in real-time:
+Below is a live, automated walk-through demonstrating rapid traversal across all workspace tabs inside **DuckDB Studio** in real-time, showing the modernized interface:
 
 <img src="./assets/feature_traversal.gif" width="650" />
 
 ---
 
-## 🧭 Navigating the Workspace Tabs
+## 🧭 Workspace Navigation Overview
 
-DuckDB Studio organizes its toolset into specialized workspace tabs:
+DuckDB Studio organizes its workspaces into specialized tabs:
 
 | Workspace Tab | Icon | Purpose |
 | :--- | :---: | :--- |
-| [1. Explorer](#1-explorer) | `query_stats` | Database schema catalog, visual column structure query builder, and ad-hoc SQL console. |
-| [2. JupyterLab](#2-jupyterlab) | `terminal` | Embedded Jupyter console terminal for writing integrated Python and pandas data science notebooks. |
-| [3. Extensions](#3-extensions) | `extension` | Graphical DuckDB extension repository enabling one-click library installation and loading. |
-| [4. Database Tools](#4-database-tools) | `construction` | Utility workshop containing database schema backups, schema restores, and test data seeding routines. |
-| [5. API Endpoints](#5-api-endpoints) | `api` | Dynamic REST API creator, custom parameter binders, and live endpoints manager with optional JWT protection. |
-| [6. API Docs & Explorer](#6-api-docs--explorer) | `menu_book` | OpenAPI interactive Swagger playground and Loopback testing sandbox supporting Bearer Auth. |
-| [7. Scheduler](#7-scheduler) | `schedule` | Background automation query scheduler, Parquet/CSV exporter, and telemetry logs. |
-| [8. Settings](#8-settings) | `settings` | Global system configurations page for rate limits, pagination, security credentials, and JupyterLab tokens. |
+| **[1. Explorer](#1-explorer)** | `query_stats` | Database schema catalog browser, visual query builder, optimized S3 connections, and SQL editor. |
+| **[2. JupyterLab](#2-jupyterlab)** | `terminal` | Embedded JupyterLab notebook interface running on system python with `duckrun` integration. |
+| **[3. dbt Code Server](#3-dbt-code-server)** | `vscode_blue` | Integrated VS Code editor environment pre-configured for dbt model development. |
+| **[4. Extensions](#4-extensions)** | `extension` | Graphical extension installer/loader for DuckDB's runtime libraries (spatial, httpfs, etc.). |
+| **[5. Database Tools](#5-database-tools)** | `construction` | Data migration utilities including backup, structure restore, CSV/Parquet import, and scaling data seeders. |
+| **[6. API Endpoints](#6-api-endpoints)** | `api` | SQL-to-REST API creator, dynamic auto-parameter parser, JWT security controls, and telemetry dashboard. |
+| **[7. API Docs & Explorer](#7-api-docs--explorer)** | `menu_book` | OpenAPI interactive Swagger interface and dynamic testing sandbox. |
+| **[8. Scheduler](#8-scheduler)** | `schedule` | Automated query scheduler, folder exporter, and telemetry logs retention clean-up agent. |
+| **[9. Settings](#9-settings)** | `settings` | Global system settings and credentials manager. |
 
 ---
 
-## 🛠️ Comprehensive Screen-by-Screen Walkthroughs
+## 🛠️ Detailed Screen-by-Screen Walkthrough
 
 ### 1. Explorer
 
-The core IDE of DuckDB Studio. It features a dual-column layout dividing the database metadata tree and active SQL editor workspace.
+The core SQL IDE of DuckDB Studio. It features a dual-column layout dividing the database metadata tree and active SQL editor workspace.
 
-#### Active Explorer Screen:
 <img src="./assets/explorer_tab.png" width="650" />
 
-#### Live Explorer Feature Traversal Walkthrough:
+#### Live Explorer Walkthrough:
+Below is a walk-through demonstrating database schema catalog browser traversal, visual query building, and sql query execution:
+
 <img src="./assets/explorer_traversal.gif" width="650" />
 
-#### Advanced Explorer Visual Assets:
+#### Key Capabilities:
+* **Ad-Hoc Editor**: Write standard or complex SQL statements with hot-reloaded autocomplete and execute them using `Ctrl + Enter` or the **Run Query** button.
+* **Database Catalog Tree**: Visually trace attached databases, schemas, tables, views, columns, and data types. Click any table node to automatically preview its data.
+* **Visual Query Builder**: Build projection queries dynamically by checking columns, configuring sort options (`ASC`/`DESC`), and adding filter clauses in the UI.
+* **Save Presets**: Save SQL queries directly into internal storage. Saved queries can be loaded back into the editor with one click.
+* **Session History**: Trace and review recently run query metrics, timing, and latencies.
+* **Execution Plan Visualizer**: Run logical and physical optimizer tracing via **Explain Plan** or trace dynamic execution profiling with **Explain Analyze**.
 
-#### Schema Catalog Browser
-Easily browse through your databases, schemas, tables, views, and columns recursively:
-
-<img src="./assets/schema_browser.gif" width="650" />
-
-#### Interactive Visual Query Builder
-Build database projection queries dynamically on-the-fly without typing single line of SQL:
-
-<img src="./assets/interactive_visual_query_builder.gif" width="650" />
-
-#### Save Query Presets
-Save your frequently used SQL scripts directly to internal DuckDB storage for quick loading later:
-
-<img src="./assets/save_query.gif" width="650" />
-
-#### Session History Trace
-Trace and review recently run query metrics, timing, and latencies:
-
-<img src="./assets/session_history.gif" width="650" />
-
-#### Explain Plan
-Visually analyze the execution query optimization plan (logical, physical, and execution profile statistics):
-
-<img src="./assets/explain.gif" width="650" />
-
-#### Explain Analyze Plan
-Visually trace dynamic execution timing and profile statistics inside the catalog:
-
-<img src="./assets/explain_analyse.gif" width="650" />
-
-#### Functions:
-* **Ad-Hoc Editor**: Write standard or complex SQL statements with hot-reloaded autocomplete and execute them using `Ctrl + Enter`.
-* **Database Catalog Tree**: Visually trace attached databases, schemas, tables, views, columns, and data types. Click any table node to automatically preview its data inside the query terminal!
-* **Visual Query Builder**: Build projections dynamically by checking columns, configuring sort columns (`ASC`/`DESC`), and injecting filter clauses without typing raw SQL.
-* **History Trace**: Access recently executed commands with runtime latencies to quickly restore a previous state.
+#### Latest Features & Optimizations:
+* **S3 Delta Tables Catalog Sync**: On container startup and every 60 seconds in the background, S3 Delta table formats in the target bucket (`devbucket`) are automatically scanned and registered as views inside the database `main_db` in schema `s3_delta_catalog`.
+* **HTTP Keep-Alive & Metadata Cache**: Every database connection is optimized with socket reuse (`http_keep_alive = true`), Parquet footer metadata memory caching (`enable_object_cache = true`), and socket timeouts (`http_timeout = 10`) to speed up S3/OneLake Delta reads and fail fast on network drops.
 
 ---
 
 ### 2. JupyterLab
 
-An integrated interactive data science console.
+An integrated interactive data science environment running on the host system python environment.
 
-#### Active JupyterLab Screen:
 <img src="./assets/jupyterlab_tab.png" width="650" />
 
-#### Active JupyterLab Walkthrough:
+#### Live JupyterLab Walkthrough:
 <img src="./assets/jupyterlab.gif" width="650" />
 
-#### Functions:
-* **Python Notebooks**: Launch Jupyter notebook kernels to write advanced Python code alongside your DuckDB instance.
-* **Pandas Scans**: Direct loopbacks inside notebooks to read from the DuckDB local catalogs:
+#### Python & Pandas Data Science:
+* **Notebooks**: Launch Jupyter notebook kernels to write advanced Python code alongside your DuckDB instance.
+* **`duckrun` Integration**: Utilize `duckrun` inside notebooks to query Delta tables on S3 storage.
+* **Local Dataframe Queries**: Register Pandas DataFrames directly in the underlying database catalog using `conn.con.register("name", df)`.
+* **S3 Secret Provisioning**: S3 credentials can be configured natively inside the notebook connection:
   ```python
-  import duckdb
-  df = duckdb.query("SELECT * FROM product_inventory").df()
+  import duckrun
+  conn = duckrun.connect()
+  conn.con.execute("CREATE SECRET (TYPE S3, KEY_ID '...', SECRET '...', ENDPOINT 'garage:3900', USE_SSL false, URL_STYLE 'path')")
   ```
 
 ---
 
-### 3. Extensions
+### 3. dbt Code Server
 
-A visual manager for DuckDB's unique runtime plugins.
+An embedded full-featured VS Code IDE server (`dbt-code-server` container running on port `8443` and routed through `editor.localhost:8880`), custom-tailored for dbt (data build tool) development against DuckDB/S3 Delta table catalogs.
 
-#### Active Extensions Manager Walkthrough:
-<img src="./assets/extensions.gif" width="650" />
+<img src="./assets/code_editor_tab.png" width="650" />
 
-#### Functions:
-* **Extension Grid**: Visual status cards for extensions (`httpfs`, `postgres_scanner`, `sqlite_scanner`, `spatial`, `icu`, `json`).
-* **Interactive Badges**: Beautiful color indicators showing whether an extension is **Installed** (Grey) or **Loaded** (Green).
-* **One-Click Actions**: Click **Install** to pull the binary directly from DuckDB's servers, and **Load** to initialize it into the active execution connection.
+#### Integrated dbt Development Workflow:
+This tab exposes the complete `dbt_project/` workspace folder, enabling developers to build, compile, and document modular SQL models out-of-the-box.
+* **dbt-core Engine**: The container has `dbt-core` and the `dbt-duckrun` adapter installed natively.
+* **dbt Power User Integration**: Pre-loaded with the **dbt Power User** extension (`innoverio.vscode-dbt-power-user`), providing:
+  * **Model Compilation & Running**: Compile models on-the-fly (`Ctrl + '`) and run individual queries directly inside the workspace view.
+  * **Lineage & Dependency Trees**: Generates visual dependency graphs mapping relationships between your staging, intermediate, and dimensional models.
+  * **Interactive Code Autocomplete**: Auto-completes dbt Jinja macros such as `ref()`, `source()`, and `config()`.
+* **Automatic sqlfmt Formatting**: Configured to use the system-installed `shandy-sqlfmt[jinjafmt]` formatter. Whenever a Jinja-SQL file is saved, it is automatically formatted according to the pre-configured workspace rules (`.vscode/settings.json` default formatting engine).
+* **Delta Lake on Garage S3 Storage**: Models compiled and run via the `s3_delta` target (using the `dbt-duckrun` adapter) are written and stored directly as **Delta Lake tables** inside the local **Garage S3** cluster (`s3://devbucket/tables/`).
+  * **Directory Structure**: Stored in standard Delta directory format (Parquet data segments accompanied by a transaction log folder `_delta_log/`).
+  * **Catalog Auto-Discovery**: When dbt builds these tables, the application's periodic background sync task automatically registers them as views inside the database `main_db` in schema `s3_delta_catalog`, making them queryable instantly from the Explorer tab without manual intervention.
+
+#### Robust Compatibility Workarounds (Included):
+* **Self-Healing Ownership**: Automatically runs a recursive `chown` to assign workspace files to the container's unprivileged user (`coder` UID `1000`) and a `chmod` to grant world-write access, resolving rootless Docker permission conflicts on startup.
+* **Python 3.13 Serialization Fix**: Includes an automatic startup patch that overrides the extension's JSON encoder, preventing compilation crashes caused by thread lock serialization changes on Python 3.13.
 
 ---
 
-### 4. Database Tools
+### 4. Extensions
 
-A backup, restore, and scalability benchmarker for DuckDB local databases.
+A visual manager for DuckDB's runtime plugins, enabling one-click library installation and loading.
 
-#### Active Database Tools Walkthrough:
-<img src="./assets/database_tools.gif" width="650" />
-
-#### Direct File Importing Walkthrough:
-Easily import CSV/Parquet files directly into your active catalog using the file selector interface:
-
-<img src="./assets/import_file.gif" width="650" />
+<img src="./assets/extensions_tab.png" width="650" />
 
 #### Functions:
-* **Backup Utilities**: Export the structural database catalog into clean SQL recovery files.
-* **Restore Catalog**: Execute a selected backup SQL file to instantly restore schemas, tables, and views structure.
+* **Extension Grid**: Visual status cards for extensions (`httpfs`, `postgres_scanner`, `sqlite_scanner`, `spatial`, `icu`, `json`, `ducklake`).
+* **Interactive Badges**: Color indicators showing whether an extension is **Installed** (Grey) or **Loaded** (Green).
+* **Actions**: Click **Install** to pull the binary directly from DuckDB's servers, and **Load** to initialize it into the active execution connection.
+
+---
+
+### 5. Database Tools
+
+A backup, restore, file importer, and scalability benchmarker for DuckDB databases.
+
+<img src="./assets/database_tools_tab.png" width="650" />
+
+#### Capabilities:
+* **CSV/Parquet File Importing**: Use the file picker to import CSV, JSON, or Parquet files directly from your workspace directory into your active database catalog.
+* **Catalog Backup & Restore**: Export the structural database catalog into recovery SQL files and execute them to restore schemas, tables, and views structure.
 * **Scalability Seeding**: Move the record density slider from `100` to `100,000` rows and click **Trigger Seed Generation** to populate test tables, allowing you to validate performance metrics under realistic data scale.
 
 ---
 
-### 5. API Endpoints
+### 6. API Endpoints
 
 Turn any SQL select query into an active REST API microservice and monitor live metrics.
 
-#### Active API Endpoints Workspace:
 <img src="./assets/api_endpoints_tab.png" width="650" />
 
-#### Active API Endpoints Workspace Walkthrough:
+#### Live API Endpoints Walkthrough:
 <img src="./assets/api_endpoints.gif" width="650" />
 
-#### Optional JWT Authentication:
-Dynamic API endpoints can optionally require secure JWT (JSON Web Token) Authorization.
-* **Toggle Security**: Enable or disable authentication on-the-fly using the **Require JWT Token Authorization** toggle switch during endpoint creation or editing.
-* **Header Enforced**: When protected, the endpoint rejects unauthorized requests with a `401 Unauthorized` response. Accessing the endpoint requires passing the Authorization header:
-  ```http
-  Authorization: Bearer <your_jwt_token>
-  ```
-* **Signature Verification**: Signature verification is performed on the server using `HS256` symmetric signing with the global `STORAGE_SECRET`.
-
-#### High-Performance NDJSON Streaming:
-To safely retrieve massive datasets (up to 1,000,000+ records) without memory ballooning or timeouts, you can stream queries:
-* **Route Path**: Simply append `/stream` to any endpoint URL (e.g. `/api/books/stream`).
-* **Format**: Streams data row-by-row in Newline Delimited JSON (`application/x-ndjson`) using HTTP chunked transfer encoding, maintaining a constant flat memory footprint.
-
-#### API Request Metering (Rate Limiting):
-To protect endpoints against spam or Denial-of-Service, dynamic request throttling is enforced using `slowapi`:
-* **Configurable Rate Limits**: Each endpoint can define its own rate limit (e.g. `10/minute`, `100/hour`).
-* **Default Fallback**: If no specific rate limit is defined on an endpoint, the system defaults to a default limit (e.g. `5/minute`). This default is globally configurable.
-* **Over-Limit Response**: Exceeding rate limits instantly halts request processing and returns an `HTTP 429 Too Many Requests` code with a structured error payload.
-
-#### Functions:
-* **Form Compiler**: Specify an endpoint slug (e.g. `recent-sales`) and write a query.
+#### Dynamic REST APIs:
 * **Auto-Generated Query Parameters**: Use the `$parameter_name` notation to automatically capture dynamic query parameters from incoming requests (e.g. `?min_qty=10`).
-* **Column Analysis Filter Creator**: Under the editor, click **Analyze Columns for Auto-Params** to parse the schema of your target database table and auto-generate parameter logic based on dynamic ranges.
-* **Safe Metered API Pagination**: Dynamic pagination enforcing a default limit of 100 records and a safety ceiling of 10,000, automatically wrapping unbounded queries.
-* **Live Telemetry & Performance Dashboard**: Read overall KPI metrics (Total requests, average response speeds, success rates) and audit detailed routes logs (Min/Max Latency, Success Ratios, and Trigger times) directly.
+* **Column Analysis Filter Creator**: Under the SQL editor, click **Analyze Columns for Auto-Params** to parse the schema of your target database table and auto-generate parameter logic based on dynamic ranges.
+* **API Route Listing**: View all registered endpoints at `/api/list-endpoints` before catch-all wildcards hijack paths.
+
+#### Security & Auth:
+* **JWT Authentication Toggle**: Enable or disable JWT verification on-the-fly. When enabled, requests require passing the Bearer token in the header (`Authorization: Bearer <token>`), verified using `HS256` symmetric signing with the global `STORAGE_SECRET`.
+
+#### High-Performance Streaming:
+* **NDJSON Streaming**: Append `/stream` to any endpoint URL (e.g. `/api/orders/stream`) to stream massive datasets row-by-row in Newline Delimited JSON (`application/x-ndjson`) using HTTP chunked transfer encoding, maintaining a flat memory footprint.
+
+#### Rate Limiting & Throttling:
+* **SlowAPI Integration**: Define specific request throttle limits per endpoint (e.g. `10/minute`, `100/hour`) to prevent server overload.
+
+#### Telemetry Dashboard:
+* Monitor overall KPI metrics (Total requests, average response speeds, success rates) and audit detailed routes logs (Min/Max Latency, Success Ratios, and Trigger times) directly.
 
 ---
 
-### 6. API Docs & Explorer
+### 7. API Docs & Explorer
 
 An embedded Swagger-style sandbox to document and run loops against dynamic APIs.
 
-#### Active Interactive Docs Sandbox:
 <img src="./assets/api_docs_tab.png" width="650" />
 
-#### Active API Docs & Explorer Walkthrough:
+#### Live API Docs Walkthrough:
 <img src="./assets/api_docs_explorer.gif" width="650" />
 
-#### Functions:
+#### Interactive Docs Sandbox:
 * **Interactive Sandbox**: Auto-detects endpoint parameters and generates input forms inside the UI.
-* **JWT Testing Sandbox**: If an API requires JWT Authorization, a dedicated **Authorization Token** field is automatically rendered, allowing you to paste a Bearer token and test secured endpoints directly.
+* **JWT Testing Sandbox**: Paste authorization tokens into the token field to test secured endpoints directly.
 * **Loopback Executor**: Executes requests via internal HTTP loops, measuring request latency, status codes, and absolute URLs.
 * **Formatted JSON View**: Renders dynamic query results as formatted syntax-highlighted JSON trees.
 
 ---
 
-### 7. Scheduler
+### 8. Scheduler
 
 Automate your query reporting and data extraction pipelines.
 
-#### Active Query Scheduler Screen:
 <img src="./assets/scheduler_tab.png" width="650" />
 
-#### Active Query Scheduler Walkthrough:
+#### Live Scheduler Walkthrough:
 <img src="./assets/scheduler.gif" width="650" />
 
-#### Functions:
-* **Preset Loader**: Automatically pull final query SQL from Saved Queries into the form with one click.
-* **Scheduler Worker**: Configure intervals (`Every Minute`, `Every 5 Minutes`, `Every 15 Minutes`, `Every Hour`, `Every 12 Hours`, `Daily`) which trigger background tasks to dump results into `/exports/`.
+#### Job Automation:
+* **Preset Loader**: Pull queries from Saved Queries into the form with one click.
+* **Interval Scheduler**: Configure intervals (`Every Minute`, `Every Hour`, `Daily`, etc.) to trigger background tasks.
 * **Export Configurations**: Select Parquet, CSV, or JSON formats. Type in a partition column (e.g. `category`) to partition the folder natively using DuckDB's fast `PARTITION_BY` system.
-* **Automation Grid**: Toggle job statuses (Active/Inactive), manually run queries instantly with visual toast notifications, and trace rows/file sizes (e.g., `120.4 KB`) inside the execution logs history grid.
+* **Automation Grid**: Toggle job statuses, manually run queries instantly with visual toast notifications, and trace rows/file sizes inside the execution logs history grid.
+
+#### Periodic Telemetry Cleanup (New Optimization):
+* An hourly background task cleans up SQLite logs to keep the config database size small. It automatically prunes:
+  * API metrics (`_duckdb_studio_api_metrics`) older than 7 days.
+  * Scheduler run logs (`_duckdb_studio_scheduler_logs`) older than 7 days.
+  * SQL console execution history (`_duckdb_studio_query_history`) older than 7 days.
 
 ---
 
-### 8. Settings
+### 9. Settings
 
-A centralized control panel to manage global application parameters, safety overrides, telemetry settings, security keys, and external notebook credentials. All changes are stored back to the YAML configuration file (`config/studio_config.yaml`) and take effect immediately.
+A centralized control panel to manage global application parameters, safety overrides, telemetry settings, security keys, and external notebook credentials.
 
-#### Functions & Configurable Items:
-* **Rate Limiting & Safety Limits**:
-  * **Default Endpoint Rate Limit**: Configures the fallback limit applied to dynamic endpoints when no per-endpoint override is defined (defaults to `5/minute`).
-  * **Maximum Safety Limit (Rows)**: Restricts the absolute maximum number of rows returned in standard API JSON requests to prevent memory inflation.
-  * **Default Page Size**: Controls default pagination bounds for dynamic endpoints.
-* **Security & JWT tokens**:
-  * **JWT Signature Secret**: Customizes the key used for HMAC HS256 validation.
-  * **JWT Issuer Name & Audience**: Standardized properties to strictly parse client identity.
-* **Telemetry Configuration**:
-  * **Telemetry Retention (Days)**: Specifies the duration for maintaining API access counts and latencies before automatic cleanup.
-* **JupyterLab Credentials**:
-  * **Jupyter Server URL & Security Token**: Credentials used to render the embedded notebook console tab safely.
+#### Configurations:
+* **Rate Limiting & Safety Limits**: Configure default rate limits, maximum query row returns, and default pagination page sizes.
+* **Security & JWT**: Customizes JWT signature secrets, issuer names, and audiences.
+* **Telemetry Config**: Set retention duration for database telemetry metrics.
+* **Jupyter Credentials**: Configure the Jupyter server URL and token.
