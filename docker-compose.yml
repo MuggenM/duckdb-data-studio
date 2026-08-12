@@ -12,6 +12,7 @@ services:
     command:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=studio_jupyter_net"
       - "--entrypoints.web.address=:80"
     ports:
       - "8880:80"
@@ -54,7 +55,6 @@ services:
       - AWS_ALLOW_HTTP=true
     networks:
       - studio_jupyter_net
-      - default
     extra_hosts:
       - "host.docker.internal:10.0.2.2"
     restart: unless-stopped
