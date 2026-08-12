@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "duckdb-data-studio": {
+      "command": "python3",
+      "args": [
+        "/home/martin/volumes/duckdb-studio/mcp_server_duckdb.py"
+      ]
+    }
+  }
+}
