@@ -4573,31 +4573,30 @@ def index():
 
                     def get_active_schema_summary():
                         try:
-                            active_db = 'main'
-                            try:
-                                active_db = explorer.conn.execute("SELECT current_database();").fetchone()[0]
-                            except Exception:
-                                pass
-                            
                             cols_rows = explorer.conn.execute("""
-                                SELECT table_name, column_name, data_type 
+                                SELECT database_name, schema_name, table_name, column_name, data_type 
                                 FROM duckdb_columns 
-                                WHERE database_name = ? AND schema_name = 'main'
-                                ORDER BY table_name, column_index;
-                            """, [active_db]).fetchall()
+                                WHERE database_name NOT IN ('temp', 'system')
+                                ORDER BY database_name, schema_name, table_name, column_index;
+                            """).fetchall()
                             
                             if not cols_rows:
-                                return "No tables found in active schema."
+                                return "No tables found in attached databases."
                                 
-                            tables = {}
-                            for tbl, col, dtype in cols_rows:
-                                if tbl not in tables:
-                                    tables[tbl] = []
-                                tables[tbl].append(f"{col} ({dtype})")
+                            dbs = {}
+                            for db, sch, tbl, col, dtype in cols_rows:
+                                db_key = f"{db}.{sch}"
+                                if db_key not in dbs:
+                                    dbs[db_key] = {}
+                                if tbl not in dbs[db_key]:
+                                    dbs[db_key][tbl] = []
+                                dbs[db_key][tbl].append(f"{col} ({dtype})")
                                 
                             summary = []
-                            for tbl, cols in tables.items():
-                                summary.append(f"Table '{tbl}' columns: {', '.join(cols)}")
+                            for db_key, tables in dbs.items():
+                                summary.append(f"Database/Schema '{db_key}':")
+                                for tbl, cols in tables.items():
+                                    summary.append(f"  • Table '{tbl}': {', '.join(cols)}")
                             return "\n".join(summary)
                         except Exception as ex:
                             return f"Error gathering schema context: {ex}"
