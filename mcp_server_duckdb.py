@@ -133,6 +133,74 @@ def describe_table(table_name: str, database_name: str = "main_db", schema_name:
         return f"Error describing table `{database_name}.{schema_name}.{table_name}`: {ex}"
 
 @mcp_server.tool()
+def export_query_results(sql: str, file_path: str, file_format: str = "parquet") -> str:
+    """Export SQL query results to a Parquet, CSV, or JSON file.
+    
+    Args:
+        sql: DuckDB SQL query string to export
+        file_path: Destination file path (e.g. /home/martin/volumes/duckdb-studio/exports/sales.parquet)
+        file_format: Export format: 'parquet', 'csv', or 'json' (default: parquet)
+    """
+    fmt = file_format.lower().strip()
+    if fmt not in ("parquet", "csv", "json"):
+        return f"Error: Unsupported format '{file_format}'. Supported formats: parquet, csv, json."
+    import os
+    os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
+    try:
+        conn = get_connection()
+        import time
+        start_t = time.time()
+        copy_stmt = f"COPY ({sql.strip().rstrip(';')}) TO '{file_path}' (FORMAT '{fmt.upper()}');"
+        conn.execute(copy_stmt)
+        elapsed_ms = round((time.time() - start_t) * 1000, 1)
+        conn.close()
+        size_bytes = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+        size_mb = round(size_bytes / (1024 * 1024), 2)
+        return f"⚡ Export Successful in {elapsed_ms}ms!\n  • Output File: `{file_path}`\n  • Format: `{fmt.upper()}`\n  • Size: {size_bytes} bytes ({size_mb} MB)"
+    except Exception as ex:
+        return f"⚠️ Export Error: {ex}"
+
+@mcp_server.tool()
+def attach_database(database_name: str, file_path: str, read_only: bool = True) -> str:
+    """Attach a DuckDB or SQLite database file to the workspace.
+    
+    Args:
+        database_name: Alias name for the database (e.g. my_analytics)
+        file_path: Absolute path to database file
+        read_only: Connect in read-only mode (default: True)
+    """
+    try:
+        conn = get_connection()
+        ro_flag = "TRUE" if read_only else "FALSE"
+        conn.execute(f"ATTACH DATABASE '{file_path}' AS {database_name} (READ_ONLY {ro_flag});")
+        tables = conn.execute(f"SELECT table_name FROM duckdb_tables WHERE database_name = '{database_name}';").fetchall()
+        tbl_names = [t[0] for t in tables]
+        conn.close()
+        return f"⚡ Database `{database_name}` attached successfully from `{file_path}`!\n  • Attached Tables ({len(tbl_names)}): {', '.join(tbl_names) if tbl_names else 'None'}"
+    except Exception as ex:
+        return f"⚠️ Attach Error: {ex}"
+
+@mcp_server.tool()
+def explain_query(sql: str, analyze: bool = False) -> str:
+    """Get the DuckDB physical execution plan for a SQL query.
+    
+    Args:
+        sql: DuckDB SQL query string
+        analyze: Run EXPLAIN ANALYZE for actual runtime profiling (default: False)
+    """
+    try:
+        conn = get_connection()
+        prefix = "EXPLAIN ANALYZE " if analyze else "EXPLAIN "
+        rel = conn.execute(prefix + sql.strip().rstrip(';'))
+        rows = rel.fetchall()
+        conn.close()
+        plan_lines = [r[1] if len(r) > 1 else str(r[0]) for r in rows]
+        plan_text = "\n".join(plan_lines)
+        return f"⚡ Query Execution Plan ({'EXPLAIN ANALYZE' if analyze else 'EXPLAIN'}):\n\n```\n{plan_text}\n```"
+    except Exception as ex:
+        return f"⚠️ Explain Error: {ex}"
+
+@mcp_server.tool()
 def get_system_info() -> str:
     """Get system version, attached database paths, and workspace configuration."""
     try:

@@ -8997,22 +8997,129 @@ try:
             conn.close()
 
     @mcp_app.tool()
-    def get_system_info() -> str:
-        """Get system version, attached database paths, and workspace configuration."""
+    def export_query_results(sql: str, file_path: str, file_format: str = "parquet") -> str:
+        """Export SQL query results to a Parquet, CSV, or JSON file.
+        
+        Args:
+            sql: DuckDB SQL query string to export
+            file_path: Destination file path (e.g. /app/exports/sales_summary.parquet)
+            file_format: Export format: 'parquet', 'csv', or 'json' (default: parquet)
+        """
+        fmt = file_format.lower().strip()
+        if fmt not in ("parquet", "csv", "json"):
+            return f"Error: Unsupported format '{file_format}'. Supported formats: parquet, csv, json."
+        import os
+        os.makedirs(os.path.dirname(os.path.abspath(file_path)), exist_ok=True)
         conn = _get_mcp_db_conn()
         try:
-            import duckdb
-            dbs = conn.execute("SELECT database_name, path FROM duckdb_databases();").fetchall()
-            db_lines = [f"  • `{db}`: `{path}`" for db, path in dbs if db not in ('temp', 'system')]
-            return (
-                f"⚡ DuckDB Data Studio Workspace System Info:\n"
-                f"  • DuckDB Engine Version: {duckdb.__version__}\n"
-                f"  • Attached Databases ({len(db_lines)}):\n" + "\n".join(db_lines)
-            )
+            import time
+            start_t = time.time()
+            copy_stmt = f"COPY ({sql.strip().rstrip(';')}) TO '{file_path}' (FORMAT '{fmt.upper()}');"
+            conn.execute(copy_stmt)
+            elapsed_ms = round((time.time() - start_t) * 1000, 1)
+            size_bytes = os.path.getsize(file_path) if os.path.exists(file_path) else 0
+            size_mb = round(size_bytes / (1024 * 1024), 2)
+            return f"⚡ Export Successful in {elapsed_ms}ms!\n  • Output File: `{file_path}`\n  • Format: `{fmt.upper()}`\n  • Size: {size_bytes} bytes ({size_mb} MB)"
         except Exception as ex:
-            return f"Error fetching system info: {ex}"
+            return f"⚠️ Export Error: {ex}"
         finally:
             conn.close()
+
+    @mcp_app.tool()
+    def attach_database(database_name: str, file_path: str, read_only: bool = True) -> str:
+        """Attach a DuckDB or SQLite database file to the workspace.
+        
+        Args:
+            database_name: Alias name for the database (e.g. my_analytics)
+            file_path: Absolute path to database file
+            read_only: Connect in read-only mode (default: True)
+        """
+        conn = _get_mcp_db_conn()
+        try:
+            ro_flag = "TRUE" if read_only else "FALSE"
+            conn.execute(f"ATTACH DATABASE '{file_path}' AS {database_name} (READ_ONLY {ro_flag});")
+            tables = conn.execute(f"SELECT table_name FROM duckdb_tables WHERE database_name = '{database_name}';").fetchall()
+            tbl_names = [t[0] for t in tables]
+            return f"⚡ Database `{database_name}` attached successfully from `{file_path}`!\n  • Attached Tables ({len(tbl_names)}): {', '.join(tbl_names) if tbl_names else 'None'}"
+        except Exception as ex:
+            return f"⚠️ Attach Error: {ex}"
+        finally:
+            conn.close()
+
+    @mcp_app.tool()
+    def explain_query(sql: str, analyze: bool = False) -> str:
+        """Get the DuckDB physical execution plan for a SQL query.
+        
+        Args:
+            sql: DuckDB SQL query string
+            analyze: Run EXPLAIN ANALYZE for actual runtime profiling (default: False)
+        """
+        conn = _get_mcp_db_conn()
+        try:
+            prefix = "EXPLAIN ANALYZE " if analyze else "EXPLAIN "
+            rel = conn.execute(prefix + sql.strip().rstrip(';'))
+            rows = rel.fetchall()
+            plan_lines = [r[1] if len(r) > 1 else str(r[0]) for r in rows]
+            plan_text = "\n".join(plan_lines)
+            return f"⚡ Query Execution Plan ({'EXPLAIN ANALYZE' if analyze else 'EXPLAIN'}):\n\n```\n{plan_text}\n```"
+        except Exception as ex:
+            return f"⚠️ Explain Error: {ex}"
+        finally:
+            conn.close()
+
+    @mcp_app.tool()
+    def get_query_history(limit: int = 10) -> str:
+        """Get recent SQL query execution history from DuckDB Data Studio workspace.
+        
+        Args:
+            limit: Maximum number of history entries to return (default: 10)
+        """
+        try:
+            import sqlite3
+            config_conn = sqlite3.connect('/app/config/app_config.db')
+            c = config_conn.cursor()
+            c.execute("""
+                SELECT timestamp, query_text, duration_ms, status, rows_count, error_message
+                FROM _duckdb_studio_query_history
+                ORDER BY id DESC LIMIT ?;
+            """, [limit])
+            rows = c.fetchall()
+            config_conn.close()
+            
+            if not rows:
+                return "No query execution history found."
+                
+            lines = [f"📜 Recent SQL Query History (Last {len(rows)} queries):\n"]
+            for ts, qtext, dur, status, rcnt, err in rows:
+                q_short = qtext.strip().replace('\n', ' ')
+                if len(q_short) > 80:
+                    q_short = q_short[:77] + "..."
+                status_icon = "✅" if status == "SUCCESS" else "⚠️"
+                lines.append(f"{status_icon} **[{ts}]** `{q_short}` ({dur}ms, {rcnt or 0} rows)")
+                if err:
+                    lines.append(f"   ↳ Error: `{err}`")
+            return "\n".join(lines)
+        except Exception as ex:
+            return f"Error reading query history: {ex}"
+
+    @mcp_app.tool()
+    def run_dbt_model(model_name: str = "all") -> str:
+        """Trigger a dbt-duckrun build execution for dbt models in the workspace.
+        
+        Args:
+            model_name: Name of dbt model to run or 'all' to build entire project (default: all)
+        """
+        import subprocess
+        try:
+            cmd = ["dbt", "run"]
+            if model_name and model_name.lower() != "all":
+                cmd.extend(["--select", model_name])
+            res = subprocess.run(cmd, cwd="/app/dbt_project", capture_output=True, text=True, timeout=120)
+            status_text = "✅ SUCCESS" if res.returncode == 0 else f"⚠️ FAILED (exit code {res.returncode})"
+            output = res.stdout + ("\n" + res.stderr if res.stderr else "")
+            return f"⚡ dbt Model Build Output [{status_text}]:\n\n```\n{output[:3000]}\n```"
+        except Exception as ex:
+            return f"⚠️ dbt Run Error: {ex}"
 
     app.mount("/mcp", mcp_app.sse_app())
     print("INFO: Embedded MCP (Model Context Protocol) Server mounted at /mcp/sse and /mcp/messages", flush=True)
