@@ -4565,11 +4565,32 @@ def index():
                             ui.button('Explain Code', icon='info', on_click=lambda: run_ai_action('explain')).props('outline dense size=xs color=primary').classes('flex-grow text-[10px] font-bold')
                             ui.button('Fix Query', icon='build', on_click=lambda: run_ai_action('fix')).props('outline dense size=xs color=warning').classes('flex-grow text-[10px] font-bold')
                             
-                        # Chat Input text area
-                        with ui.row().classes('w-full items-center gap-1.5 flex-none pt-1'):
-                            chat_input = ui.input(placeholder='Ask Copilot a question...').props('outlined dense').classes('flex-grow text-xs').style('font-size: 11px;')
-                            chat_input.on('keydown.enter', lambda: send_chat_message())
-                            ui.button(icon='send', on_click=lambda: send_chat_message()).props('elevated dense color=primary size=sm').classes('px-2.5')
+                        # Chat Input text area (Multi-line textarea)
+                        with ui.row().classes('w-full items-end gap-1.5 flex-none pt-1'):
+                            chat_input = ui.textarea(placeholder='Ask Copilot a question...\n(Enter to send, Ctrl+Enter for new line)') \
+                                .props('outlined dense autogrow rows=2 max-rows=6') \
+                                .classes('flex-grow text-xs') \
+                                .style('font-size: 11px; line-height: 1.3;')
+                            chat_input.on('keydown', js_handler='''
+                                (e) => {
+                                    if (e.key === 'Enter') {
+                                        if (e.ctrlKey) {
+                                            e.preventDefault();
+                                            const target = e.target;
+                                            const start = target.selectionStart;
+                                            const end = target.selectionEnd;
+                                            target.value = target.value.substring(0, start) + "\\n" + target.value.substring(end);
+                                            target.selectionStart = target.selectionEnd = start + 1;
+                                            target.dispatchEvent(new Event('input', { bubbles: true }));
+                                        } else if (!e.shiftKey) {
+                                            e.preventDefault();
+                                            emitEvent('submit');
+                                        }
+                                    }
+                                }
+                            ''')
+                            chat_input.on('submit', lambda: send_chat_message())
+                            ui.button(icon='send', on_click=lambda: send_chat_message()).props('elevated dense color=primary size=sm').classes('px-2.5 mb-1')
 
                     # Exit the split row slot context
                     workspace_split_row.__exit__(None, None, None)
