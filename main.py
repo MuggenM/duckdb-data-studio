@@ -4820,48 +4820,57 @@ CRITICAL DUCKDB SQL RULES:
                     def render_copilot_code_actions(container, full_text):
                         import json
                         sql_blocks = extract_sql_blocks(full_text)
-                        if not sql_blocks:
-                            return
-
+                        
                         with container:
-                            for idx, sql_code in enumerate(sql_blocks):
-                                sql_clean = sql_code.strip()
-                                if not sql_clean:
-                                    continue
-                                with ui.row().classes('w-full items-center gap-1.5 pt-1.5 flex-wrap border-t border-slate-200 dark:border-slate-800 mt-1'):
-                                    if len(sql_blocks) > 1:
-                                        ui.label(f'Query #{idx+1}:').classes('text-[10px] font-bold text-slate-500')
-                                    
-                                    def make_run_cb(code=sql_clean):
-                                        def cb():
-                                            sql_editor.set_value(code)
-                                            try:
-                                                workspace_sub_tabs.value = 'SQL Workspace'
-                                            except Exception:
-                                                pass
-                                            run_editor_query()
-                                            ui.notify('Executing query in SQL Workspace...', type='positive', icon='play_arrow')
-                                        return cb
-                                        
-                                    def make_send_cb(code=sql_clean):
-                                        def cb():
-                                            sql_editor.set_value(code)
-                                            try:
-                                                workspace_sub_tabs.value = 'SQL Workspace'
-                                            except Exception:
-                                                pass
-                                            ui.notify('Copied query to SQL Editor!', type='info', icon='edit_note')
-                                        return cb
-                                        
-                                    def make_copy_cb(code=sql_clean):
-                                        def cb():
-                                            ui.run_javascript(f'navigator.clipboard.writeText({json.dumps(code)})')
-                                            ui.notify('Copied SQL to clipboard!', type='positive', icon='content_copy')
-                                        return cb
+                            # 1. Action button to copy the full AI response text to clipboard
+                            with ui.row().classes('w-full items-center gap-1.5 pt-1.5 flex-wrap border-t border-slate-200 dark:border-slate-800 mt-1'):
+                                def make_copy_text_cb(txt=full_text):
+                                    def cb():
+                                        ui.run_javascript(f'navigator.clipboard.writeText({json.dumps(txt)})')
+                                        ui.notify('Copied chat text to clipboard!', type='positive', icon='content_copy')
+                                    return cb
+                                ui.button('Copy Response Text', icon='content_copy', on_click=make_copy_text_cb()).props('flat dense size=xs color=primary').classes('text-[10px] font-bold px-2')
 
-                                    ui.button('Run Query', icon='play_arrow', on_click=make_run_cb()).props('unelevated dense size=xs color=positive').classes('text-[10px] font-bold px-2')
-                                    ui.button('To Editor', icon='edit_note', on_click=make_send_cb()).props('outline dense size=xs color=primary').classes('text-[10px] font-bold px-1.5')
-                                    ui.button('Copy', icon='content_copy', on_click=make_copy_cb()).props('flat dense size=xs color=secondary').classes('text-[10px] font-bold px-1.5')
+                            # 2. Action buttons for individual SQL blocks (if any)
+                            if sql_blocks:
+                                for idx, sql_code in enumerate(sql_blocks):
+                                    sql_clean = sql_code.strip()
+                                    if not sql_clean:
+                                        continue
+                                    with ui.row().classes('w-full items-center gap-1.5 pt-1 flex-wrap'):
+                                        if len(sql_blocks) > 1:
+                                            ui.label(f'Query #{idx+1}:').classes('text-[10px] font-bold text-slate-500')
+                                        
+                                        def make_run_cb(code=sql_clean):
+                                            def cb():
+                                                sql_editor.set_value(code)
+                                                try:
+                                                    workspace_sub_tabs.value = 'SQL Workspace'
+                                                except Exception:
+                                                    pass
+                                                run_editor_query()
+                                                ui.notify('Executing query in SQL Workspace...', type='positive', icon='play_arrow')
+                                            return cb
+                                            
+                                        def make_send_cb(code=sql_clean):
+                                            def cb():
+                                                sql_editor.set_value(code)
+                                                try:
+                                                    workspace_sub_tabs.value = 'SQL Workspace'
+                                                except Exception:
+                                                    pass
+                                                ui.notify('Copied query to SQL Editor!', type='info', icon='edit_note')
+                                            return cb
+                                            
+                                        def make_copy_cb(code=sql_clean):
+                                            def cb():
+                                                ui.run_javascript(f'navigator.clipboard.writeText({json.dumps(code)})')
+                                                ui.notify('Copied SQL to clipboard!', type='positive', icon='content_copy')
+                                            return cb
+
+                                        ui.button('Run Query', icon='play_arrow', on_click=make_run_cb()).props('unelevated dense size=xs color=positive').classes('text-[10px] font-bold px-2')
+                                        ui.button('To Editor', icon='edit_note', on_click=make_send_cb()).props('outline dense size=xs color=primary').classes('text-[10px] font-bold px-1.5')
+                                        ui.button('Copy SQL', icon='code', on_click=make_copy_cb()).props('flat dense size=xs color=secondary').classes('text-[10px] font-bold px-1.5')
 
                     async def send_chat_message():
                         text = chat_input.value.strip()
