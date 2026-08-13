@@ -4571,11 +4571,13 @@ def index():
                                 .props('outlined dense autogrow rows=2 max-rows=6') \
                                 .classes('flex-grow text-xs') \
                                 .style('font-size: 11px; line-height: 1.3;')
-                            chat_input.on('keydown', js_handler='''
+                            
+                            chat_input.on('keydown.enter', lambda: send_chat_message(), js_handler='''
                                 (e) => {
                                     if (e.key === 'Enter') {
                                         if (e.ctrlKey) {
                                             e.preventDefault();
+                                            e.stopPropagation();
                                             const target = e.target;
                                             const start = target.selectionStart;
                                             const end = target.selectionEnd;
@@ -4584,12 +4586,12 @@ def index():
                                             target.dispatchEvent(new Event('input', { bubbles: true }));
                                         } else if (!e.shiftKey) {
                                             e.preventDefault();
-                                            emitEvent('submit');
+                                            e.stopPropagation();
+                                            emitEvent('keydown.enter');
                                         }
                                     }
                                 }
                             ''')
-                            chat_input.on('submit', lambda: send_chat_message())
                             ui.button(icon='send', on_click=lambda: send_chat_message()).props('elevated dense color=primary size=sm').classes('px-2.5 mb-1')
 
                     # Exit the split row slot context
