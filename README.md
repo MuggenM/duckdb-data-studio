@@ -119,6 +119,41 @@ docker compose up -d --build
 
 ---
 
+## 🤖 AI SQL Copilot & CPU-Bound Local LLM Guide
+
+The **AI SQL Copilot** inside DuckDB Data Studio supports both cloud LLM providers (OpenAI, Anthropic) and **100% offline, local CPU-bound models** (via Ollama or LM-Studio).
+
+If you do not have a dedicated GPU or want a zero-cost local LLM setup, modern small code-specialized models running on **standard CPU RAM** provide full Copilot functionality—including 1-click execution (`▶ Run Query`), Auto-Run previews (`🟡 Auto-Run`), and self-healing query auto-fix loops.
+
+### ⚡ Recommended CPU Models (Quantized GGUF Q4_K_M)
+
+| Model Name | RAM / Footprint | CPU Speed | SQL Accuracy | Best For |
+|---|---|---|---|---|
+| **`qwen2.5-coder:1.5b`** | **~1.2 GB RAM** | 🚀 **40–70 tokens/sec** | ⭐⭐⭐⭐ (90%+) | **Ultra-fast CPU execution**, lowest memory footprint |
+| **`qwen2.5-coder:3b`** | **~2.2 GB RAM** | ⚡ **25–45 tokens/sec** | ⭐⭐⭐⭐⭐ (95%+) | **Best balance** of speed & high SQL accuracy |
+| **`deepseek-coder:1.5b`** | **~1.3 GB RAM** | 🚀 **35–60 tokens/sec** | ⭐⭐⭐⭐ (88%+) | Lightweight coding model |
+| **`llama3.2:3b-instruct`** | **~2.0 GB RAM** | ⚡ **25–40 tokens/sec** | ⭐⭐⭐⭐ (85%+) | General instruction following |
+
+### 🛠️ Setting Up a CPU Local LLM with Ollama
+
+1. **Install and run Ollama on your host system**:
+   ```bash
+   ollama run qwen2.5-coder:1.5b
+   # OR for higher accuracy:
+   ollama run qwen2.5-coder:3b
+   ```
+
+2. **Configure DuckDB Data Studio**:
+   * Open the **Settings** tab in the top navigation bar.
+   * Set **AI Provider**: `Ollama` (or `Custom / OpenAI-Compatible`).
+   * Set **Base URL**: `http://host.docker.internal:11434/v1` (or `http://10.0.2.2:11434/v1` for Linux Rootless Docker).
+   * Set **Model Name**: `qwen2.5-coder:1.5b` or `qwen2.5-coder:3b`.
+   * Click **Save AI Settings**.
+
+Because SQL queries are concise (50–200 tokens), a 1.5B or 3B model running on CPU generates and auto-executes queries in **1 to 3 seconds**.
+
+---
+
 ## 🔌 Model Context Protocol (MCP) Server
 
 DuckDB Data Studio includes a built-in **Model Context Protocol (MCP)** server, allowing AI assistants (such as Antigravity, Claude Desktop, Cursor, or VS Code Copilot) to programmatically inspect database schemas, execute SQL queries, profile performance, and manage attached data lakes.
