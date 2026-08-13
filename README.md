@@ -51,8 +51,10 @@ graph TD
 * **High-Performance Query Execution**: Execute complex analytical SQL queries instantly against local or attached databases with NiceGUI's premium responsive layout.
 * **Safety Capped Previews**: SELECT queries automatically cap result-set fetching to a maximum of 10,000 rows, protecting the Python process memory and preventing UI freezes when querying large datasets.
 * **Dynamic Parameterized Queries**: Write dynamic templates using the double-curly brace syntax (e.g., `{{ min_age }}`). The editor dynamically renders input fields, escapes quotes, and substitutes values securely before execution.
-* **Schema Catalog Tree**: Visually browse schemas, tables, views, columns, and datatype catalogs via an interactive sidebar list, allowing fast discovery of database structures.
+* **Schema Catalog Tree**: Visually browse schemas, tables, views, columns, and datatype catalogs via an interactive sidebar list across attached databases (`main_db`, `car_rental`, `e_commerce`, `logistics`, `ducklake`, `s3_delta_catalog`).
 * **Persistent Query History**: Retain a robust history of executed statements (including run times, row counts, execution success, and errors) stored directly inside the config SQLite database. Features include quick clipboard copy and history element deletions.
+* **Output Results Views**: Switch seamlessly between interactive **Data Grid** (with CSV/Parquet export), **Analytics Chart** (Bar, Line, Pie), **Geo Map** (Leaflet spatial mapping), **Query Profiler**, **Session History**, and **System Log**.
+* **AI SQL Copilot & Autonomous Agent System**: Integrated AI pair programmer featuring **1-Click Action Buttons** (`▶ Run Query`, `↗ To Editor`, `📋 Copy`), **`🟡 Auto-Run`** execution mode with inline 5-row preview tables, **Phase 3 Self-Healing Auto-Fix** loop on SQL errors, and multi-database fully-qualified schema generation.
 
 ### 2. Drag-and-Drop Data Import Wizard 📥
 * **Schema Sniffing & Live Preview**: Drag-and-drop CSV, Parquet, or JSON files to automatically sniff schema types and view a grid layout preview of the parsing structures.
