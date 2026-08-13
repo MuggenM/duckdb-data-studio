@@ -18,7 +18,7 @@ DuckDB Studio organizes its workspaces into specialized tabs:
 
 | Workspace Tab | Icon | Purpose |
 | :--- | :---: | :--- |
-| **[1. Explorer](#1-explorer)** | `query_stats` | Database schema catalog browser, visual query builder, optimized S3 connections, and SQL editor. |
+| **[1. Explorer](#1-explorer)** | `query_stats` | Database schema catalog browser, visual query builder, AI SQL Copilot, and SQL editor. |
 | **[2. JupyterLab](#2-jupyterlab)** | `terminal` | Embedded JupyterLab notebook interface running on system python with `duckrun` integration. |
 | **[3. dbt Code Server](#3-dbt-code-server)** | `vscode_blue` | Integrated VS Code editor environment pre-configured for dbt model development. |
 | **[4. Extensions](#4-extensions)** | `extension` | Graphical extension installer/loader for DuckDB's runtime libraries (spatial, httpfs, etc.). |
@@ -27,6 +27,8 @@ DuckDB Studio organizes its workspaces into specialized tabs:
 | **[7. API Docs & Explorer](#7-api-docs--explorer)** | `menu_book` | OpenAPI interactive Swagger interface and dynamic testing sandbox. |
 | **[8. Scheduler](#8-scheduler)** | `schedule` | Automated query scheduler, folder exporter, and telemetry logs retention clean-up agent. |
 | **[9. Settings](#9-settings)** | `settings` | Global system settings and credentials manager. |
+| **[10. Apache Superset](#10-apache-superset)** | `bar_chart` | Integrated enterprise BI reporting dashboard with PGWire connections. |
+| **[11. MCP Server](#11-model-context-protocol-mcp-server)** | `hub` | Built-in Model Context Protocol (MCP) server for external AI assistant integration. |
 
 ---
 
@@ -45,11 +47,26 @@ Below is a walk-through demonstrating database schema catalog browser traversal,
 
 #### Key Capabilities:
 * **Ad-Hoc Editor**: Write standard or complex SQL statements with hot-reloaded autocomplete and execute them using `Ctrl + Enter` or the **Run Query** button.
-* **Database Catalog Tree**: Visually trace attached databases, schemas, tables, views, columns, and data types. Click any table node to automatically preview its data.
+* **Database Catalog Tree**: Visually trace attached databases (`main_db`, `car_rental`, `e_commerce`, `logistics`, `ducklake`, `s3_delta_catalog`), schemas, tables, views, columns, and data types. Click any table node to automatically preview its data.
 * **Visual Query Builder**: Build projection queries dynamically by checking columns, configuring sort options (`ASC`/`DESC`), and adding filter clauses in the UI.
+* **Output Results Views**:
+  * **Data Grid**: High-performance interactive data table with pagination, CSV export, and Parquet export.
+  * **Analytics Chart**: Visual chart renderer supporting Bar, Line, and Pie chart types.
+  * **Geo Map**: Integrated Leaflet map visualization for spatial and coordinate (`latitude`/`longitude`) dataset plotting.
+  * **Query Profiler**: Graphical query execution timing and node breakdown.
+  * **Session History**: Historical trace of query metrics and execution speeds.
+  * **System Log**: Real-time console diagnostics and error stack traces.
 * **Save Presets**: Save SQL queries directly into internal storage. Saved queries can be loaded back into the editor with one click.
-* **Session History**: Trace and review recently run query metrics, timing, and latencies.
 * **Execution Plan Visualizer**: Run logical and physical optimizer tracing via **Explain Plan** or trace dynamic execution profiling with **Explain Analyze**.
+
+#### 🤖 AI SQL Copilot & Autonomous Execution System:
+The AI SQL Copilot is an embedded AI pair programmer available directly inside the Explorer workspace.
+
+* **1-Click Execution Buttons**: Generated SQL code blocks include **`▶ Run Query`** (executes instantly in SQL Workspace), **`↗ To Editor`** (copies to editor for manual edits), and **`📋 Copy`** (copies to clipboard).
+* **Autonomous Auto-Run Mode**: Toggle **`🟡 Auto-Run`** in the Copilot header to automatically execute generated SQL queries, format a 5-row markdown sample preview table inside the chat bubble, and populate the main Data Grid.
+* **Self-Healing Auto-Fix Loop**: When Auto-Run is enabled, if DuckDB returns an execution error, Copilot automatically catches the exception, generates a corrected query, and executes the fix seamlessly.
+* **Multi-Database & Cross-Database JOINs**: Copilot receives schema context for all attached databases (`main_db`, `car_rental`, `e_commerce`, `logistics`, `ducklake`, `s3_delta_catalog`) and strictly enforces fully-qualified `<database>.<schema>.<table>` syntax.
+* **Wide Full-Width Chat UI**: Features a 440px wide panel with 100% horizontal text bubble width and zero avatar margin bloat.
 
 #### Latest Features & Optimizations:
 * **AI SQL Copilot & CPU-Bound Local LLM Guide**: Supports both cloud providers and 100% offline local CPU models. Small quantized models (`qwen2.5-coder:1.5b` or `3b`) run at **25–70 tokens/sec on CPU RAM**, enabling ultra-fast local query generation, 1-click execution, and self-healing auto-fix loops without a GPU.
@@ -238,3 +255,43 @@ A centralized control panel to manage global application parameters, safety over
 * **Security & JWT**: Customizes JWT signature secrets, issuer names, and audiences.
 * **Telemetry Config**: Set retention duration for database telemetry metrics.
 * **Jupyter Credentials**: Configure the Jupyter server URL and token.
+
+---
+
+### 10. Apache Superset BI Workspace
+
+Integrated enterprise business intelligence reporting workspace built into DuckDB Data Studio.
+
+#### Integration Details:
+* **Embedded UI**: Accessible directly from the top navigation bar iframe tab or via `http://studio.localhost:8880/superset/`.
+* **PGWire Connectivity**: Connected to DuckDB Data Studio via the embedded **Buena Vista / Duckgres** Postgres Wire Protocol server running on port `5433`.
+* **Pre-Configured Datasources**: Pre-connected to DuckDB catalogs with persistent Postgres driver hooks (`psycopg2`), enabling instant chart creation, dashboards, and slice-and-dice analytics.
+
+---
+
+### 11. Model Context Protocol (MCP) Server
+
+DuckDB Data Studio includes an embedded **Model Context Protocol (MCP)** server, enabling external AI coding assistants (such as Antigravity, Claude Desktop, Cursor, or VS Code Copilot) to programmatically interact with your workspace.
+
+#### 🧰 Available MCP Tools:
+
+| Tool Name | Purpose | Parameters |
+|---|---|---|
+| **`execute_sql`** | Executes any DuckDB SQL query and returns formatted markdown tables. | `sql` |
+| **`list_databases_and_tables`** | Returns a complete tree breakdown of all attached databases, schemas, tables, and column types. | *None* |
+| **`describe_table`** | Returns column metadata, data types, nullability, and total row count for a table. | `database_name`, `table_name`, `schema_name` |
+| **`export_query_results`** | Exports query results to Parquet, CSV, or JSON files. | `sql`, `file_path`, `file_format` |
+| **`attach_database`** | Dynamically attaches a DuckDB or SQLite database file. | `database_name`, `file_path`, `read_only` |
+| **`explain_query`** | Generates physical execution plans (`EXPLAIN` / `EXPLAIN ANALYZE`). | `sql`, `analyze` |
+| **`get_query_history`** | Retrieves recent SQL query execution history, durations, and row counts. | `limit` |
+| **`run_dbt_model`** | Triggers a `dbt-duckrun` model build execution in the workspace container. | `model_name` |
+| **`get_system_info`** | Returns DuckDB engine version and all attached database storage paths. | *None* |
+
+#### 💻 Connection Specifications:
+* **HTTP SSE Endpoint**: `http://localhost:8086/mcp/sse` (or `http://studio.localhost:8880/mcp/sse`)
+* **Standalone Stdio Script**: `python3 /app/mcp_server_duckdb.py`
+
+#### Client Configuration Templates:
+* **Antigravity / Gemini CLI**: Pre-configured in [`config/mcp_config.json`](../config/mcp_config.json).
+* **VS Code & Cursor**: Pre-configured in [`.vscode/mcp.json`](../.vscode/mcp.json).
+* **Claude Desktop**: Template in [`config/claude_desktop_config.json`](../config/claude_desktop_config.json).
