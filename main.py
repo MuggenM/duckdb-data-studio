@@ -321,8 +321,17 @@ def load_attached_databases_for_connection(conn):
         if not config or 'databases' not in config:
             return
         
+        # Check currently attached database names to avoid duplicate attach conflicts
+        try:
+            attached_dbs = {row[0] for row in conn.execute("SELECT database_name FROM duckdb_databases();").fetchall()}
+        except Exception:
+            attached_dbs = set()
+        
         for db in config.get('databases', []):
             db_name = db.get('name')
+            if not db_name or db_name in attached_dbs:
+                continue  # Skip if already attached
+                
             db_type = db.get('type')
             db_path = db.get('path')
             options = db.get('options', {})
@@ -9160,4 +9169,4 @@ except Exception as mcp_ex:
 
 
 # Start application server
-ui.run(title='DuckDB Data Studio Explorer', port=8085, show=False, storage_secret='duckdb_studio_secret_key_1337', reload=False, reconnect_timeout=30.0)
+ui.run(title='DuckDB Data Studio Explorer', port=8085, show=False, storage_secret='duckdb_studio_secret_key_1337', reload=False, reconnect_timeout=300.0)
