@@ -2113,7 +2113,7 @@ def index():
                                 # 2. Define handler referencing density_select
                                 def handle_template_select_change(e):
                                     val = e.value.lower() if e.value else ''
-                                    is_live = any(k in val for k in ['railway', 'taxi', 'github', 'openaq', 'open_aq', 'weather'])
+                                    is_live = any(k in val for k in ['railway', 'taxi', 'github', 'openaq', 'open_aq', 'weather', 'formula', 'f1'])
                                     if is_live:
                                         density_select.disable()
                                         ui.notify("Mock data density disabled (loads real-world dataset directly).", type='info')
@@ -2130,7 +2130,7 @@ def index():
                                 
                                 # Initial check on creation
                                 val_init = seed_select.value.lower() if seed_select.value else ''
-                                if any(k in val_init for k in ['railway', 'taxi', 'github', 'openaq', 'open_aq', 'weather']):
+                                if any(k in val_init for k in ['railway', 'taxi', 'github', 'openaq', 'open_aq', 'weather', 'formula', 'f1']):
                                     density_select.disable()
                                 
                                 ui.button('Create & Seed Database', icon='play_circle_filled', color='primary',

@@ -1,0 +1,27 @@
+databases:
+- name: my_lakehouse
+  options:
+    data_path: /ducklake/data_parquet/
+  path: /ducklake/metadata.db
+  type: ducklake
+- name: servicerequests
+  path: /databases/ServiceRequests.duckdb
+  type: duckdb
+- name: car_rental
+  path: /databases/car_rental.duckdb
+  type: duckdb
+- name: logistics
+  path: /databases/logistics.duckdb
+  type: duckdb
+- name: noaa_weather
+  path: /databases/noaa_weather.duckdb
+  type: duckdb
+- name: nyc_taxi
+  path: /databases/nyc_taxi.duckdb
+  type: duckdb
+- name: e_commerce
+  path: /databases/e_commerce.duckdb
+  type: duckdb
+- name: formula1
+  path: /databases/formula1.duckdb
+  type: duckdb
