@@ -4986,6 +4986,11 @@ CRITICAL DUCKDB SQL RULES:
         # Open a dedicated connection for this background thread to ensure thread safety
         thread_conn = duckdb.connect(explorer.db_file, config=DB_CONFIG)
         try:
+            try:
+                thread_conn.execute("SET preserve_insertion_order=false;")
+            except Exception:
+                pass
+                
             # Re-attach any databases that were attached in the main session
             try:
                 thread_conn.execute("INSTALL ducklake; LOAD ducklake;")
@@ -5072,7 +5077,7 @@ CRITICAL DUCKDB SQL RULES:
                     bytes_per_row += nominal_widths.get(base_type, 24)
                 disk_size = total_rows * bytes_per_row
                 
-            # 4. Construct SQL statement for column-level statistics
+            # 4. Construct SQL statement for column-level statistics using approx_count_distinct for ultra-fast, low-memory scans
             select_parts = []
             numeric_types = {
                 'TINYINT', 'SMALLINT', 'INTEGER', 'BIGINT', 'HUGEINT',
@@ -5086,7 +5091,7 @@ CRITICAL DUCKDB SQL RULES:
             for name, type_str in cols:
                 base_type = type_str.split('(')[0].strip().upper()
                 esc = f'"{name}"'
-                part = f'count({esc}), count(DISTINCT {esc})'
+                part = f'count({esc}), approx_count_distinct({esc})'
                 
                 if base_type in numeric_types or base_type in datetime_types:
                     part += f', min({esc}), max({esc})'
