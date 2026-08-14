@@ -208,6 +208,23 @@ def fix_dbt_project_permissions():
     else:
         print("  dbt_project directory does not exist, skipping permissions check.")
 
+def init_dbt_packages():
+    print_step("Checking and installing dbt packages (dbt_utils)")
+    dbt_project_dir = '/app/dbt_project'
+    packages_file = os.path.join(dbt_project_dir, 'packages.yml')
+    if os.path.exists(packages_file):
+        try:
+            cmd = ["dbt", "deps"]
+            res = subprocess.run(cmd, cwd=dbt_project_dir, capture_output=True, text=True, timeout=120)
+            if res.returncode == 0:
+                print_success("dbt packages installation (dbt_utils)")
+            else:
+                print_error(f"dbt deps returned exit code {res.returncode}: {res.stderr}")
+        except Exception as e:
+            print_error(f"Failed to run dbt deps: {e}")
+    else:
+        print("  No packages.yml found in dbt_project, skipping dbt deps.")
+
 def main():
     print("=========================================================")
     print("      🦆 DUCKDB DATA STUDIO STACK INITIALIZATION 🦆       ")
@@ -216,6 +233,7 @@ def main():
     init_tls()
     init_sqlite()
     fix_dbt_project_permissions()
+    init_dbt_packages()
     print("=========================================================")
     print("[+] Stack initialization complete. Ready to launch!")
     print("=========================================================")
