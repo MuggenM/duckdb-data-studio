@@ -5,6 +5,8 @@ test_project:
       type: duckrun
       root_path: 's3://devbucket/dev_tables'
       threads: 2
+      plugins:
+        - module: s3_catalog_plugin
       extensions:
         - httpfs
         - delta
@@ -31,6 +33,8 @@ test_project:
       type: duckrun
       root_path: 's3://prodbucket/tables'
       threads: 2
+      plugins:
+        - module: s3_catalog_plugin
       extensions:
         - httpfs
         - delta

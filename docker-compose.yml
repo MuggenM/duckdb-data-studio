@@ -44,6 +44,7 @@ services:
       - ./dbt_project:/app/dbt_project
       - ./dbt_data:/app/dbt_data
       - ./s3_catalog_sync.py:/app/s3_catalog_sync.py
+      - ./s3_catalog_plugin.py:/app/s3_catalog_plugin.py
       - ./main.py:/app/main.py
     environment:
       - STORAGE_SECRET=duckdb_studio_secret_key_1337
@@ -56,6 +57,7 @@ services:
       - AWS_S3_ALLOW_UNSAFE_RENAME=true
       - AWS_ALLOW_HTTP=true
       - AWS_EC2_METADATA_DISABLED=true
+      - PYTHONPATH=/app:/home/coder/project
     networks:
       - studio_jupyter_net
     extra_hosts:
@@ -194,6 +196,8 @@ services:
       - ./databases:/app/databases
       - code-server-extensions:/home/coder/.local/share/code-server
       - ./entrypoint_codeserver.sh:/app/entrypoint_codeserver.sh
+      - ./s3_catalog_sync.py:/app/s3_catalog_sync.py
+      - ./s3_catalog_plugin.py:/app/s3_catalog_plugin.py
     environment:
       - AWS_ACCESS_KEY_ID=GK2713753aca1d72db5325f212
       - AWS_SECRET_ACCESS_KEY=afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e
@@ -202,6 +206,7 @@ services:
       - AWS_S3_ALLOW_UNSAFE_RENAME=true
       - AWS_ALLOW_HTTP=true
       - AWS_EC2_METADATA_DISABLED=true
+      - PYTHONPATH=/app:/home/coder/project
     entrypoint: ["/bin/bash", "/app/entrypoint_codeserver.sh"]
     command: ["--auth", "none", "--bind-addr", "0.0.0.0:8080", "/home/coder/project"]
     networks:

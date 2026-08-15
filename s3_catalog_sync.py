@@ -44,7 +44,11 @@ def sync_catalog(conn=None):
         base_name = base_name[:-7]
     if not base_name:
         base_name = "dbt_workspace"
-    target_db_path = f"/databases/{base_name}.duckdb"
+        
+    if not os.path.exists("/databases") and os.path.exists("/app/databases"):
+        target_db_path = f"/app/databases/{base_name}.duckdb"
+    else:
+        target_db_path = f"/databases/{base_name}.duckdb"
         
     db_dir = os.path.dirname(target_db_path)
     if db_dir:
