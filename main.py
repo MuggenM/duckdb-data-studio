@@ -2271,7 +2271,7 @@ def index():
                             try:
                                 from s3_catalog_sync import sync_catalog
                                 loop = asyncio.get_event_loop()
-                                success = await loop.run_in_executor(None, sync_catalog)
+                                success = await loop.run_in_executor(None, lambda: sync_catalog(explorer.conn))
                                 if success:
                                     ui.notify('S3 Delta Catalog successfully synchronized!', type='success')
                                 else:
