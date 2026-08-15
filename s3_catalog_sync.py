@@ -121,14 +121,15 @@ def sync_catalog(conn=None):
     created_own_conn = False
     if conn is None:
         try:
-            conn = duckdb.connect(target_db_path)
+            conn = duckdb.connect(target_db_path, read_only=False)
             created_own_conn = True
-        except Exception:
+        except Exception as e1:
+            print(f"WARNING: Direct write connection to {target_db_path} failed ({e1}). Retrying with read_only=False...", flush=True)
             try:
-                conn = duckdb.connect(target_db_path, read_only=True)
+                conn = duckdb.connect(target_db_path, read_only=False)
                 created_own_conn = True
             except Exception as conn_err:
-                print(f"ERROR: Could not open connection to {target_db_path}: {conn_err}", flush=True)
+                print(f"ERROR: Could not open read-write connection to {target_db_path}: {conn_err}", flush=True)
                 return False
             
     try:

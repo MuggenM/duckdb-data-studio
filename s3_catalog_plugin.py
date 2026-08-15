@@ -11,8 +11,8 @@ class Plugin(BasePlugin):
         if not Plugin._registered:
             def _on_dbt_run_end():
                 try:
-                    print("\nINFO: [dbt post-run-hook] Triggering automatic S3 Delta Catalog Sync...", flush=True)
-                    # Add project path to sys.path if missing
+                    print("\nINFO: [dbt post-run-hook] Triggering automatic S3 Delta Catalog Sync & Column Lineage...", flush=True)
+                    # Add project and app paths to sys.path if missing
                     proj_paths = ['/app', '/home/coder/project', os.getcwd()]
                     for p in proj_paths:
                         if p not in sys.path and os.path.exists(p):
@@ -20,8 +20,15 @@ class Plugin(BasePlugin):
                             
                     import s3_catalog_sync
                     s3_catalog_sync.sync_catalog()
+                    
+                    try:
+                        import column_lineage
+                        column_lineage.generate_column_lineage()
+                    except Exception as cle:
+                        print(f"INFO: [dbt post-run-hook] Column lineage notice: {cle}", flush=True)
+
                 except Exception as e:
-                    print(f"ERROR: [dbt post-run-hook] S3 Catalog Sync failed: {e}", flush=True)
+                    print(f"ERROR: [dbt post-run-hook] Post-run hook failed: {e}", flush=True)
 
             atexit.register(_on_dbt_run_end)
             Plugin._registered = True

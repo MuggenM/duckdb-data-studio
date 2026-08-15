@@ -45,6 +45,7 @@ services:
       - ./dbt_data:/app/dbt_data
       - ./s3_catalog_sync.py:/app/s3_catalog_sync.py
       - ./s3_catalog_plugin.py:/app/s3_catalog_plugin.py
+      - ./column_lineage.py:/app/column_lineage.py
       - ./main.py:/app/main.py
     environment:
       - STORAGE_SECRET=duckdb_studio_secret_key_1337
@@ -198,6 +199,7 @@ services:
       - ./entrypoint_codeserver.sh:/app/entrypoint_codeserver.sh
       - ./s3_catalog_sync.py:/app/s3_catalog_sync.py
       - ./s3_catalog_plugin.py:/app/s3_catalog_plugin.py
+      - ./column_lineage.py:/app/column_lineage.py
     environment:
       - AWS_ACCESS_KEY_ID=GK2713753aca1d72db5325f212
       - AWS_SECRET_ACCESS_KEY=afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e
