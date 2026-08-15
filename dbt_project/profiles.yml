@@ -1,11 +1,11 @@
 test_project:
-  target: dev
+  target: prod
   outputs:
     dev:
       type: duckdb
       path: '/app/databases/dbt_workspace.duckdb'
       threads: 1
-    s3_delta:
+    prod:
       type: duckrun
       root_path: 's3://devbucket/tables'
       threads: 2
