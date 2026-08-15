@@ -358,7 +358,7 @@ def load_attached_databases_for_connection(conn):
                 elif db_type == 'mysql':
                     sql = f"ATTACH '{db_path}' AS {db_name} (TYPE mysql);"
                 else: # duckdb
-                    sql = f"ATTACH '{db_path}' AS {db_name};"
+                    sql = f"ATTACH '{db_path}' AS {db_name} (READ_ONLY true);"
                 
                 conn.execute(sql)
                 print(f"INFO: Successfully auto-attached {db_type} database '{db_name}' from config.")

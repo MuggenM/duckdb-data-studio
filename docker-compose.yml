@@ -187,6 +187,7 @@ services:
       - ./dbt_project:/home/coder/project
       - ./profiles:/home/coder/.dbt
       - ./dbt_data:/app/data
+      - ./databases:/app/databases
       - code-server-extensions:/home/coder/.local/share/code-server
       - ./entrypoint_codeserver.sh:/app/entrypoint_codeserver.sh
     environment:
