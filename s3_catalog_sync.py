@@ -19,41 +19,51 @@ def sync_catalog(conn=None):
             aws_secret_access_key=secret_key,
             region_name=region_name
         )
-        bucket_name = "devbucket"
-        bucket = s3.Bucket(bucket_name)
         
-        # Discover Delta tables directories across production (tables/) and development (dev_tables/)
+        # Discover Delta tables across ALL S3 buckets (prodbucket, devbucket, etc.)
         delta_tables = {}
         
-        # 1. Scan Production tables (s3://devbucket/tables/)
-        for obj in bucket.objects.filter(Prefix="tables/"):
-            key = obj.key
-            if "_delta_log/" in key:
-                prefix_part = key.split("_delta_log/")[0].rstrip("/")
-                parts = prefix_part.split("/")
-                if len(parts) >= 3:
-                    schema_name = parts[1]
-                    table_name = "_".join(parts[2:])
-                    s3_path = f"s3://{bucket_name}/{prefix_part}"
-                    delta_tables[(schema_name, table_name)] = s3_path
+        # Process prodbucket FIRST so production paths populate standard schemas (f1_marts, f1_staging, main)
+        buckets = list(s3.buckets.all())
+        buckets.sort(key=lambda b: 0 if b.name == "prodbucket" else 1)
+        
+        for b in buckets:
+            bucket_name = b.name
+            print(f"INFO: Scanning bucket '{bucket_name}' for Delta tables...", flush=True)
+            
+            for obj in b.objects.all():
+                key = obj.key
+                if "_delta_log/" in key:
+                    prefix_part = key.split("_delta_log/")[0].rstrip("/")
+                    parts = prefix_part.split("/")
                     
-        # 2. Scan Development tables (s3://devbucket/dev_tables/)
-        for obj in bucket.objects.filter(Prefix="dev_tables/"):
-            key = obj.key
-            if "_delta_log/" in key:
-                prefix_part = key.split("_delta_log/")[0].rstrip("/")
-                parts = prefix_part.split("/")
-                if len(parts) >= 3:
-                    raw_schema = parts[1]
-                    schema_name = f"dev_{raw_schema}"
-                    table_name = "_".join(parts[2:])
-                    s3_path = f"s3://{bucket_name}/{prefix_part}"
-                    delta_tables[(schema_name, table_name)] = s3_path
+                    if len(parts) >= 3:
+                        folder_type = parts[0]
+                        raw_schema = parts[1]
+                        table_name = "_".join(parts[2:])
+                        s3_path = f"s3://{bucket_name}/{prefix_part}"
+                        
+                        if bucket_name == "prodbucket":
+                            schema_name = raw_schema
+                            delta_tables[(schema_name, table_name)] = s3_path
+                        elif folder_type == "dev_tables":
+                            schema_name = f"dev_{raw_schema}"
+                            delta_tables[(schema_name, table_name)] = s3_path
+                        elif bucket_name == "devbucket" and folder_type == "tables":
+                            schema_name = raw_schema
+                            # Only set if not already populated by prodbucket
+                            if (schema_name, table_name) not in delta_tables:
+                                delta_tables[(schema_name, table_name)] = s3_path
+                        else:
+                            schema_name = f"{bucket_name}_{raw_schema}"
+                            if (schema_name, table_name) not in delta_tables:
+                                delta_tables[(schema_name, table_name)] = s3_path
+
     except Exception as e:
-        print(f"ERROR: Failed to scan S3 bucket: {e}", flush=True)
+        print(f"ERROR: Failed to scan S3 buckets: {e}", flush=True)
         return False
         
-    print(f"INFO: Discovered Delta tables: {[f'{s}.{t}' for s, t in delta_tables.keys()]}", flush=True)
+    print(f"INFO: Discovered Delta tables count: {len(delta_tables)}", flush=True)
     
     # Target database for catalog views is dbt_workspace.duckdb
     target_db_path = "/databases/dbt_workspace.duckdb"
