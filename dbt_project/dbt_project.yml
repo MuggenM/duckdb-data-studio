@@ -20,14 +20,6 @@ on-run-start:
   - "CREATE SCHEMA IF NOT EXISTS f1_staging;"
   - "CREATE SCHEMA IF NOT EXISTS f1_marts;"
   - "ATTACH IF NOT EXISTS '/app/databases/formula1.duckdb' AS formula1;"
-  - "CREATE TABLE IF NOT EXISTS formula1.main.circuits AS SELECT * FROM read_csv_auto('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2021/2021-09-07/circuits.csv', nullstr='\\N');"
-  - "CREATE TABLE IF NOT EXISTS formula1.main.constructors AS SELECT * FROM read_csv_auto('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2021/2021-09-07/constructors.csv', nullstr='\\N');"
-  - "CREATE TABLE IF NOT EXISTS formula1.main.drivers AS SELECT * FROM read_csv_auto('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2021/2021-09-07/drivers.csv', nullstr='\\N');"
-  - "CREATE TABLE IF NOT EXISTS formula1.main.races AS SELECT * FROM read_csv_auto('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2021/2021-09-07/races.csv', nullstr='\\N');"
-  - "CREATE TABLE IF NOT EXISTS formula1.main.results AS SELECT * FROM read_csv_auto('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2021/2021-09-07/results.csv', nullstr='\\N');"
-  - "CREATE TABLE IF NOT EXISTS formula1.main.status AS SELECT * FROM read_csv_auto('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2021/2021-09-07/status.csv', nullstr='\\N');"
-  - "CREATE TABLE IF NOT EXISTS formula1.main.pit_stops AS SELECT * FROM read_csv_auto('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2021/2021-09-07/pit_stops.csv', nullstr='\\N');"
-  - "CREATE TABLE IF NOT EXISTS formula1.main.lap_times AS SELECT * FROM read_csv_auto('https://raw.githubusercontent.com/rfordatascience/tidytuesday/main/data/2021/2021-09-07/lap_times.csv', nullstr='\\N');"
 
 models:
   test_project:
