@@ -255,7 +255,9 @@ def load_app_settings():
         "telemetry_retention_days": 30,
         "jwt_secret": "duckdb_studio_secret_key_1337",
         "jwt_issuer": "duckdb_studio",
-        "jwt_audience": "duckdb_studio_clients"
+        "jwt_audience": "duckdb_studio_clients",
+        "s3_catalog_buckets": "prodbucket, devbucket",
+        "s3_catalog_database": "/databases/dbt_workspace.duckdb"
     }
     if os.path.exists(config_path):
         try:
@@ -4122,6 +4124,23 @@ def index():
                         value=APP_SETTINGS.get('ai_base_url', '')
                     ).props('outlined dense').classes('w-full').tooltip('Custom API gateway Base URL (e.g., http://localhost:11434/v1 for Ollama).')
 
+                # Card 6: S3 Delta Catalog Sync Configuration
+                with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                    with ui.row().classes('items-center gap-2'):
+                        ui.icon('cloud_sync', color='primary').classes('text-2xl')
+                        ui.label('S3 Delta Catalog Sync Configuration').classes('text-lg font-bold text-slate-800 dark:text-white')
+                    ui.separator().classes('opacity-50')
+                    
+                    settings_s3_buckets = ui.input(
+                        'Target S3 Buckets', 
+                        value=APP_SETTINGS.get('s3_catalog_buckets', 'prodbucket, devbucket')
+                    ).props('outlined dense').classes('w-full').tooltip('Comma-separated list of S3 bucket names to scan for Delta Lake tables (e.g. prodbucket, devbucket).')
+                    
+                    settings_s3_catalog_db = ui.input(
+                        'Catalog Database Path', 
+                        value=APP_SETTINGS.get('s3_catalog_database', '/databases/dbt_workspace.duckdb')
+                    ).props('outlined dense').classes('w-full').tooltip('Path to the DuckDB database file where S3 Delta views will be registered.')
+
             # Actions row
             with ui.row().classes('w-full justify-end gap-3 p-4'):
                 def handle_save_settings():
@@ -4136,7 +4155,9 @@ def index():
                         "ai_provider": settings_ai_provider.value,
                         "ai_api_key": settings_ai_api_key.value.strip() if settings_ai_api_key.value else "",
                         "ai_model": settings_ai_model.value.strip() if settings_ai_model.value else "gpt-4o",
-                        "ai_base_url": settings_ai_base_url.value.strip() if settings_ai_base_url.value else ""
+                        "ai_base_url": settings_ai_base_url.value.strip() if settings_ai_base_url.value else "",
+                        "s3_catalog_buckets": settings_s3_buckets.value.strip() if settings_s3_buckets.value else "prodbucket, devbucket",
+                        "s3_catalog_database": settings_s3_catalog_db.value.strip() if settings_s3_catalog_db.value else "/databases/dbt_workspace.duckdb"
                     }
                     new_jupyter = {
                         "url": settings_jupyter_url.value.strip() if settings_jupyter_url.value else "http://localhost:8889",

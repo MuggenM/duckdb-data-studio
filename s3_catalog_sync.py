@@ -2,13 +2,42 @@ import os
 import boto3
 import duckdb
 
+def load_catalog_settings():
+    config_paths = ['/config/studio_config.yaml', 'config/studio_config.yaml']
+    settings = {
+        "s3_catalog_buckets": os.environ.get("S3_CATALOG_BUCKETS", "prodbucket, devbucket"),
+        "s3_catalog_database": os.environ.get("S3_CATALOG_DATABASE", "/databases/dbt_workspace.duckdb")
+    }
+    for path in config_paths:
+        if os.path.exists(path):
+            try:
+                import yaml
+                with open(path, 'r') as f:
+                    config = yaml.safe_load(f)
+                if config and isinstance(config, dict):
+                    app_settings = config.get('settings', {})
+                    if isinstance(app_settings, dict):
+                        if app_settings.get('s3_catalog_buckets'):
+                            settings['s3_catalog_buckets'] = app_settings['s3_catalog_buckets']
+                        if app_settings.get('s3_catalog_database'):
+                            settings['s3_catalog_database'] = app_settings['s3_catalog_database']
+            except Exception:
+                pass
+    return settings
+
 def sync_catalog(conn=None):
     access_key = os.environ.get("AWS_ACCESS_KEY_ID") or "GK2713753aca1d72db5325f212"
     secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY") or "afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e"
     endpoint_url = os.environ.get("AWS_ENDPOINT_URL") or "http://garage:3900"
     region_name = os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"
     
-    print(f"INFO: Running S3 Delta Catalog Sync to dbt_workspace.duckdb (Endpoint: {endpoint_url})...", flush=True)
+    catalog_settings = load_catalog_settings()
+    buckets_str = catalog_settings.get("s3_catalog_buckets", "prodbucket, devbucket")
+    target_db_path = catalog_settings.get("s3_catalog_database", "/databases/dbt_workspace.duckdb")
+    
+    target_bucket_names = [b.strip() for b in buckets_str.split(",") if b.strip()]
+    
+    print(f"INFO: Running S3 Delta Catalog Sync to {target_db_path} for buckets: {target_bucket_names} (Endpoint: {endpoint_url})...", flush=True)
     
     # Connect to S3 using boto3
     try:
@@ -20,14 +49,19 @@ def sync_catalog(conn=None):
             region_name=region_name
         )
         
-        # Discover Delta tables across ALL S3 buckets (prodbucket, devbucket, etc.)
         delta_tables = {}
+        all_buckets = list(s3.buckets.all())
         
-        # Process prodbucket FIRST so production paths populate standard schemas (f1_marts, f1_staging, main)
-        buckets = list(s3.buckets.all())
-        buckets.sort(key=lambda b: 0 if b.name == "prodbucket" else 1)
+        # Filter buckets to scan based on user settings
+        if target_bucket_names and "*" not in target_bucket_names and "all" not in [b.lower() for b in target_bucket_names]:
+            buckets_to_scan = [b for b in all_buckets if b.name in target_bucket_names]
+        else:
+            buckets_to_scan = all_buckets
+            
+        first_bucket = target_bucket_names[0] if target_bucket_names else "prodbucket"
+        buckets_to_scan.sort(key=lambda b: 0 if b.name == first_bucket else 1)
         
-        for b in buckets:
+        for b in buckets_to_scan:
             bucket_name = b.name
             print(f"INFO: Scanning bucket '{bucket_name}' for Delta tables...", flush=True)
             
@@ -43,15 +77,14 @@ def sync_catalog(conn=None):
                         table_name = "_".join(parts[2:])
                         s3_path = f"s3://{bucket_name}/{prefix_part}"
                         
-                        if bucket_name == "prodbucket":
+                        if bucket_name == first_bucket and folder_type == "tables":
                             schema_name = raw_schema
                             delta_tables[(schema_name, table_name)] = s3_path
                         elif folder_type == "dev_tables":
                             schema_name = f"dev_{raw_schema}"
                             delta_tables[(schema_name, table_name)] = s3_path
-                        elif bucket_name == "devbucket" and folder_type == "tables":
+                        elif folder_type == "tables":
                             schema_name = raw_schema
-                            # Only set if not already populated by prodbucket
                             if (schema_name, table_name) not in delta_tables:
                                 delta_tables[(schema_name, table_name)] = s3_path
                         else:
@@ -64,9 +97,6 @@ def sync_catalog(conn=None):
         return False
         
     print(f"INFO: Discovered Delta tables count: {len(delta_tables)}", flush=True)
-    
-    # Target database for catalog views is dbt_workspace.duckdb
-    target_db_path = "/databases/dbt_workspace.duckdb"
     
     created_own_conn = False
     if conn is None:
@@ -120,10 +150,10 @@ def sync_catalog(conn=None):
             active_views.add((schema_name, table_name))
             print(f"INFO: Created/updated view {schema_name}.{table_name} -> {s3_path}", flush=True)
             
-        print("INFO: S3 Delta Catalog Sync to dbt_workspace.duckdb completed successfully.", flush=True)
+        print(f"INFO: S3 Delta Catalog Sync to {target_db_path} completed successfully.", flush=True)
         return True
     except Exception as e:
-        print(f"ERROR: Failed to update DuckDB views in dbt_workspace.duckdb: {e}", flush=True)
+        print(f"ERROR: Failed to update DuckDB views in {target_db_path}: {e}", flush=True)
         return False
     finally:
         if created_own_conn and conn:
