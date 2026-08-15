@@ -8,6 +8,6 @@ SELECT
     TRY_CAST(circuitId AS INT) AS circuit_id,
     NULLIF(name, '\N') AS grand_prix_name,
     TRY_CAST(NULLIF(CAST(date AS VARCHAR), '\N') AS DATE) AS race_date,
-    TRY_CAST(NULLIF(CAST(time AS VARCHAR), '\N') AS TIME) AS race_start_time,
+    NULLIF(CAST(time AS VARCHAR), '\N') AS race_start_time,
     NULLIF(url, '\N') AS wikipedia_url
 FROM raw_races
