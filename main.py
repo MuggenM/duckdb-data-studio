@@ -15,6 +15,15 @@ def element_text_patch(self, text_val):
     return self
 ui.element.text = element_text_patch
 
+# Add static file serving for generated dbt documentation site
+dbt_target_dir = "/app/dbt_project/target" if os.path.exists("/app/dbt_project/target") else "dbt_project/target"
+if not os.path.exists(dbt_target_dir):
+    os.makedirs(dbt_target_dir, exist_ok=True)
+try:
+    app.add_static_files('/dbt-docs', dbt_target_dir)
+except Exception as e:
+    print(f"WARNING: Could not mount /dbt-docs static files: {e}")
+
 from fastapi import Query, Request
 import duckdb
 from local_file_picker.local_file_picker import local_file_picker
@@ -2013,16 +2022,16 @@ def index():
                 last_tab = app.storage.user.get('active_tab', 'Explorer')
             except Exception:
                 last_tab = 'Explorer'
-            if last_tab not in ['Explorer', 'JupyterLab', 'Code Editor', 'Extensions', 'Database Tools', 'API Endpoints', 'API Docs & Explorer', 'Scheduler', 'Garage S3', 'Telemetry', 'Apache Superset', 'Settings']:
+            if last_tab not in ['Explorer', 'JupyterLab', 'Code Editor', 'Extensions', 'Database Tools', 'dbt Docs & Lineage', 'API Endpoints', 'API Docs & Explorer', 'Scheduler', 'Garage S3', 'Telemetry', 'Apache Superset', 'Settings']:
                 last_tab = 'Explorer'
                 
             with ui.tabs(value=last_tab, on_change=lambda e: handle_tab_change_global(e.value)).props('inline-label dense align=right').classes('text-white flex-grow') as tabs:
                 studio_tab = ui.tab(name='Explorer', label='', icon='img:/explorer_colored.svg').tooltip('Explorer (SQL & Schema)')
                 jupyter_tab = ui.tab(name='JupyterLab', label='', icon='img:/jupyter_orange.svg').tooltip('JupyterLab Notebooks')
-                # dbt_tab = ui.tab(name='dbt Workbench', label='', icon='img:/dbt_orange.svg').tooltip('dbt Workbench')
                 editor_tab = ui.tab(name='Code Editor', label='', icon='img:/vscode_blue.svg').tooltip('Code Editor (VS Code)')
                 extensions_tab = ui.tab(name='Extensions', label='', icon='img:/extensions_teal.svg').tooltip('Extensions Manager')
                 db_tools_tab = ui.tab(name='Database Tools', label='', icon='img:/db_tools_colored.svg').tooltip('Database Tools & Seeding')
+                dbt_docs_tab = ui.tab(name='dbt Docs & Lineage', label='', icon='account_tree').tooltip('dbt Docs & Column-Level Lineage (CLL)')
                 api_creator_tab = ui.tab(name='API Endpoints', label='', icon='img:/api_endpoint_colored.svg').tooltip('API Endpoints Creator')
                 api_docs_tab = ui.tab(name='API Docs & Explorer', label='', icon='img:/swagger_green.svg').tooltip('API Docs & Swagger UI')
                 scheduler_tab = ui.tab(name='Scheduler', label='', icon='img:/scheduler_colored.svg').tooltip('Background Query Scheduler')
@@ -2033,10 +2042,10 @@ def index():
             
         studio_container = ui.row().classes('w-full h-full no-wrap min-h-0 flex-grow').style('margin: 0; padding: 0;')
         jupyter_container = ui.column().classes('w-full h-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
-        # dbt_workbench_container = ui.column().classes('w-full h-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
         code_editor_container = ui.column().classes('w-full h-full min-h-0 flex-grow').style('margin: 0; padding: 0;')
         extensions_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-4 flex-nowrap').style('margin: 0; padding: 0;')
         db_tools_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
+        dbt_docs_container = ui.column().classes('w-full h-full min-h-0 flex-grow bg-slate-50 dark:bg-slate-900 flex-col').style('margin: 0; padding: 0;')
         api_creator_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         api_docs_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
         scheduler_container = ui.column().classes('w-full min-h-0 flex-grow p-6 overflow-auto bg-slate-50 dark:bg-slate-900 gap-6 flex-nowrap').style('margin: 0; padding: 0;')
@@ -2393,6 +2402,136 @@ def index():
                                 ui.notify(f'Error running sync: {ex}', type='negative')
                                 
                         ui.button('Sync Now', icon='sync', on_click=run_manual_sync).props('elevated color=primary').classes('px-6 py-2 text-sm font-bold rounded-lg self-start')
+        
+        # Build dbt Docs & Lineage Container Content
+        with dbt_docs_container:
+            # Header Card
+            with ui.card().classes('w-full p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-none'):
+                with ui.row().classes('w-full justify-between items-center no-wrap flex-wrap gap-4'):
+                    with ui.column().classes('gap-1'):
+                        with ui.row().classes('items-center gap-3'):
+                            ui.icon('account_tree', color='primary').classes('text-3xl')
+                            ui.label('dbt Documentation & Lineage Explorer').classes('text-2xl font-black text-slate-800 dark:text-white')
+                        ui.label('Explore interactive dbt model documentation, table dependency graphs, and column-level lineage (CLL) extracted from compiled DuckDB models.').classes('text-sm text-slate-500 dark:text-slate-400')
+                    
+                    with ui.row().classes('items-center gap-2'):
+                        async def handle_refresh_dbt_docs():
+                            ui.notify('Generating dbt docs & column lineage...', type='info')
+                            try:
+                                import subprocess, column_lineage
+                                loop = asyncio.get_event_loop()
+                                await loop.run_in_executor(None, lambda: subprocess.run(["dbt", "docs", "generate", "--project-dir", "/app/dbt_project"], capture_output=True))
+                                await loop.run_in_executor(None, lambda: column_lineage.generate_column_lineage("/app/dbt_project/target"))
+                                ui.notify('dbt Docs & Lineage successfully refreshed!', type='success')
+                            except Exception as ex:
+                                ui.notify(f'Failed to refresh docs: {ex}', type='negative')
+
+                        ui.button('Refresh Docs & Lineage', icon='refresh', color='primary', on_click=handle_refresh_dbt_docs).props('elevated dense').classes('px-4 py-2 text-sm font-bold rounded-lg')
+
+            # Sub-tabs for Table Lineage (dbt Docs SPA) vs Column-Level Lineage (CLL)
+            with ui.card().classes('w-full flex-grow p-0 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col min-h-0'):
+                with ui.tabs().classes('w-full border-b border-slate-200 dark:border-slate-800 px-4') as docs_sub_tabs:
+                    tab_std_docs = ui.tab('Table Lineage & dbt Docs Site', icon='public')
+                    tab_cll = ui.tab('Column-Level Lineage (CLL) 🧬', icon='hub')
+                
+                with ui.tab_panels(docs_sub_tabs, value=tab_std_docs).classes('w-full flex-grow p-0 min-h-0 flex-col'):
+                    # Sub-panel 1: Interactive Embedded dbt Docs Site (iframe)
+                    with ui.tab_panel(tab_std_docs).classes('w-full h-full p-0 min-h-0 flex-col'):
+                        ui.html('<iframe src="/dbt-docs/#/overview" style="width:100%; height:calc(100vh - 280px); border:none;"></iframe>').classes('w-full h-full')
+
+                    # Sub-panel 2: Interactive Column-Level Lineage Explorer
+                    with ui.tab_panel(tab_cll).classes('w-full h-full p-6 flex-col gap-6 overflow-auto'):
+                        lineage_data_store = {'data': {}}
+                        
+                        def load_cll_json():
+                            cll_path = "/app/dbt_project/target/column_lineage.json"
+                            if not os.path.exists(cll_path):
+                                cll_path = "dbt_project/target/column_lineage.json"
+                            if os.path.exists(cll_path):
+                                try:
+                                    import json
+                                    with open(cll_path, 'r') as f:
+                                        return json.load(f)
+                                except Exception:
+                                    pass
+                            return {"models": {}}
+
+                        lineage_data_store['data'] = load_cll_json()
+                        models_dict = lineage_data_store['data'].get('models', {})
+                        model_names = sorted(list(models_dict.keys())) if models_dict else []
+                        
+                        with ui.card().classes('w-full p-4 border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-lg flex-col gap-4'):
+                            with ui.row().classes('w-full items-center gap-4 flex-wrap'):
+                                cll_model_select = ui.select(
+                                    options=model_names,
+                                    value=model_names[0] if model_names else None,
+                                    label='Select Model'
+                                ).props('outlined dense').classes('w-64')
+                                
+                                cll_col_select = ui.select(
+                                    options=[],
+                                    label='Select Column'
+                                ).props('outlined dense').classes('w-64')
+                                
+                            cll_display_container = ui.column().classes('w-full gap-4 mt-2')
+
+                        def update_cll_columns():
+                            m_name = cll_model_select.value
+                            if m_name and m_name in models_dict:
+                                cols = list(models_dict[m_name].get('columns', {}).keys())
+                                cll_col_select.options = sorted(cols)
+                                cll_col_select.value = cols[0] if cols else None
+                            else:
+                                cll_col_select.options = []
+                                cll_col_select.value = None
+                            render_cll_diagram()
+
+                        def render_cll_diagram():
+                            cll_display_container.clear()
+                            m_name = cll_model_select.value
+                            col_name = cll_col_select.value
+                            with cll_display_container:
+                                if not m_name or m_name not in models_dict:
+                                    ui.label('No column lineage available. Run dbt docs generate to build lineage.').classes('text-sm text-slate-400 italic')
+                                    return
+                                    
+                                m_info = models_dict[m_name]
+                                columns_info = m_info.get('columns', {})
+                                
+                                if col_name and col_name in columns_info:
+                                    c_data = columns_info[col_name]
+                                    sources = c_data.get('sources', [])
+                                    expr = c_data.get('expression', col_name)
+                                    
+                                    mermaid_nodes = []
+                                    mermaid_nodes.append(f'  subgraph Target Model ["Model: {m_info.get("schema")}.{m_name}"]')
+                                    mermaid_nodes.append(f'    T_{col_name}["{col_name}"]')
+                                    mermaid_nodes.append('  end')
+                                    
+                                    if sources:
+                                        mermaid_nodes.append('  subgraph Upstream Sources')
+                                        for idx, s in enumerate(sources):
+                                            safe_s = s.replace('"', '').replace("'", '')
+                                            mermaid_nodes.append(f'    S_{idx}["{safe_s}"]')
+                                            mermaid_nodes.append(f'    S_{idx} --> T_{col_name}')
+                                        mermaid_nodes.append('  end')
+                                        
+                                    mermaid_code = "graph LR\n" + "\n".join(mermaid_nodes)
+                                    
+                                    with ui.row().classes('items-center justify-between w-full'):
+                                        ui.label(f'Column Lineage: {m_name}.{col_name}').classes('text-base font-bold text-slate-800 dark:text-white')
+                                    
+                                    ui.mermaid(mermaid_code).classes('w-full bg-slate-100 dark:bg-slate-950 p-4 rounded-lg border border-slate-200 dark:border-slate-800')
+                                    
+                                    with ui.card().classes('w-full p-4 bg-slate-900 text-slate-100 rounded-lg flex-col gap-1 font-mono text-xs'):
+                                        ui.label('Transformation Expression:').classes('text-slate-400 font-sans font-bold')
+                                        ui.label(expr).classes('text-emerald-400 whitespace-pre-wrap')
+                                else:
+                                    ui.label('Select a column to view column lineage diagram.').classes('text-sm text-slate-400 italic')
+
+                        cll_model_select.on_change(lambda _: update_cll_columns())
+                        cll_col_select.on_change(lambda _: render_cll_diagram())
+                        update_cll_columns()
         
         # Build Extensions Container Content
         with extensions_container:
@@ -4272,6 +4411,7 @@ def index():
         code_editor_container.bind_visibility_from(tabs, 'value', value='Code Editor')
         extensions_container.bind_visibility_from(tabs, 'value', value='Extensions')
         db_tools_container.bind_visibility_from(tabs, 'value', value='Database Tools')
+        dbt_docs_container.bind_visibility_from(tabs, 'value', value='dbt Docs & Lineage')
         api_creator_container.bind_visibility_from(tabs, 'value', value='API Endpoints')
         api_docs_container.bind_visibility_from(tabs, 'value', value='API Docs & Explorer')
         scheduler_container.bind_visibility_from(tabs, 'value', value='Scheduler')
