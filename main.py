@@ -7765,15 +7765,35 @@ CRITICAL DUCKDB SQL RULES:
         ui.run_javascript(f"navigator.clipboard.writeText({repr(text)})")
         ui.notify('Plan copied to clipboard!', type='success')
 
-    def json_plan_to_mermaid(json_str: str) -> str:
-        """Parse DuckDB's FORMAT JSON explain structure into a styled Mermaid TD flowchart."""
+    def json_plan_to_mermaid(json_str: str):
+        """Parse DuckDB's FORMAT JSON explain structure into a styled Mermaid TD flowchart with Hotspot & Bottleneck Analysis."""
         import json
         try:
             plan = json.loads(json_str)
             nodes = []
             connections = []
+            hotspots = []
             node_counter = [0]
             
+            # Helper to extract total execution time across AST nodes
+            total_timing = [0.0]
+            def calculate_total_time(node):
+                timing = node.get("operator_timing", 0.0) or 0.0
+                total_timing[0] += timing
+                for child in node.get("children", []):
+                    calculate_total_time(child)
+
+            if isinstance(plan, list) and len(plan) > 0:
+                calculate_total_time(plan[0])
+            elif isinstance(plan, dict):
+                children = plan.get("children", [])
+                if children:
+                    calculate_total_time(children[0])
+                else:
+                    calculate_total_time(plan)
+
+            total_exec = total_timing[0] if total_timing[0] > 0 else 1.0
+
             def traverse(node, parent_id=None):
                 node_counter[0] += 1
                 node_id = f"node{node_counter[0]}"
@@ -7782,25 +7802,76 @@ CRITICAL DUCKDB SQL RULES:
                 extra = node.get("extra_info", {})
                 
                 cardinality = extra.get("Estimated Cardinality", extra.get("cardinality", ""))
-                timing = node.get("operator_timing", None)
+                timing = node.get("operator_timing", 0.0) or 0.0
+                pct = (timing / total_exec) * 100.0 if total_exec > 0 else 0.0
                 
-                label_parts = [f"<b>{name}</b>"]
-                if timing is not None:
-                    if timing >= 1.0:
-                        label_parts.append(f"Time: {timing:.2f}s")
-                    elif timing >= 0.001:
-                        label_parts.append(f"Time: {timing*1000:.2f}ms")
+                name_upper = name.upper()
+                extra_str = str(extra)
+                is_s3 = "s3://" in extra_str or "READ_DELTA" in name_upper or "READ_PARQUET" in name_upper
+                
+                # Determine Hotspot status
+                if pct >= 30.0 or (is_s3 and timing > 0.1):
+                    hotspot_level = "critical"
+                    badge = "🔴 "
+                    cls = "criticalHotspotClass"
+                elif pct >= 15.0 or ("HASH" in name_upper and timing > 0.05):
+                    hotspot_level = "moderate"
+                    badge = "🟠 "
+                    cls = "moderateHotspotClass"
+                else:
+                    hotspot_level = "normal"
+                    badge = ""
+                    if "SCAN" in name_upper or "READ" in name_upper:
+                        cls = "scanClass"
+                    elif "JOIN" in name_upper:
+                        cls = "joinClass"
+                    elif "FILTER" in name_upper:
+                        cls = "filterClass"
+                    elif "SORT" in name_upper or "ORDER" in name_upper:
+                        cls = "sortClass"
+                    elif "PROJECTION" in name_upper:
+                        cls = "projClass"
                     else:
-                        label_parts.append(f"Time: {timing*1000000:.1f}µs")
+                        cls = "otherClass"
+
+                # Record hotspot info for summary card
+                if hotspot_level in ("critical", "moderate"):
+                    time_fmt = f"{timing*1000:.1f}ms" if timing < 1.0 else f"{timing:.2f}s"
+                    tip = ""
+                    if is_s3:
+                        tip = "Remote S3 scan latency hotspot. Use column projection, predicate pushdown, or partition pruning."
+                    elif "HASH_JOIN" in name_upper:
+                        tip = "Expensive Hash Join. Ensure join keys are indexed or filter left/right datasets prior to joining."
+                    elif "SORT" in name_upper or "ORDER" in name_upper:
+                        tip = "Memory-intensive Sort. Push down LIMIT clauses or sort indexed columns."
+                    else:
+                        tip = f"High execution bottleneck taking {pct:.1f}% of total query time."
+
+                    hotspots.append({
+                        "level": hotspot_level,
+                        "name": name,
+                        "time_fmt": time_fmt,
+                        "pct": pct,
+                        "tip": tip
+                    })
+
+                label_parts = [f"<b>{badge}{name}</b>"]
+                if timing > 0:
+                    if timing >= 1.0:
+                        label_parts.append(f"Time: {timing:.2f}s ({pct:.1f}%)")
+                    elif timing >= 0.001:
+                        label_parts.append(f"Time: {timing*1000:.1f}ms ({pct:.1f}%)")
+                    else:
+                        label_parts.append(f"Time: {timing*1000000:.0f}µs")
                 
                 if cardinality:
-                    label_parts.append(f"Est: {cardinality} rows")
+                    label_parts.append(f"Rows: {cardinality}")
                 
                 if name == "FILTER" and "Filter" in extra:
                     label_parts.append(f"<small>Cond: {extra['Filter']}</small>")
                 elif name == "HASH_JOIN" and "Join Condition" in extra:
                     label_parts.append(f"<small>On: {extra['Join Condition']}</small>")
-                elif "Scan" in name or "SCAN" in name:
+                elif "Scan" in name or "SCAN" in name or is_s3:
                     table = extra.get("Table", extra.get("table", ""))
                     if table:
                         label_parts.append(f"<small>Table: {table}</small>")
@@ -7808,19 +7879,6 @@ CRITICAL DUCKDB SQL RULES:
                 label = "<br/>".join(label_parts)
                 label = label.replace('"', "'").replace('[', '(').replace(']', ')')
                 
-                cls = "otherClass"
-                name_lower = name.lower()
-                if "scan" in name_lower:
-                    cls = "scanClass"
-                elif "join" in name_lower:
-                    cls = "joinClass"
-                elif "filter" in name_lower:
-                    cls = "filterClass"
-                elif "sort" in name_lower or "order" in name_lower:
-                    cls = "sortClass"
-                elif "projection" in name_lower:
-                    cls = "projClass"
-                    
                 nodes.append(f'{node_id}["{label}"]:::{cls}')
                 
                 if parent_id:
@@ -7829,7 +7887,7 @@ CRITICAL DUCKDB SQL RULES:
                 for child in node.get("children", []):
                     traverse(child, node_id)
                     
-            if isinstance(plan, list):
+            if isinstance(plan, list) and len(plan) > 0:
                 traverse(plan[0])
             elif isinstance(plan, dict):
                 children = plan.get("children", [])
@@ -7839,11 +7897,13 @@ CRITICAL DUCKDB SQL RULES:
                     traverse(plan)
                     
             mermaid_code = "graph TD\n"
+            mermaid_code += "  classDef criticalHotspotClass fill:#dc2626,stroke:#fee2e2,stroke-width:2.5px,color:#fff;\n"
+            mermaid_code += "  classDef moderateHotspotClass fill:#d97706,stroke:#fef3c7,stroke-width:2px,color:#fff;\n"
             mermaid_code += "  classDef scanClass fill:#0284c7,stroke:#bae6fd,stroke-width:1.5px,color:#fff;\n"
             mermaid_code += "  classDef joinClass fill:#ea580c,stroke:#ffedd5,stroke-width:1.5px,color:#fff;\n"
-            mermaid_code += "  classDef filterClass fill:#dc2626,stroke:#fee2e2,stroke-width:1.5px,color:#fff;\n"
+            mermaid_code += "  classDef filterClass fill:#16a34a,stroke:#dcfce7,stroke-width:1.5px,color:#fff;\n"
             mermaid_code += "  classDef sortClass fill:#7c3aed,stroke:#f3e8ff,stroke-width:1.5px,color:#fff;\n"
-            mermaid_code += "  classDef projClass fill:#16a34a,stroke:#dcfce7,stroke-width:1.5px,color:#fff;\n"
+            mermaid_code += "  classDef projClass fill:#059669,stroke:#d1fae5,stroke-width:1.5px,color:#fff;\n"
             mermaid_code += "  classDef otherClass fill:#4b5563,stroke:#e5e7eb,stroke-width:1.5px,color:#fff;\n"
             
             for n in nodes:
@@ -7851,10 +7911,10 @@ CRITICAL DUCKDB SQL RULES:
             for c in connections:
                 mermaid_code += f"  {c}\n"
                 
-            return mermaid_code
+            return mermaid_code, hotspots, total_exec
         except Exception as ex:
             print(f"Error parsing JSON explain: {ex}", flush=True)
-            return ""
+            return "", [], 0.0
 
     def run_profiler_query():
         """Execute the EXPLAIN or EXPLAIN ANALYZE statement in DuckDB and parse/render the ASCII visual plan tree."""
@@ -7928,14 +7988,11 @@ CRITICAL DUCKDB SQL RULES:
         filters = explain_value.count("FILTER") + explain_value.count("filter")
         sorts = explain_value.count("ORDER_BY") + explain_value.count("SORT") + explain_value.count("sort")
         
-        suggestions = []
-        if seq_scans > 0:
-            suggestions.append(("SEQ_SCAN / TABLE_SCAN", "Sequential / Table Scan detected. For larger datasets, consider creating a database index or using partition-pruning to speed up lookups."))
-        if hash_joins > 0:
-            suggestions.append(("HASH_JOIN", "Hash Join was used. Hashing datasets requires extra memory. Ensure join columns have consistent types for optimal hashing."))
-        if sorts > 0:
-            suggestions.append(("SORT / ORDER_BY", "Sorting / Order By operation detected. Sorting large datasets can be memory-intensive. Consider limiting rows (LIMIT) or filtering before sorting."))
-            
+        mermaid_code = ""
+        hotspots = []
+        if json_plan:
+            mermaid_code, hotspots, _ = json_plan_to_mermaid(json_plan)
+
         status_label.text = "Profiling completed successfully"
         profiler_container.clear()
         
@@ -7956,40 +8013,41 @@ CRITICAL DUCKDB SQL RULES:
                     time_str = total_time if total_time else "N/A"
                     ui.label(time_str).classes('text-xs font-bold text-slate-800 dark:text-white')
                     
-                # Card 3: Key Operators Count
+                # Card 3: Hotspot Summary
+                critical_count = sum(1 for h in hotspots if h['level'] == 'critical')
+                moderate_count = sum(1 for h in hotspots if h['level'] == 'moderate')
                 with ui.card().classes('flex-grow p-2.5 border border-slate-100 dark:border-slate-800 shadow-none dark-bg-panel items-center gap-1'):
-                    ui.icon('analytics', color='positive').classes('text-lg')
-                    ui.label('Operators Detected').classes('text-[10px] text-slate-400 font-semibold uppercase')
-                    op_list = []
-                    if seq_scans: op_list.append(f"Scans: {seq_scans}")
-                    if hash_joins: op_list.append(f"Joins: {hash_joins}")
-                    if sorts: op_list.append(f"Sorts: {sorts}")
-                    op_str = ", ".join(op_list) if op_list else "None"
-                    ui.label(op_str).classes('text-xs font-bold text-slate-800 dark:text-white text-center')
+                    ui.icon('speed', color='warning' if (critical_count or moderate_count) else 'positive').classes('text-lg')
+                    ui.label('Hotspot Hotspots').classes('text-[10px] text-slate-400 font-semibold uppercase')
+                    ui.label(f"🔴 {critical_count} Critical | 🟠 {moderate_count} Moderate").classes('text-xs font-bold text-slate-800 dark:text-white text-center')
             
-            # Suggestions Section
-            if suggestions:
-                with ui.card().classes('w-full p-2.5 border border-indigo-100 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/20 shadow-none gap-1'):
-                    with ui.row().classes('items-center gap-1.5 text-indigo-600 dark:text-indigo-400'):
-                        ui.icon('lightbulb', size='xs')
-                        ui.label('Optimization Insights & Tips').classes('font-bold text-xs')
+            # Hotspot & Bottleneck Analysis Inspector Card
+            if hotspots:
+                with ui.card().classes('w-full p-3 border border-red-200 dark:border-red-900/40 bg-red-50/40 dark:bg-red-950/20 shadow-none gap-2 rounded-xl'):
+                    with ui.row().classes('items-center gap-2 text-red-600 dark:text-red-400'):
+                        ui.icon('whatshot', size='sm')
+                        ui.label('Hotspot & Bottleneck Operator Analysis').classes('font-black text-sm')
                     ui.separator().classes('opacity-50')
-                    for op_type, text in suggestions:
-                        with ui.row().classes('items-start gap-1.5 py-0.5 no-wrap'):
-                            ui.icon('chevron_right', size='xs', color='indigo').classes('mt-0.5')
-                            ui.markdown(f"**{op_type}**: {text}").classes('text-[11px] text-slate-700 dark:text-slate-300')
+                    for h in hotspots:
+                        badge = "🔴 CRITICAL HOTSPOT" if h['level'] == 'critical' else "🟠 MODERATE BOTTLENECK"
+                        color_cls = "text-red-600 dark:text-red-400" if h['level'] == 'critical' else "text-amber-600 dark:text-amber-400"
+                        with ui.column().classes('gap-0.5 py-1'):
+                            with ui.row().classes('items-center gap-2'):
+                                ui.label(badge).classes(f'font-bold text-xs {color_cls}')
+                                ui.label(f"[{h['name']}]").classes('font-mono font-bold text-xs text-slate-800 dark:text-slate-200')
+                                ui.label(f"Time: {h['time_fmt']} ({h['pct']:.1f}% of total)").classes('text-xs text-slate-500 font-semibold')
+                            ui.markdown(f"**Tip:** {h['tip']}").classes('text-xs text-slate-600 dark:text-slate-400 pl-2')
                             
             # Visual Tree Section Header
             with ui.row().classes('w-full justify-between items-center px-1 pt-1'):
-                ui.label('Visual Execution Plan:').classes('text-xs font-bold text-slate-700 dark:text-slate-300')
+                ui.label('Visual Execution Plan & Hotspots:').classes('text-xs font-bold text-slate-700 dark:text-slate-300')
                 ui.button('Copy Plan', icon='content_copy', color='primary',
                           on_click=lambda: copy_plan_to_clipboard(explain_value)).props('flat dense').classes('text-xs')
                           
             # Interactive Graph Tab selection if JSON format resolved successfully
-            mermaid_code = json_plan_to_mermaid(json_plan) if json_plan else None
             if mermaid_code:
                 with ui.tabs().classes('w-full') as plan_tabs:
-                    diag_tab = ui.tab('Interactive Flow', icon='schema')
+                    diag_tab = ui.tab('Interactive Flow & Hotspots', icon='schema')
                     text_tab = ui.tab('Raw Text Plan', icon='notes')
                 with ui.tab_panels(plan_tabs, value=diag_tab).classes('w-full bg-transparent flex-none'):
                     with ui.tab_panel(diag_tab).classes('p-0 pt-2 flex-col items-center'):
@@ -7997,8 +8055,6 @@ CRITICAL DUCKDB SQL RULES:
                     with ui.tab_panel(text_tab).classes('p-0 pt-2'):
                         ui.label(explain_value).classes('w-full font-mono text-xs bg-slate-900 text-emerald-400 p-4 rounded-lg border border-slate-800 shadow-inner whitespace-pre overflow-x-auto').style('white-space: pre; line-height: 1.4;')
             else:
-                # Monospace visual tree plan using a bulletproof preformatted ui.label to avoid Prism.js theme conflicts
-                # Rendered at full height with flex-none to prevent Quasar flex squishing, allowing clean single-scrollbar scrolling in the parent panel
                 ui.label(explain_value).classes('w-full font-mono text-xs bg-slate-900 text-emerald-400 p-4 rounded-lg border border-slate-800 shadow-inner whitespace-pre overflow-x-auto flex-none').style('white-space: pre; line-height: 1.4;')
             
         ui.notify("Successfully profiled execution plan!", type='success')
