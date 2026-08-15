@@ -25,3 +25,10 @@ databases:
 - name: formula1
   path: /databases/formula1.duckdb
   type: duckdb
+- name: test_project
+  path: /databases/test_project.duckdb
+  type: duckdb
+- name: dbt_workspace
+  path: /databases/dbt_workspace.duckdb
+  type: duckdb
+  read_only: true
