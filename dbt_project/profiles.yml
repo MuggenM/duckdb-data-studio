@@ -3,7 +3,7 @@ test_project:
   outputs:
     dev:
       type: duckdb
-      path: '/app/databases/test_project.duckdb'
+      path: '/app/databases/dbt_workspace.duckdb'
       threads: 1
     s3_delta:
       type: duckrun
