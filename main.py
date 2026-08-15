@@ -15,14 +15,26 @@ def element_text_patch(self, text_val):
     return self
 ui.element.text = element_text_patch
 
-# Add static file serving for generated dbt documentation site
-dbt_target_dir = "/app/dbt_project/target" if os.path.exists("/app/dbt_project/target") else "dbt_project/target"
-if not os.path.exists(dbt_target_dir):
-    os.makedirs(dbt_target_dir, exist_ok=True)
-try:
-    app.add_static_files('/dbt-docs', dbt_target_dir)
-except Exception as e:
-    print(f"WARNING: Could not mount /dbt-docs static files: {e}")
+from fastapi.responses import FileResponse
+
+@app.get('/dbt-docs')
+@app.get('/dbt-docs/')
+@app.get('/dbt-docs/{path:path}')
+async def serve_dbt_docs(path: str = ""):
+    target_dir = "/app/dbt_project/target" if os.path.exists("/app/dbt_project/target") else "dbt_project/target"
+    if not path:
+        file_path = os.path.join(target_dir, "index.html")
+    else:
+        file_path = os.path.join(target_dir, path)
+        if os.path.isdir(file_path):
+            file_path = os.path.join(file_path, "index.html")
+            
+    if os.path.exists(file_path):
+        return FileResponse(file_path)
+    index_file = os.path.join(target_dir, "index.html")
+    if os.path.exists(index_file):
+        return FileResponse(index_file)
+    return FileResponse("/dev/null")
 
 from fastapi import Query, Request
 import duckdb
