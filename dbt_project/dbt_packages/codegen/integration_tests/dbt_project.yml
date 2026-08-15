@@ -1,0 +1,34 @@
+name: "codegen_integration_tests"
+version: "1.0"
+config-version: 2
+
+profile: "integration_tests"
+
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_packages"
+
+flags:
+  send_anonymous_usage_stats: False
+  use_colors: True
+
+seeds:
+  +schema: raw_data
+  +quote_columns: false
+  codegen_integration_tests:
+    data__Case_Sensitive:
+      +schema: Raw_Data_Case_Sensitive
+      quote_columns: true
+
+vars:
+  my_table_reference: table_c
+
+models:
+  +bind: false
