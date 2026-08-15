@@ -2437,7 +2437,7 @@ def index():
                 with ui.tab_panels(docs_sub_tabs, value=tab_std_docs).classes('w-full flex-grow p-0 min-h-0 flex-col'):
                     # Sub-panel 1: Interactive Embedded dbt Docs Site (iframe)
                     with ui.tab_panel(tab_std_docs).classes('w-full h-full p-0 min-h-0 flex-col'):
-                        ui.html('<iframe src="/dbt-docs/#/overview" style="width:100%; height:calc(100vh - 280px); border:none;"></iframe>').classes('w-full h-full')
+                        ui.html('<iframe src="/dbt-docs/index.html#/overview" style="width:100%; height:calc(100vh - 280px); border:none;"></iframe>', sanitize=False).classes('w-full h-full')
 
                     # Sub-panel 2: Interactive Column-Level Lineage Explorer
                     with ui.tab_panel(tab_cll).classes('w-full h-full p-6 flex-col gap-6 overflow-auto'):
@@ -2529,8 +2529,8 @@ def index():
                                 else:
                                     ui.label('Select a column to view column lineage diagram.').classes('text-sm text-slate-400 italic')
 
-                        cll_model_select.on_change(lambda _: update_cll_columns())
-                        cll_col_select.on_change(lambda _: render_cll_diagram())
+                        cll_model_select.on_value_change(lambda _: update_cll_columns())
+                        cll_col_select.on_value_change(lambda _: render_cll_diagram())
                         update_cll_columns()
         
         # Build Extensions Container Content
