@@ -1,8 +1,14 @@
 import os
 import json
 import boto3
+import time
 from datetime import datetime
 from config_manager import load_app_settings
+
+# Prevent AWS SDK / delta-rs from attempting IMDS metadata lookup (169.254.169.254)
+os.environ["AWS_EC2_METADATA_DISABLED"] = "true"
+
+_TABLES_CACHE = {"timestamp": 0, "tables": []}
 
 def get_s3_client():
     """Create a boto3 S3 client using environment variables or studio config."""
@@ -19,8 +25,12 @@ def get_s3_client():
         region_name=region_name
     )
 
-def discover_all_delta_tables():
-    """Discover all Delta Lake table paths across configured S3 buckets."""
+def discover_all_delta_tables(force_refresh=False):
+    """Discover all Delta Lake table paths across configured S3 buckets (cached for 60s)."""
+    now = time.time()
+    if not force_refresh and _TABLES_CACHE["tables"] and (now - _TABLES_CACHE["timestamp"]) < 60:
+        return _TABLES_CACHE["tables"]
+
     settings = load_app_settings()
     bucket_names = settings.get("s3_catalog_buckets", ["prodbucket", "devbucket"])
     s3_client = get_s3_client()
@@ -51,7 +61,10 @@ def discover_all_delta_tables():
         except Exception as e:
             print(f"WARNING: Error discovering Delta tables in bucket '{bucket}': {e}", flush=True)
             
-    return sorted(discovered_tables, key=lambda x: x['label'])
+    res = sorted(discovered_tables, key=lambda x: x['label'])
+    _TABLES_CACHE["tables"] = res
+    _TABLES_CACHE["timestamp"] = now
+    return res
 
 def get_delta_table_history(s3_uri):
     """
@@ -120,7 +133,7 @@ def get_delta_table_history(s3_uri):
                             "timestamp": commit_time,
                             "operation": op,
                             "added_files": add_count,
-                            "removed_files": remove_count,
+                            "remove_files": remove_count,
                             "client": commit_info.get('engineInfo', commit_info.get('notebook', 'dbt / DuckDB')),
                             "mode": commit_info.get('operationMode', 'Overwrite' if remove_count > 0 else 'Append')
                         })
