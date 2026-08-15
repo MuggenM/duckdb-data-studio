@@ -2448,13 +2448,13 @@ def index():
                 
                 # Sub-panel 1: Interactive Embedded dbt Docs Site (iframe) - persistent DOM element
                 std_docs_panel = ui.column().classes('w-full h-full p-0 min-h-0 flex-col')
-                std_docs_panel.bind_visibility_from(docs_sub_tabs, 'value', value=tab_std_docs)
+                std_docs_panel.bind_visibility_from(docs_sub_tabs, 'value', value='Table Lineage & dbt Docs Site')
                 with std_docs_panel:
                     ui.html('<iframe src="/dbt-docs/index.html#/overview" style="width:100%; height:calc(100vh - 280px); border:none;"></iframe>', sanitize=False).classes('w-full h-full')
 
                 # Sub-panel 2: Interactive Column-Level Lineage Explorer
                 cll_panel = ui.column().classes('w-full h-full p-6 flex-col gap-6 overflow-auto min-h-0')
-                cll_panel.bind_visibility_from(docs_sub_tabs, 'value', value=tab_cll)
+                cll_panel.bind_visibility_from(docs_sub_tabs, 'value', value='Column-Level Lineage (CLL) 🧬')
                 with cll_panel:
                     lineage_data_store = {'data': {}}
                     
