@@ -13,7 +13,7 @@ SELECT
     d.driver_sk AS driver_fk,
     TRY_CAST(p.stop AS INT) AS pit_stop_number,
     TRY_CAST(p.lap AS INT) AS pit_stop_lap,
-    TRY_CAST(NULLIF(CAST(p.time AS VARCHAR), '\N') AS TIME) AS pit_stop_time,
+    NULLIF(CAST(p.time AS VARCHAR), '\N') AS pit_stop_time,
     TRY_CAST(NULLIF(CAST(p.duration AS VARCHAR), '\N') AS DOUBLE) AS duration_seconds,
     TRY_CAST(NULLIF(CAST(p.milliseconds AS VARCHAR), '\N') AS BIGINT) AS duration_milliseconds
 FROM raw_pit_stops p
