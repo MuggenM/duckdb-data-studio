@@ -2446,104 +2446,105 @@ def index():
                     tab_std_docs = ui.tab('Table Lineage & dbt Docs Site', icon='public')
                     tab_cll = ui.tab('Column-Level Lineage (CLL) 🧬', icon='hub')
                 
-                with ui.tab_panels(docs_sub_tabs, value=tab_std_docs).classes('w-full flex-grow p-0 min-h-0 flex-col'):
-                    # Sub-panel 1: Interactive Embedded dbt Docs Site (iframe)
-                    with ui.tab_panel(tab_std_docs).classes('w-full h-full p-0 min-h-0 flex-col'):
-                        ui.html('<iframe src="/dbt-docs/index.html#/overview" style="width:100%; height:calc(100vh - 280px); border:none;"></iframe>', sanitize=False).classes('w-full h-full')
+                # Sub-panel 1: Interactive Embedded dbt Docs Site (iframe) - persistent DOM element
+                std_docs_panel = ui.column().classes('w-full h-full p-0 min-h-0 flex-col')
+                std_docs_panel.bind_visibility_from(docs_sub_tabs, 'value', value=tab_std_docs)
+                with std_docs_panel:
+                    ui.html('<iframe src="/dbt-docs/index.html#/overview" style="width:100%; height:calc(100vh - 280px); border:none;"></iframe>', sanitize=False).classes('w-full h-full')
 
-                    # Sub-panel 2: Interactive Column-Level Lineage Explorer
-                    with ui.tab_panel(tab_cll).classes('w-full h-full p-6 flex-col gap-6 overflow-auto'):
-                        lineage_data_store = {'data': {}}
-                        
-                        def load_cll_json():
-                            cll_path = "/app/dbt_project/target/column_lineage.json"
-                            if not os.path.exists(cll_path):
-                                cll_path = "dbt_project/target/column_lineage.json"
-                            if os.path.exists(cll_path):
-                                try:
-                                    import json
-                                    with open(cll_path, 'r') as f:
-                                        return json.load(f)
-                                except Exception:
-                                    pass
-                            return {"models": {}}
+                # Sub-panel 2: Interactive Column-Level Lineage Explorer
+                cll_panel = ui.column().classes('w-full h-full p-6 flex-col gap-6 overflow-auto min-h-0')
+                cll_panel.bind_visibility_from(docs_sub_tabs, 'value', value=tab_cll)
+                with cll_panel:
+                    lineage_data_store = {'data': {}}
+                    
+                    def load_cll_json():
+                        cll_path = "/app/dbt_project/target/column_lineage.json"
+                        if not os.path.exists(cll_path):
+                            cll_path = "dbt_project/target/column_lineage.json"
+                        if os.path.exists(cll_path):
+                            try:
+                                import json
+                                with open(cll_path, 'r') as f:
+                                    return json.load(f)
+                            except Exception:
+                                pass
+                        return {"models": {}}
 
-                        lineage_data_store['data'] = load_cll_json()
-                        models_dict = lineage_data_store['data'].get('models', {})
-                        model_names = sorted(list(models_dict.keys())) if models_dict else []
-                        
-                        with ui.card().classes('w-full p-4 border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-lg flex-col gap-4'):
-                            with ui.row().classes('w-full items-center gap-4 flex-wrap'):
-                                cll_model_select = ui.select(
-                                    options=model_names,
-                                    value=model_names[0] if model_names else None,
-                                    label='Select Model'
-                                ).props('outlined dense').classes('w-64')
+                    lineage_data_store['data'] = load_cll_json()
+                    models_dict = lineage_data_store['data'].get('models', {})
+                    model_names = sorted(list(models_dict.keys())) if models_dict else []
+                    
+                    with ui.card().classes('w-full p-4 border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-lg flex-col gap-4'):
+                        with ui.row().classes('w-full items-center gap-4 flex-wrap'):
+                            cll_model_select = ui.select(
+                                options=model_names,
+                                value=model_names[0] if model_names else None,
+                                label='Select Model'
+                            ).props('outlined dense').classes('w-64')
+                            
+                            cll_col_select = ui.select(
+                                options=[],
+                                label='Select Column'
+                            ).props('outlined dense').classes('w-64')
+                            
+                        cll_display_container = ui.column().classes('w-full gap-4 mt-2')
+
+                    def update_cll_columns():
+                        m_name = cll_model_select.value
+                        if m_name and m_name in models_dict:
+                            cols = sorted(list(models_dict[m_name].get('columns', {}).keys()))
+                            cll_col_select.set_options(cols, value=cols[0] if cols else None)
+                        else:
+                            cll_col_select.set_options([], value=None)
+                        render_cll_diagram()
+
+                    def render_cll_diagram():
+                        cll_display_container.clear()
+                        m_name = cll_model_select.value
+                        col_name = cll_col_select.value
+                        with cll_display_container:
+                            if not m_name or m_name not in models_dict:
+                                ui.label('No column lineage available. Run dbt docs generate to build lineage.').classes('text-sm text-slate-400 italic')
+                                return
                                 
-                                cll_col_select = ui.select(
-                                    options=[],
-                                    label='Select Column'
-                                ).props('outlined dense').classes('w-64')
+                            m_info = models_dict[m_name]
+                            columns_info = m_info.get('columns', {})
+                            
+                            if col_name and col_name in columns_info:
+                                c_data = columns_info[col_name]
+                                sources = c_data.get('sources', [])
+                                expr = c_data.get('expression', col_name)
                                 
-                            cll_display_container = ui.column().classes('w-full gap-4 mt-2')
-
-                        def update_cll_columns():
-                            m_name = cll_model_select.value
-                            if m_name and m_name in models_dict:
-                                cols = list(models_dict[m_name].get('columns', {}).keys())
-                                cll_col_select.options = sorted(cols)
-                                cll_col_select.value = cols[0] if cols else None
-                            else:
-                                cll_col_select.options = []
-                                cll_col_select.value = None
-                            render_cll_diagram()
-
-                        def render_cll_diagram():
-                            cll_display_container.clear()
-                            m_name = cll_model_select.value
-                            col_name = cll_col_select.value
-                            with cll_display_container:
-                                if not m_name or m_name not in models_dict:
-                                    ui.label('No column lineage available. Run dbt docs generate to build lineage.').classes('text-sm text-slate-400 italic')
-                                    return
-                                    
-                                m_info = models_dict[m_name]
-                                columns_info = m_info.get('columns', {})
+                                mermaid_nodes = []
+                                mermaid_nodes.append(f'  subgraph Target Model ["Model: {m_info.get("schema")}.{m_name}"]')
+                                mermaid_nodes.append(f'    T_{col_name}["{col_name}"]')
+                                mermaid_nodes.append('  end')
                                 
-                                if col_name and col_name in columns_info:
-                                    c_data = columns_info[col_name]
-                                    sources = c_data.get('sources', [])
-                                    expr = c_data.get('expression', col_name)
-                                    
-                                    mermaid_nodes = []
-                                    mermaid_nodes.append(f'  subgraph Target Model ["Model: {m_info.get("schema")}.{m_name}"]')
-                                    mermaid_nodes.append(f'    T_{col_name}["{col_name}"]')
+                                if sources:
+                                    mermaid_nodes.append('  subgraph Upstream Sources')
+                                    for idx, s in enumerate(sources):
+                                        safe_s = s.replace('"', '').replace("'", '')
+                                        mermaid_nodes.append(f'    S_{idx}["{safe_s}"]')
+                                        mermaid_nodes.append(f'    S_{idx} --> T_{col_name}')
                                     mermaid_nodes.append('  end')
                                     
-                                    if sources:
-                                        mermaid_nodes.append('  subgraph Upstream Sources')
-                                        for idx, s in enumerate(sources):
-                                            safe_s = s.replace('"', '').replace("'", '')
-                                            mermaid_nodes.append(f'    S_{idx}["{safe_s}"]')
-                                            mermaid_nodes.append(f'    S_{idx} --> T_{col_name}')
-                                        mermaid_nodes.append('  end')
-                                        
-                                    mermaid_code = "graph LR\n" + "\n".join(mermaid_nodes)
-                                    
-                                    with ui.row().classes('items-center justify-between w-full'):
-                                        ui.label(f'Column Lineage: {m_name}.{col_name}').classes('text-base font-bold text-slate-800 dark:text-white')
-                                    
-                                    ui.mermaid(mermaid_code).classes('w-full bg-slate-100 dark:bg-slate-950 p-4 rounded-lg border border-slate-200 dark:border-slate-800')
-                                    
-                                    with ui.card().classes('w-full p-4 bg-slate-900 text-slate-100 rounded-lg flex-col gap-1 font-mono text-xs'):
-                                        ui.label('Transformation Expression:').classes('text-slate-400 font-sans font-bold')
-                                        ui.label(expr).classes('text-emerald-400 whitespace-pre-wrap')
-                                else:
-                                    ui.label('Select a column to view column lineage diagram.').classes('text-sm text-slate-400 italic')
+                                mermaid_code = "graph LR\n" + "\n".join(mermaid_nodes)
+                                
+                                with ui.row().classes('items-center justify-between w-full'):
+                                    ui.label(f'Column Lineage: {m_name}.{col_name}').classes('text-base font-bold text-slate-800 dark:text-white')
+                                
+                                ui.mermaid(mermaid_code).classes('w-full bg-slate-100 dark:bg-slate-950 p-4 rounded-lg border border-slate-200 dark:border-slate-800')
+                                
+                                with ui.card().classes('w-full p-4 bg-slate-900 text-slate-100 rounded-lg flex-col gap-1 font-mono text-xs'):
+                                    ui.label('Transformation Expression:').classes('text-slate-400 font-sans font-bold')
+                                    ui.label(expr).classes('text-emerald-400 whitespace-pre-wrap')
+                            else:
+                                ui.label('Select a column to view column lineage diagram.').classes('text-sm text-slate-400 italic')
 
-                        cll_model_select.on_value_change(lambda _: update_cll_columns())
-                        cll_col_select.on_value_change(lambda _: render_cll_diagram())
-                        update_cll_columns()
+                    cll_model_select.on_value_change(lambda _: update_cll_columns())
+                    cll_col_select.on_value_change(lambda _: render_cll_diagram())
+                    update_cll_columns()
         
         # Build Extensions Container Content
         with extensions_container:
