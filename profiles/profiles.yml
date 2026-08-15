@@ -13,14 +13,23 @@ test_project:
         AWS_SECRET_ACCESS_KEY: "{{ env_var('AWS_SECRET_ACCESS_KEY') }}"
         AWS_ENDPOINT_URL: "{{ env_var('AWS_ENDPOINT_URL') }}"
         AWS_REGION: "{{ env_var('AWS_DEFAULT_REGION', 'us-east-1') }}"
+        AWS_EC2_METADATA_DISABLED: 'true'
         allow_http: 'true'
         AWS_S3_ALLOW_UNSAFE_RENAME: 'true'
         AWS_S3_USE_PATH_STYLE: 'true'
       settings:
         max_memory: '2GB'
+      secrets:
+        - type: s3
+          region: "us-east-1"
+          key_id: "{{ env_var('AWS_ACCESS_KEY_ID') }}"
+          secret: "{{ env_var('AWS_SECRET_ACCESS_KEY') }}"
+          endpoint: "garage:3900"
+          use_ssl: false
+          url_style: path
     prod:
       type: duckrun
-      root_path: 's3://devbucket/tables'
+      root_path: 's3://prodbucket/tables'
       threads: 2
       extensions:
         - httpfs
