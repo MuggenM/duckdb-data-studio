@@ -2,9 +2,22 @@ test_project:
   target: prod
   outputs:
     dev:
-      type: duckdb
-      path: '/app/databases/dbt_workspace.duckdb'
-      threads: 1
+      type: duckrun
+      root_path: 's3://devbucket/dev_tables'
+      threads: 2
+      extensions:
+        - httpfs
+        - delta
+      storage_options:
+        AWS_ACCESS_KEY_ID: "{{ env_var('AWS_ACCESS_KEY_ID') }}"
+        AWS_SECRET_ACCESS_KEY: "{{ env_var('AWS_SECRET_ACCESS_KEY') }}"
+        AWS_ENDPOINT_URL: "{{ env_var('AWS_ENDPOINT_URL') }}"
+        AWS_REGION: "{{ env_var('AWS_DEFAULT_REGION', 'us-east-1') }}"
+        allow_http: 'true'
+        AWS_S3_ALLOW_UNSAFE_RENAME: 'true'
+        AWS_S3_USE_PATH_STYLE: 'true'
+      settings:
+        max_memory: '2GB'
     prod:
       type: duckrun
       root_path: 's3://devbucket/tables'
@@ -17,6 +30,7 @@ test_project:
         AWS_SECRET_ACCESS_KEY: "{{ env_var('AWS_SECRET_ACCESS_KEY') }}"
         AWS_ENDPOINT_URL: "{{ env_var('AWS_ENDPOINT_URL') }}"
         AWS_REGION: "{{ env_var('AWS_DEFAULT_REGION', 'us-east-1') }}"
+        AWS_EC2_METADATA_DISABLED: 'true'
         allow_http: 'true'
         AWS_S3_ALLOW_UNSAFE_RENAME: 'true'
         AWS_S3_USE_PATH_STYLE: 'true'

@@ -22,16 +22,30 @@ def sync_catalog(conn=None):
         bucket_name = "devbucket"
         bucket = s3.Bucket(bucket_name)
         
-        # Discover Delta tables directories (schema / table taxonomy under tables/)
+        # Discover Delta tables directories across production (tables/) and development (dev_tables/)
         delta_tables = {}
+        
+        # 1. Scan Production tables (s3://devbucket/tables/)
         for obj in bucket.objects.filter(Prefix="tables/"):
             key = obj.key
             if "_delta_log/" in key:
                 prefix_part = key.split("_delta_log/")[0].rstrip("/")
                 parts = prefix_part.split("/")
-                # Expecting format: tables/<schema_name>/<table_name> or tables/<schema_name>/.../<table_name>
                 if len(parts) >= 3:
                     schema_name = parts[1]
+                    table_name = "_".join(parts[2:])
+                    s3_path = f"s3://{bucket_name}/{prefix_part}"
+                    delta_tables[(schema_name, table_name)] = s3_path
+                    
+        # 2. Scan Development tables (s3://devbucket/dev_tables/)
+        for obj in bucket.objects.filter(Prefix="dev_tables/"):
+            key = obj.key
+            if "_delta_log/" in key:
+                prefix_part = key.split("_delta_log/")[0].rstrip("/")
+                parts = prefix_part.split("/")
+                if len(parts) >= 3:
+                    raw_schema = parts[1]
+                    schema_name = f"dev_{raw_schema}"
                     table_name = "_".join(parts[2:])
                     s3_path = f"s3://{bucket_name}/{prefix_part}"
                     delta_tables[(schema_name, table_name)] = s3_path
@@ -49,9 +63,13 @@ def sync_catalog(conn=None):
         try:
             conn = duckdb.connect(target_db_path)
             created_own_conn = True
-        except Exception as conn_err:
-            print(f"ERROR: Could not open connection to {target_db_path}: {conn_err}", flush=True)
-            return False
+        except Exception:
+            try:
+                conn = duckdb.connect(target_db_path, read_only=True)
+                created_own_conn = True
+            except Exception as conn_err:
+                print(f"ERROR: Could not open connection to {target_db_path}: {conn_err}", flush=True)
+                return False
             
     try:
         try:

@@ -53,6 +53,7 @@ services:
       - AWS_ENDPOINT_URL=http://garage:3900
       - AWS_S3_ALLOW_UNSAFE_RENAME=true
       - AWS_ALLOW_HTTP=true
+      - AWS_EC2_METADATA_DISABLED=true
     networks:
       - studio_jupyter_net
     extra_hosts:
@@ -94,6 +95,7 @@ services:
       - AWS_ENDPOINT_URL=http://garage:3900
       - AWS_S3_ALLOW_UNSAFE_RENAME=true
       - AWS_ALLOW_HTTP=true
+      - AWS_EC2_METADATA_DISABLED=true
     command:
       - /bin/bash
       - -c
@@ -197,6 +199,7 @@ services:
       - AWS_ENDPOINT_URL=http://garage:3900
       - AWS_S3_ALLOW_UNSAFE_RENAME=true
       - AWS_ALLOW_HTTP=true
+      - AWS_EC2_METADATA_DISABLED=true
     entrypoint: ["/bin/bash", "/app/entrypoint_codeserver.sh"]
     command: ["--auth", "none", "--bind-addr", "0.0.0.0:8080", "/home/coder/project"]
     networks:
