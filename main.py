@@ -2414,6 +2414,123 @@ def index():
                                 ui.notify(f'Error running sync: {ex}', type='negative')
                                 
                         ui.button('Sync Now', icon='sync', on_click=run_manual_sync).props('elevated color=primary').classes('px-6 py-2 text-sm font-bold rounded-lg self-start')
+
+                    # 3. Delta Lake Time Travel & Commit Inspector Card
+                    with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                        with ui.row().classes('items-center justify-between w-full'):
+                            with ui.row().classes('items-center gap-2'):
+                                ui.icon('history', color='primary').classes('text-2xl')
+                                ui.label('Delta Lake Time Travel & Commit Timeline Inspector').classes('text-lg font-bold text-slate-800 dark:text-white')
+                            
+                            async def refresh_delta_table_list():
+                                ui.notify('Scanning S3 buckets for Delta tables...', type='info')
+                                try:
+                                    import delta_inspector
+                                    loop = asyncio.get_event_loop()
+                                    tbls = await loop.run_in_executor(None, delta_inspector.discover_all_delta_tables)
+                                    opts = {t['uri']: t['label'] for t in tbls}
+                                    time_travel_table_select.set_options(opts, value=tbls[0]['uri'] if tbls else None)
+                                    ui.notify(f'Found {len(tbls)} Delta tables.', type='success')
+                                except Exception as ex:
+                                    ui.notify(f'Error discovering Delta tables: {ex}', type='negative')
+
+                            ui.button('Scan S3 Tables', icon='travel_explore', on_click=refresh_delta_table_list).props('flat dense').classes('text-xs')
+
+                        ui.separator().classes('opacity-50')
+                        ui.label('Inspect Delta Lake commit logs (_delta_log/*.json), view historical table versions, and execute native time travel queries in DuckDB.').classes('text-xs text-slate-400 leading-relaxed')
+
+                        time_travel_table_select = ui.select(
+                            options={},
+                            label='Select Delta Table S3 URI'
+                        ).props('outlined dense').classes('w-full')
+
+                        # History Grid & Time Travel Preview Container
+                        history_container = ui.column().classes('w-full gap-4 mt-2')
+
+                        async def update_delta_table_history():
+                            history_container.clear()
+                            s3_uri = time_travel_table_select.value
+                            if not s3_uri:
+                                with history_container:
+                                    ui.label('Select an S3 Delta Table to inspect commit timeline.').classes('text-sm text-slate-400 italic')
+                                return
+
+                            with history_container:
+                                ui.spinner('dots', size='md', color='primary').classes('self-center my-4')
+
+                            try:
+                                import delta_inspector
+                                loop = asyncio.get_event_loop()
+                                commits = await loop.run_in_executor(None, lambda: delta_inspector.get_delta_table_history(s3_uri))
+                                history_container.clear()
+                                render_history_view(s3_uri, commits)
+                            except Exception as ex:
+                                history_container.clear()
+                                with history_container:
+                                    ui.notify(f'Failed to load Delta commit logs: {ex}', type='negative')
+
+                        def render_history_view(s3_uri, commits):
+                            with history_container:
+                                if not commits:
+                                    ui.label('No commit history found for this Delta table.').classes('text-sm text-slate-400 italic')
+                                    return
+
+                                # Commit History Grid
+                                ui.label('Commit Log Timeline:').classes('text-xs font-bold text-slate-700 dark:text-slate-300')
+                                columns = [
+                                    {'name': 'version', 'label': 'Version', 'field': 'version_label', 'sortable': True, 'align': 'left'},
+                                    {'name': 'timestamp', 'label': 'Commit Time', 'field': 'timestamp', 'sortable': True, 'align': 'left'},
+                                    {'name': 'operation', 'label': 'Operation', 'field': 'operation', 'sortable': True, 'align': 'left'},
+                                    {'name': 'added_files', 'label': 'Added Files', 'field': 'added_files', 'align': 'right'},
+                                    {'name': 'removed_files', 'label': 'Removed Files', 'field': 'removed_files', 'align': 'right'},
+                                    {'name': 'mode', 'label': 'Mode', 'field': 'mode', 'align': 'left'},
+                                ]
+                                ui.table(columns=columns, rows=commits, row_key='version').classes('w-full border border-slate-200 dark:border-slate-800 rounded-lg')
+
+                                # Time Travel Selector & Query Execution Row
+                                with ui.card().classes('w-full p-4 bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg flex-col gap-3 mt-2'):
+                                    with ui.row().classes('items-center gap-2'):
+                                        ui.icon('bolt', color='amber').classes('text-lg')
+                                        ui.label('Time Travel Query Preview').classes('text-sm font-bold text-slate-800 dark:text-white')
+
+                                    version_options = {c['version']: f"Version {c['version']} ({c['timestamp']} - {c['operation']})" for c in commits}
+                                    selected_version = ui.select(
+                                        options=version_options,
+                                        value=commits[0]['version'] if commits else 0,
+                                        label='Select Snapshot Version for Time Travel'
+                                    ).props('outlined dense').classes('w-full')
+
+                                    query_display = ui.code(f"SELECT * FROM delta_scan('{s3_uri}', version={selected_version.value}) LIMIT 50;", language='sql').classes('w-full font-mono text-xs')
+                                    
+                                    def update_sql_display():
+                                        query_display.content = f"SELECT * FROM delta_scan('{s3_uri}', version={selected_version.value}) LIMIT 50;"
+
+                                    selected_version.on_value_change(lambda _: update_sql_display())
+
+                                    preview_results_container = ui.column().classes('w-full mt-2 gap-2')
+
+                                    async def run_time_travel_preview():
+                                        preview_results_container.clear()
+                                        ver = selected_version.value
+                                        sql = f"SELECT * FROM delta_scan('{s3_uri}', version={ver}) LIMIT 50;"
+                                        with preview_results_container:
+                                            ui.notify(f'Executing Time Travel Query for Version {ver}...', type='info')
+                                            try:
+                                                loop = asyncio.get_event_loop()
+                                                df = await loop.run_in_executor(None, lambda: explorer.conn.execute(sql).df())
+                                                if not df.empty:
+                                                    grid_cols = [{'headerName': col, 'field': col} for col in df.columns]
+                                                    grid_rows = df.to_dict('records')
+                                                    ui.label(f'Previewing {len(grid_rows)} rows from Version {ver}:').classes('text-xs font-bold text-emerald-500 my-1')
+                                                    ui.aggrid({'columnDefs': grid_cols, 'rowData': grid_rows}).classes('w-full h-64')
+                                                else:
+                                                    ui.label('Query executed cleanly (0 rows returned).').classes('text-sm text-slate-400 italic')
+                                            except Exception as q_err:
+                                                ui.notify(f'Time travel query failed: {q_err}', type='negative')
+
+                                    ui.button('Run Time Travel Query', icon='play_arrow', color='primary', on_click=run_time_travel_preview).props('elevated dense').classes('px-4 py-2 text-xs font-bold')
+
+                        time_travel_table_select.on_value_change(lambda _: update_delta_table_history())
         
         # Build dbt Docs & Lineage Container Content
         with dbt_docs_container:
