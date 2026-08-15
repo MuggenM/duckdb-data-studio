@@ -104,6 +104,7 @@ def sync_catalog(conn=None):
                 conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema_name};")
                 schemas_created.add(schema_name)
                 
+            conn.execute(f"DROP VIEW IF EXISTS {schema_name}.{table_name};")
             conn.execute(f"DROP TABLE IF EXISTS {schema_name}.{table_name};")
             conn.execute(f"CREATE OR REPLACE VIEW {schema_name}.{table_name} AS SELECT * FROM delta_scan('{s3_path}');")
             active_views.add((schema_name, table_name))
