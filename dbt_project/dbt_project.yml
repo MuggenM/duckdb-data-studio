@@ -19,7 +19,7 @@ clean-targets:
 on-run-start:
   - "CREATE SCHEMA IF NOT EXISTS f1_staging;"
   - "CREATE SCHEMA IF NOT EXISTS f1_marts;"
-  - "ATTACH IF NOT EXISTS '/app/databases/formula1.duckdb' AS formula1;"
+  - "ATTACH IF NOT EXISTS '/app/databases/formula1.duckdb' AS formula1 (READ_ONLY true);"
 
 models:
   test_project:
