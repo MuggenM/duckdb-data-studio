@@ -1,0 +1,15 @@
+version: 2
+
+sources:
+  - name: formula1
+    database: formula1
+    schema: main
+    tables:
+      - name: drivers
+      - name: constructors
+      - name: circuits
+      - name: races
+      - name: status
+      - name: results
+      - name: pit_stops
+      - name: lap_times
