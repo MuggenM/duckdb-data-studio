@@ -39,10 +39,12 @@ def sync_catalog(conn=None):
         target_bucket_names = [b.strip() for b in str(buckets_raw).split(",") if b.strip()]
         
     target_db_path = catalog_settings.get("s3_catalog_database", "/databases/dbt_workspace.duckdb")
-    if not target_db_path.startswith('/'):
-        target_db_path = f"/databases/{target_db_path}"
-    if not target_db_path.endswith('.duckdb'):
-        target_db_path += '.duckdb'
+    base_name = os.path.basename(target_db_path)
+    if base_name.lower().endswith('.duckdb'):
+        base_name = base_name[:-7]
+    if not base_name:
+        base_name = "dbt_workspace"
+    target_db_path = f"/databases/{base_name}.duckdb"
         
     db_dir = os.path.dirname(target_db_path)
     if db_dir:

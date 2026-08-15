@@ -4204,24 +4204,24 @@ def index():
                     ).props('outlined dense').classes('w-full')
                     
                     settings_custom_db = ui.input(
-                        'Custom / New Database Name or Path',
-                        value=current_db if initial_db_selection == '__custom__' else ''
-                    ).props('outlined dense').classes('w-full').tooltip('Enter a database filename (e.g., custom_catalog.duckdb) to automatically create it in /databases/.')
+                        'New Database Name (saved in /databases/)',
+                        value=os.path.basename(current_db) if initial_db_selection == '__custom__' else ''
+                    ).props('outlined dense placeholder="e.g. my_analytics_db"').classes('w-full').tooltip('Enter a database name; it will be automatically saved as /databases/<name>.duckdb.')
                     
                     settings_custom_db.bind_visibility_from(settings_db_select, 'value', value='__custom__')
 
             # Actions row
             with ui.row().classes('w-full justify-end gap-3 p-4'):
                 def handle_save_settings():
-                    # Resolve target catalog database
+                    # Resolve target catalog database strictly inside /databases/<name>.duckdb
                     if settings_db_select.value == '__custom__':
-                        raw_custom = settings_custom_db.value.strip() if settings_custom_db.value else "dbt_workspace.duckdb"
-                        if not raw_custom.startswith('/'):
-                            target_catalog_db = f"/databases/{raw_custom}"
-                        else:
-                            target_catalog_db = raw_custom
-                        if not target_catalog_db.endswith('.duckdb'):
-                            target_catalog_db += '.duckdb'
+                        raw_custom = settings_custom_db.value.strip() if settings_custom_db.value else "dbt_workspace"
+                        base_name = os.path.basename(raw_custom)
+                        if base_name.lower().endswith('.duckdb'):
+                            base_name = base_name[:-7]
+                        if not base_name:
+                            base_name = "dbt_workspace"
+                        target_catalog_db = f"/databases/{base_name}.duckdb"
                     else:
                         target_catalog_db = settings_db_select.value
                         
