@@ -2439,8 +2439,17 @@ def index():
                         ui.separator().classes('opacity-50')
                         ui.label('Inspect Delta Lake commit logs (_delta_log/*.json), view historical table versions, and execute native time travel queries in DuckDB.').classes('text-xs text-slate-400 leading-relaxed')
 
+                        initial_tables = []
+                        try:
+                            import delta_inspector
+                            initial_tables = delta_inspector.discover_all_delta_tables()
+                        except Exception as ide:
+                            print(f"DEBUG: Delta table initial discovery: {ide}", flush=True)
+
+                        initial_opts = {t['uri']: t['label'] for t in initial_tables}
                         time_travel_table_select = ui.select(
-                            options={},
+                            options=initial_opts,
+                            value=initial_tables[0]['uri'] if initial_tables else None,
                             label='Select Delta Table S3 URI'
                         ).props('outlined dense').classes('w-full')
 
@@ -2476,14 +2485,15 @@ def index():
                                     return
 
                                 # Commit History Grid
-                                ui.label('Commit Log Timeline:').classes('text-xs font-bold text-slate-700 dark:text-slate-300')
+                                ui.label(f'Delta Commit Log Timeline ({len(commits)} historical versions):').classes('text-xs font-bold text-slate-700 dark:text-slate-300')
                                 columns = [
-                                    {'name': 'version', 'label': 'Version', 'field': 'version_label', 'sortable': True, 'align': 'left'},
-                                    {'name': 'timestamp', 'label': 'Commit Time', 'field': 'timestamp', 'sortable': True, 'align': 'left'},
-                                    {'name': 'operation', 'label': 'Operation', 'field': 'operation', 'sortable': True, 'align': 'left'},
+                                    {'name': 'version', 'label': 'Delta Version', 'field': 'version_label', 'sortable': True, 'align': 'left'},
+                                    {'name': 'timestamp', 'label': 'Commit Timestamp', 'field': 'timestamp', 'sortable': True, 'align': 'left'},
+                                    {'name': 'operation', 'label': 'Operation (WRITE/MERGE)', 'field': 'operation', 'sortable': True, 'align': 'left'},
                                     {'name': 'added_files', 'label': 'Added Files', 'field': 'added_files', 'align': 'right'},
                                     {'name': 'removed_files', 'label': 'Removed Files', 'field': 'removed_files', 'align': 'right'},
-                                    {'name': 'mode', 'label': 'Mode', 'field': 'mode', 'align': 'left'},
+                                    {'name': 'client', 'label': 'Writer Engine', 'field': 'client', 'align': 'left'},
+                                    {'name': 'mode', 'label': 'Write Mode', 'field': 'mode', 'align': 'left'},
                                 ]
                                 ui.table(columns=columns, rows=commits, row_key='version').classes('w-full border border-slate-200 dark:border-slate-800 rounded-lg')
 
@@ -2531,6 +2541,8 @@ def index():
                                     ui.button('Run Time Travel Query', icon='play_arrow', color='primary', on_click=run_time_travel_preview).props('elevated dense').classes('px-4 py-2 text-xs font-bold')
 
                         time_travel_table_select.on_value_change(lambda _: update_delta_table_history())
+                        if time_travel_table_select.value:
+                            asyncio.create_task(update_delta_table_history())
         
         # Build dbt Docs & Lineage Container Content
         with dbt_docs_container:
