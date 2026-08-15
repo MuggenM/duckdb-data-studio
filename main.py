@@ -2427,7 +2427,7 @@ def index():
                                 try:
                                     import delta_inspector
                                     loop = asyncio.get_event_loop()
-                                    tbls = await loop.run_in_executor(None, delta_inspector.discover_all_delta_tables)
+                                    tbls = await loop.run_in_executor(None, lambda: delta_inspector.discover_all_delta_tables(force_refresh=True))
                                     opts = {t['uri']: t['label'] for t in tbls}
                                     time_travel_table_select.set_options(opts, value=tbls[0]['uri'] if tbls else None)
                                     ui.notify(f'Found {len(tbls)} Delta tables.', type='success')
@@ -2526,8 +2526,23 @@ def index():
                                         with preview_results_container:
                                             ui.notify(f'Executing Time Travel Query for Version {ver}...', type='info')
                                             try:
+                                                def _exec_tt():
+                                                    explorer.conn.execute("SET AWS_EC2_METADATA_DISABLED=true;")
+                                                    explorer.conn.execute("""
+                                                        CREATE OR REPLACE SECRET tt_s3_secret (
+                                                            TYPE S3,
+                                                            KEY_ID 'GK2713753aca1d72db5325f212',
+                                                            SECRET 'afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e',
+                                                            ENDPOINT 'garage:3900',
+                                                            REGION 'us-east-1',
+                                                            USE_SSL false,
+                                                            URL_STYLE 'path'
+                                                        );
+                                                    """)
+                                                    return explorer.conn.execute(sql).df()
+
                                                 loop = asyncio.get_event_loop()
-                                                df = await loop.run_in_executor(None, lambda: explorer.conn.execute(sql).df())
+                                                df = await loop.run_in_executor(None, _exec_tt)
                                                 if not df.empty:
                                                     grid_cols = [{'headerName': col, 'field': col} for col in df.columns]
                                                     grid_rows = df.to_dict('records')
