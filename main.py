@@ -2295,12 +2295,89 @@ def index():
 
                 # TAB 4: S3 Delta Catalog
                 with ui.tab_panel(s3_delta_tab).classes('gap-6 p-0 flex-col'):
+                    # 1. Configuration Card
+                    with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                        with ui.row().classes('items-center justify-between w-full'):
+                            with ui.row().classes('items-center gap-2'):
+                                ui.icon('settings', color='primary').classes('text-2xl')
+                                ui.label('S3 Delta Catalog Configuration').classes('text-lg font-bold text-slate-800 dark:text-white')
+                        ui.separator().classes('opacity-50')
+                        
+                        # Bucket Multi-Select
+                        available_buckets = get_available_s3_buckets()
+                        raw_current_buckets = APP_SETTINGS.get('s3_catalog_buckets', ['prodbucket', 'devbucket'])
+                        if isinstance(raw_current_buckets, str):
+                            current_buckets = [b.strip() for b in raw_current_buckets.split(',') if b.strip()]
+                        else:
+                            current_buckets = list(raw_current_buckets)
+                        
+                        for cb in current_buckets:
+                            if cb not in available_buckets:
+                                available_buckets.append(cb)
+                                
+                        ui.label('Target S3 Buckets to Scan:').classes('text-xs font-semibold text-slate-500 dark:text-slate-400')
+                        s3_buckets_select = ui.select(
+                            options=available_buckets,
+                            value=current_buckets,
+                            multiple=True,
+                            label='Select Buckets'
+                        ).props('outlined dense use-chips').classes('w-full').tooltip('Select S3 buckets in Garage S3 to scan for Delta Lake tables.')
+                        
+                        # Catalog Database Select
+                        available_dbs = get_available_catalog_databases()
+                        current_db = APP_SETTINGS.get('s3_catalog_database', '/databases/dbt_workspace.duckdb')
+                        
+                        db_options = {db: f"{os.path.basename(db)} ({db})" for db in available_dbs}
+                        db_options['__custom__'] = '+ Create / Use Custom Database...'
+                        
+                        initial_db_selection = current_db if current_db in db_options else '__custom__'
+                        
+                        ui.label('Target Catalog Database:').classes('text-xs font-semibold text-slate-500 dark:text-slate-400')
+                        s3_db_select = ui.select(
+                            options=db_options,
+                            value=initial_db_selection,
+                            label='Select Catalog Database'
+                        ).props('outlined dense').classes('w-full')
+                        
+                        s3_custom_db_input = ui.input(
+                            'New Database Name (saved in /databases/)',
+                            value=os.path.basename(current_db) if initial_db_selection == '__custom__' else ''
+                        ).props('outlined dense placeholder="e.g. my_analytics_db"').classes('w-full').tooltip('Enter a database name; it will be automatically saved as /databases/<name>.duckdb.')
+                        
+                        s3_custom_db_input.bind_visibility_from(s3_db_select, 'value', value='__custom__')
+                        
+                        def handle_save_catalog_config():
+                            if s3_db_select.value == '__custom__':
+                                raw_custom = s3_custom_db_input.value.strip() if s3_custom_db_input.value else "dbt_workspace"
+                                base_name = os.path.basename(raw_custom)
+                                if base_name.lower().endswith('.duckdb'):
+                                    base_name = base_name[:-7]
+                                if not base_name:
+                                    base_name = "dbt_workspace"
+                                target_catalog_db = f"/databases/{base_name}.duckdb"
+                            else:
+                                target_catalog_db = s3_db_select.value
+                                
+                            selected_bucket_list = s3_buckets_select.value if s3_buckets_select.value else ["prodbucket", "devbucket"]
+                            
+                            updated_settings = dict(APP_SETTINGS)
+                            updated_settings["s3_catalog_buckets"] = selected_bucket_list
+                            updated_settings["s3_catalog_database"] = target_catalog_db
+                            
+                            if save_app_settings(updated_settings):
+                                ui.notify('Catalog configuration successfully saved!', type='success')
+                            else:
+                                ui.notify('Failed to save catalog configuration.', type='negative')
+                                
+                        ui.button('Save Catalog Configuration', icon='save', on_click=handle_save_catalog_config).props('elevated color=primary').classes('px-6 py-2 text-sm font-bold rounded-lg self-start')
+
+                    # 2. Execution & Sync Card
                     with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
                         with ui.row().classes('items-center gap-2'):
                             ui.icon('cloud_sync', color='primary').classes('text-2xl')
-                            ui.label('S3 Delta Tables Catalog Sync').classes('text-lg font-bold text-slate-800 dark:text-white')
+                            ui.label('S3 Delta Tables Catalog Sync Execution').classes('text-lg font-bold text-slate-800 dark:text-white')
                         ui.separator().classes('opacity-50')
-                        ui.label('Manually trigger a synchronization to scan the S3 bucket prefixes and auto-generate DuckDB Views for S3 Delta tables in the s3_delta_catalog schema.').classes('text-xs text-slate-400 leading-relaxed')
+                        ui.label('Trigger a catalog synchronization to scan configured S3 buckets and auto-generate DuckDB Views for S3 Delta tables in your chosen target catalog database.').classes('text-xs text-slate-400 leading-relaxed')
                         
                         async def run_manual_sync():
                             ui.notify('Starting S3 Delta Catalog Sync...', type='info')
@@ -4158,75 +4235,9 @@ def index():
                         value=APP_SETTINGS.get('ai_base_url', '')
                     ).props('outlined dense').classes('w-full').tooltip('Custom API gateway Base URL (e.g., http://localhost:11434/v1 for Ollama).')
 
-                # Card 6: S3 Delta Catalog Sync Configuration
-                with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
-                    with ui.row().classes('items-center justify-between w-full'):
-                        with ui.row().classes('items-center gap-2'):
-                            ui.icon('cloud_sync', color='primary').classes('text-2xl')
-                            ui.label('S3 Delta Catalog Sync Configuration').classes('text-lg font-bold text-slate-800 dark:text-white')
-                    ui.separator().classes('opacity-50')
-                    
-                    # 1. Interactive Multi-Select for S3 Buckets
-                    available_buckets = get_available_s3_buckets()
-                    raw_current_buckets = APP_SETTINGS.get('s3_catalog_buckets', ['prodbucket', 'devbucket'])
-                    if isinstance(raw_current_buckets, str):
-                        current_buckets = [b.strip() for b in raw_current_buckets.split(',') if b.strip()]
-                    else:
-                        current_buckets = list(raw_current_buckets)
-                    
-                    # Ensure current buckets exist in options list
-                    for cb in current_buckets:
-                        if cb not in available_buckets:
-                            available_buckets.append(cb)
-                            
-                    ui.label('Target S3 Buckets to Scan:').classes('text-xs font-semibold text-slate-500 dark:text-slate-400')
-                    settings_s3_buckets = ui.select(
-                        options=available_buckets,
-                        value=current_buckets,
-                        multiple=True,
-                        label='Select Buckets'
-                    ).props('outlined dense use-chips').classes('w-full').tooltip('Select S3 buckets in Garage S3 to scan for Delta Lake tables.')
-                    
-                    # 2. Select Catalog Database with fallback for custom creation
-                    available_dbs = get_available_catalog_databases()
-                    current_db = APP_SETTINGS.get('s3_catalog_database', '/databases/dbt_workspace.duckdb')
-                    
-                    db_options = {db: f"{os.path.basename(db)} ({db})" for db in available_dbs}
-                    db_options['__custom__'] = '+ Create / Use Custom Database...'
-                    
-                    initial_db_selection = current_db if current_db in db_options else '__custom__'
-                    
-                    ui.label('Target Catalog Database:').classes('text-xs font-semibold text-slate-500 dark:text-slate-400')
-                    settings_db_select = ui.select(
-                        options=db_options,
-                        value=initial_db_selection,
-                        label='Select Catalog Database'
-                    ).props('outlined dense').classes('w-full')
-                    
-                    settings_custom_db = ui.input(
-                        'New Database Name (saved in /databases/)',
-                        value=os.path.basename(current_db) if initial_db_selection == '__custom__' else ''
-                    ).props('outlined dense placeholder="e.g. my_analytics_db"').classes('w-full').tooltip('Enter a database name; it will be automatically saved as /databases/<name>.duckdb.')
-                    
-                    settings_custom_db.bind_visibility_from(settings_db_select, 'value', value='__custom__')
-
             # Actions row
             with ui.row().classes('w-full justify-end gap-3 p-4'):
                 def handle_save_settings():
-                    # Resolve target catalog database strictly inside /databases/<name>.duckdb
-                    if settings_db_select.value == '__custom__':
-                        raw_custom = settings_custom_db.value.strip() if settings_custom_db.value else "dbt_workspace"
-                        base_name = os.path.basename(raw_custom)
-                        if base_name.lower().endswith('.duckdb'):
-                            base_name = base_name[:-7]
-                        if not base_name:
-                            base_name = "dbt_workspace"
-                        target_catalog_db = f"/databases/{base_name}.duckdb"
-                    else:
-                        target_catalog_db = settings_db_select.value
-                        
-                    selected_bucket_list = settings_s3_buckets.value if settings_s3_buckets.value else ["prodbucket", "devbucket"]
-
                     new_settings = {
                         "default_rate_limit": settings_default_rate_limit.value.strip() if settings_default_rate_limit.value else "5/minute",
                         "max_safety_limit": int(settings_max_safety_limit.value) if settings_max_safety_limit.value is not None else 10000,
@@ -4239,8 +4250,8 @@ def index():
                         "ai_api_key": settings_ai_api_key.value.strip() if settings_ai_api_key.value else "",
                         "ai_model": settings_ai_model.value.strip() if settings_ai_model.value else "gpt-4o",
                         "ai_base_url": settings_ai_base_url.value.strip() if settings_ai_base_url.value else "",
-                        "s3_catalog_buckets": selected_bucket_list,
-                        "s3_catalog_database": target_catalog_db
+                        "s3_catalog_buckets": APP_SETTINGS.get('s3_catalog_buckets', ["prodbucket", "devbucket"]),
+                        "s3_catalog_database": APP_SETTINGS.get('s3_catalog_database', "/databases/dbt_workspace.duckdb")
                     }
                     new_jupyter = {
                         "url": settings_jupyter_url.value.strip() if settings_jupyter_url.value else "http://localhost:8889",
