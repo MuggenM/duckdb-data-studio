@@ -1,0 +1,68 @@
+test_project:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: '/app/databases/test_project.duckdb'
+      threads: 1
+    s3_delta:
+      type: duckrun
+      root_path: 's3://devbucket/tables'
+      threads: 2
+      extensions:
+        - httpfs
+        - delta
+      storage_options:
+        AWS_ACCESS_KEY_ID: "{{ env_var('AWS_ACCESS_KEY_ID') }}"
+        AWS_SECRET_ACCESS_KEY: "{{ env_var('AWS_SECRET_ACCESS_KEY') }}"
+        AWS_ENDPOINT_URL: "{{ env_var('AWS_ENDPOINT_URL') }}"
+        AWS_REGION: "{{ env_var('AWS_DEFAULT_REGION', 'us-east-1') }}"
+        allow_http: 'true'
+        AWS_S3_ALLOW_UNSAFE_RENAME: 'true'
+        AWS_S3_USE_PATH_STYLE: 'true'
+      settings:
+        max_memory: '2GB'
+      secrets:
+        - type: s3
+          region: "us-east-1"
+          key_id: "{{ env_var('AWS_ACCESS_KEY_ID') }}"
+          secret: "{{ env_var('AWS_SECRET_ACCESS_KEY') }}"
+          endpoint: "garage:3900"
+          use_ssl: false
+          url_style: path
+    postgres:
+      type: postgres
+      host: dbt-workbench-db
+      port: 5432
+      user: user
+      password: password
+      dbname: dbt_workbench
+      schema: public
+      threads: 1
+
+dbt_production_blueprint_duckdb:
+  target: dev
+  outputs:
+    dev:
+      type: duckdb
+      path: dev.duckdb
+      schema: main
+      threads: 4
+
+    ci:
+      type: duckdb
+      path: ci.duckdb
+      schema: main
+      threads: 4
+
+    snowflake:
+      type: snowflake
+      account: <your_account_identifier>
+      user: <your_username>
+      password: <your_password>
+      role: <your_role>
+      database: <your_database>
+      warehouse: <your_warehouse>
+      schema: dbt_dev
+      threads: 4
+      query_tag: dbt_production_blueprint
