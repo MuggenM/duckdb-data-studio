@@ -245,6 +245,40 @@ def get_jupyter_config():
     final_token = env_token or config_token or default_token
     return final_url, final_token
 
+def get_available_s3_buckets():
+    """Fetch list of available S3 bucket names from Garage S3."""
+    try:
+        import boto3
+        access_key = os.environ.get("AWS_ACCESS_KEY_ID") or "GK2713753aca1d72db5325f212"
+        secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY") or "afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e"
+        endpoint_url = os.environ.get("AWS_ENDPOINT_URL") or "http://garage:3900"
+        region_name = os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"
+        
+        s3 = boto3.resource(
+            's3',
+            endpoint_url=endpoint_url,
+            aws_access_key_id=access_key,
+            aws_secret_access_key=secret_key,
+            region_name=region_name
+        )
+        buckets = [b.name for b in s3.buckets.all()]
+        return buckets if buckets else ["prodbucket", "devbucket"]
+    except Exception as e:
+        print(f"WARNING: Could not fetch S3 buckets for Settings UI: {e}")
+        return ["prodbucket", "devbucket"]
+
+def get_available_catalog_databases():
+    """Fetch list of available DuckDB database files in /databases/."""
+    db_dir = "/databases"
+    databases = []
+    if os.path.exists(db_dir):
+        for f in os.listdir(db_dir):
+            if f.endswith(".duckdb"):
+                databases.append(os.path.join(db_dir, f))
+    if not databases:
+        databases = ["/databases/dbt_workspace.duckdb"]
+    return sorted(databases)
+
 def load_app_settings():
     """Load studio settings from yaml configuration file, providing defaults."""
     config_path = get_studio_config_path()
@@ -4126,24 +4160,73 @@ def index():
 
                 # Card 6: S3 Delta Catalog Sync Configuration
                 with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
-                    with ui.row().classes('items-center gap-2'):
-                        ui.icon('cloud_sync', color='primary').classes('text-2xl')
-                        ui.label('S3 Delta Catalog Sync Configuration').classes('text-lg font-bold text-slate-800 dark:text-white')
+                    with ui.row().classes('items-center justify-between w-full'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.icon('cloud_sync', color='primary').classes('text-2xl')
+                            ui.label('S3 Delta Catalog Sync Configuration').classes('text-lg font-bold text-slate-800 dark:text-white')
                     ui.separator().classes('opacity-50')
                     
-                    settings_s3_buckets = ui.input(
-                        'Target S3 Buckets', 
-                        value=APP_SETTINGS.get('s3_catalog_buckets', 'prodbucket, devbucket')
-                    ).props('outlined dense').classes('w-full').tooltip('Comma-separated list of S3 bucket names to scan for Delta Lake tables (e.g. prodbucket, devbucket).')
+                    # 1. Interactive Multi-Select for S3 Buckets
+                    available_buckets = get_available_s3_buckets()
+                    raw_current_buckets = APP_SETTINGS.get('s3_catalog_buckets', ['prodbucket', 'devbucket'])
+                    if isinstance(raw_current_buckets, str):
+                        current_buckets = [b.strip() for b in raw_current_buckets.split(',') if b.strip()]
+                    else:
+                        current_buckets = list(raw_current_buckets)
                     
-                    settings_s3_catalog_db = ui.input(
-                        'Catalog Database Path', 
-                        value=APP_SETTINGS.get('s3_catalog_database', '/databases/dbt_workspace.duckdb')
-                    ).props('outlined dense').classes('w-full').tooltip('Path to the DuckDB database file where S3 Delta views will be registered.')
+                    # Ensure current buckets exist in options list
+                    for cb in current_buckets:
+                        if cb not in available_buckets:
+                            available_buckets.append(cb)
+                            
+                    ui.label('Target S3 Buckets to Scan:').classes('text-xs font-semibold text-slate-500 dark:text-slate-400')
+                    settings_s3_buckets = ui.select(
+                        options=available_buckets,
+                        value=current_buckets,
+                        multiple=True,
+                        label='Select Buckets'
+                    ).props('outlined dense use-chips').classes('w-full').tooltip('Select S3 buckets in Garage S3 to scan for Delta Lake tables.')
+                    
+                    # 2. Select Catalog Database with fallback for custom creation
+                    available_dbs = get_available_catalog_databases()
+                    current_db = APP_SETTINGS.get('s3_catalog_database', '/databases/dbt_workspace.duckdb')
+                    
+                    db_options = {db: f"{os.path.basename(db)} ({db})" for db in available_dbs}
+                    db_options['__custom__'] = '+ Create / Use Custom Database...'
+                    
+                    initial_db_selection = current_db if current_db in db_options else '__custom__'
+                    
+                    ui.label('Target Catalog Database:').classes('text-xs font-semibold text-slate-500 dark:text-slate-400')
+                    settings_db_select = ui.select(
+                        options=db_options,
+                        value=initial_db_selection,
+                        label='Select Catalog Database'
+                    ).props('outlined dense').classes('w-full')
+                    
+                    settings_custom_db = ui.input(
+                        'Custom / New Database Name or Path',
+                        value=current_db if initial_db_selection == '__custom__' else ''
+                    ).props('outlined dense').classes('w-full').tooltip('Enter a database filename (e.g., custom_catalog.duckdb) to automatically create it in /databases/.')
+                    
+                    settings_custom_db.bind_visibility_from(settings_db_select, 'value', value='__custom__')
 
             # Actions row
             with ui.row().classes('w-full justify-end gap-3 p-4'):
                 def handle_save_settings():
+                    # Resolve target catalog database
+                    if settings_db_select.value == '__custom__':
+                        raw_custom = settings_custom_db.value.strip() if settings_custom_db.value else "dbt_workspace.duckdb"
+                        if not raw_custom.startswith('/'):
+                            target_catalog_db = f"/databases/{raw_custom}"
+                        else:
+                            target_catalog_db = raw_custom
+                        if not target_catalog_db.endswith('.duckdb'):
+                            target_catalog_db += '.duckdb'
+                    else:
+                        target_catalog_db = settings_db_select.value
+                        
+                    selected_bucket_list = settings_s3_buckets.value if settings_s3_buckets.value else ["prodbucket", "devbucket"]
+
                     new_settings = {
                         "default_rate_limit": settings_default_rate_limit.value.strip() if settings_default_rate_limit.value else "5/minute",
                         "max_safety_limit": int(settings_max_safety_limit.value) if settings_max_safety_limit.value is not None else 10000,
@@ -4156,8 +4239,8 @@ def index():
                         "ai_api_key": settings_ai_api_key.value.strip() if settings_ai_api_key.value else "",
                         "ai_model": settings_ai_model.value.strip() if settings_ai_model.value else "gpt-4o",
                         "ai_base_url": settings_ai_base_url.value.strip() if settings_ai_base_url.value else "",
-                        "s3_catalog_buckets": settings_s3_buckets.value.strip() if settings_s3_buckets.value else "prodbucket, devbucket",
-                        "s3_catalog_database": settings_s3_catalog_db.value.strip() if settings_s3_catalog_db.value else "/databases/dbt_workspace.duckdb"
+                        "s3_catalog_buckets": selected_bucket_list,
+                        "s3_catalog_database": target_catalog_db
                     }
                     new_jupyter = {
                         "url": settings_jupyter_url.value.strip() if settings_jupyter_url.value else "http://localhost:8889",

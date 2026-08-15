@@ -32,11 +32,25 @@ def sync_catalog(conn=None):
     region_name = os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"
     
     catalog_settings = load_catalog_settings()
-    buckets_str = catalog_settings.get("s3_catalog_buckets", "prodbucket, devbucket")
+    buckets_raw = catalog_settings.get("s3_catalog_buckets", ["prodbucket", "devbucket"])
+    if isinstance(buckets_raw, list):
+        target_bucket_names = [str(b).strip() for b in buckets_raw if str(b).strip()]
+    else:
+        target_bucket_names = [b.strip() for b in str(buckets_raw).split(",") if b.strip()]
+        
     target_db_path = catalog_settings.get("s3_catalog_database", "/databases/dbt_workspace.duckdb")
-    
-    target_bucket_names = [b.strip() for b in buckets_str.split(",") if b.strip()]
-    
+    if not target_db_path.startswith('/'):
+        target_db_path = f"/databases/{target_db_path}"
+    if not target_db_path.endswith('.duckdb'):
+        target_db_path += '.duckdb'
+        
+    db_dir = os.path.dirname(target_db_path)
+    if db_dir:
+        os.makedirs(db_dir, exist_ok=True)
+        
+    if not os.path.exists(target_db_path):
+        print(f"INFO: Catalog database file '{target_db_path}' does not exist. Creating new database...", flush=True)
+        
     print(f"INFO: Running S3 Delta Catalog Sync to {target_db_path} for buckets: {target_bucket_names} (Endpoint: {endpoint_url})...", flush=True)
     
     # Connect to S3 using boto3
