@@ -4,7 +4,7 @@ import json
 
 class CanvasNode:
     def __init__(self, node_id: str, node_type: str, title: str, x: int = 100, y: int = 100, data: dict = None):
-        self.id = node_id
+        self.id = str(node_id)
         self.type = node_type  # 'source', 'join', 'transform', 'filter', 'output'
         self.title = title
         self.x = x
@@ -101,6 +101,55 @@ class CanvasGraph:
             'nodes': {nid: {'id': n.id, 'type': n.type, 'title': n.title, 'x': n.x, 'y': n.y, 'data': n.data} for nid, n in self.nodes.items()},
             'connections': self.connections
         }
+
+def compile_drawflow_json_to_sql(drawflow_export: dict, mode: str = 'standard') -> str:
+    """
+    Parses Drawflow Client-Side JS exported JSON payload and compiles it into SQL.
+    """
+    if not drawflow_export or not isinstance(drawflow_export, dict):
+        return "-- Drawflow Canvas is empty. Drag or add nodes to begin."
+
+    df_modules = drawflow_export.get('drawflow', {})
+    home_module = df_modules.get('Home', df_modules.get('home', {}))
+    raw_nodes = home_module.get('data', {})
+
+    if not raw_nodes:
+        return "-- Canvas is empty. Drag or add Source Nodes to begin building your query pipeline."
+
+    graph_nodes = {}
+    connections = []
+
+    for nid_str, raw in raw_nodes.items():
+        node_name = raw.get('name', 'source').lower()
+        node_data = raw.get('data', {})
+        node_type = node_data.get('node_type', node_name)
+        
+        # Output connections
+        outputs = raw.get('outputs', {})
+        for out_key, out_val in outputs.items():
+            for conn in out_val.get('connections', []):
+                connections.append({
+                    'from_node': str(nid_str),
+                    'from_port': out_key,
+                    'to_node': str(conn.get('node')),
+                    'to_port': conn.get('output', 'input_1')
+                })
+
+        graph_nodes[str(nid_str)] = {
+            'id': str(nid_str),
+            'type': node_type,
+            'title': raw.get('class', node_type).title(),
+            'x': raw.get('pos_x', 0),
+            'y': raw.get('pos_y', 0),
+            'data': node_data
+        }
+
+    graph_dict = {
+        'nodes': graph_nodes,
+        'connections': connections
+    }
+
+    return compile_canvas_to_sql(graph_dict, mode=mode)
 
 def compile_canvas_to_sql(graph_dict: dict, mode: str = 'standard') -> str:
     """
