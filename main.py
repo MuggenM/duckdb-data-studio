@@ -8992,133 +8992,135 @@ CRITICAL DUCKDB SQL RULES:
             ui.button('Confirm Drop', color='negative', on_click=perform_drop_action).props('elevated')
 
     # Build Attach Database Dialog
-    with ui.dialog() as attach_db_dialog, ui.card().classes('w-96 p-6 gap-4'):
-        ui.label('🔌 Attach External Database').classes('text-lg font-bold text-slate-800 dark:text-white')
-        ui.label('Attach SQLite, PostgreSQL, MySQL, DuckDB or DuckLake database directly to your session.').classes('text-xs text-slate-500 -mt-2')
-        
-        # Controls
-        attach_alias_input = ui.input('Database Alias', placeholder='e.g., my_sqlite_db').props('outlined dense').classes('w-full')
+    # Build Attach Database Dialog
+    with ui.dialog() as attach_db_dialog, ui.card().classes('w-[480px] p-6 gap-4'):
+        with ui.row().classes('items-center gap-2'):
+            ui.icon('hub', color='primary').classes('text-2xl')
+            ui.label('Attach External Database').classes('text-lg font-bold text-slate-800 dark:text-white')
+        ui.label('Attach PostgreSQL, SQLite, Apache Iceberg, MotherDuck or local DuckDB files directly to your session.').classes('text-xs text-slate-500 -mt-2')
         
         db_type_select = ui.select(
             options={
-                'duckdb': 'DuckDB Database (.duckdb, .db)',
-                'sqlite': 'SQLite Database (via extension)',
-                'ducklake': 'DuckLake Table Format',
-                'postgres': 'PostgreSQL Server Connection',
-                'mysql': 'MySQL Server Connection'
+                'postgresql': '🐘 PostgreSQL Database',
+                'sqlite': '📁 SQLite File (.db, .sqlite)',
+                'iceberg': '🧊 Apache Iceberg Table / Warehouse',
+                'motherduck': '🦆 MotherDuck Cloud Database',
+                'duckdb': '🦆 DuckDB Database File (.duckdb)'
             },
-            value='duckdb',
-            label='Database Type',
-            on_change=lambda e: toggle_ducklake_options(e)
+            value='postgresql',
+            label='Database Provider'
         ).props('outlined dense').classes('w-full')
-        
-        with ui.row().classes('w-full gap-2 items-center flex-nowrap'):
-            attach_path_input = ui.input(
-                label='Path or Connection String',
-                placeholder='e.g., /databases/my_db.duckdb or host=localhost ...'
-            ).props('outlined dense').classes('flex-grow')
-            
-            async def select_attach_file():
-                start_dir = '/databases' if os.path.exists('/databases') else os.path.abspath('.')
-                picker = local_file_picker(start_dir, upper_limit=None, multiple=False)
-                res = await picker
-                if res:
-                    attach_path_input.set_value(res[0])
-                    
-            ui.button(icon='folder_open', on_click=select_attach_file).props('dense outline').classes('p-2 q-mt-md').tooltip('Browse database files')
-        
-        # DuckLake options container
-        with ui.column().classes('w-full gap-2 border border-slate-200 dark:border-slate-800 rounded p-3 dark-bg-flat') as ducklake_opts_container:
-            ui.label('DuckLake Options').classes('text-xs font-bold text-slate-600 dark:text-slate-400')
-            ducklake_data_path_input = ui.input('Data Parquet Folder', value='data_parquet/', placeholder='e.g., path/to/data_parquet/').props('outlined dense').classes('w-full')
-            
-        def toggle_ducklake_options(e):
-            ducklake_opts_container.visible = (e.value == 'ducklake')
-            
-        ducklake_opts_container.visible = False # Initial state is duckdb, so hidden
-        
+
+        attach_alias_input = ui.input('Attachment Alias (Name in SQL)', value='pg_prod', placeholder='e.g., pg_prod').props('outlined dense').classes('w-full')
+        attach_readonly_cb = ui.checkbox('Attach as READ_ONLY', value=True).classes('text-xs font-semibold text-slate-700 dark:text-slate-300')
+
+        attach_fields_container = ui.column().classes('w-full gap-2')
+
+        def render_dialog_fields():
+            attach_fields_container.clear()
+            p = db_type_select.value
+            with attach_fields_container:
+                if p == 'postgresql':
+                    attach_alias_input.set_value('pg_prod')
+                    with ui.grid().classes('grid grid-cols-2 gap-2 w-full'):
+                        d_host = ui.input('Host', value='localhost').props('outlined dense')
+                        d_port = ui.input('Port', value='5432').props('outlined dense')
+                        d_dbname = ui.input('Database Name', value='production_db').props('outlined dense')
+                        d_user = ui.input('Username', value='postgres').props('outlined dense')
+                        d_pass = ui.input('Password', password=True).props('outlined dense').classes('col-span-2')
+                        attach_fields_container.pg_params = {'host': d_host, 'port': d_port, 'dbname': d_dbname, 'user': d_user, 'password': d_pass}
+
+                elif p == 'sqlite':
+                    attach_alias_input.set_value('sqlite_db')
+                    with ui.row().classes('w-full gap-2 items-center flex-nowrap'):
+                        d_file = ui.input('SQLite Filepath', value='/app/databases/sample.sqlite').props('outlined dense').classes('flex-grow')
+                        async def pick_sqlite():
+                            start_dir = '/databases' if os.path.exists('/databases') else os.path.abspath('.')
+                            picker = local_file_picker(start_dir, upper_limit=None, multiple=False)
+                            res = await picker
+                            if res: d_file.set_value(res[0])
+                        ui.button(icon='folder_open', on_click=pick_sqlite).props('dense outline').classes('p-2').tooltip('Browse')
+                        attach_fields_container.sqlite_params = {'filepath': d_file}
+
+                elif p == 'iceberg':
+                    attach_alias_input.set_value('iceberg_wh')
+                    d_iceberg = ui.input('Iceberg S3 URI', value='s3://prodbucket/iceberg_warehouse/db').props('outlined dense').classes('w-full')
+                    attach_fields_container.iceberg_params = {'s3_path': d_iceberg}
+
+                elif p == 'motherduck':
+                    attach_alias_input.set_value('cloud_md')
+                    d_mddb = ui.input('MotherDuck Database Name', value='my_db').props('outlined dense').classes('w-full')
+                    d_mdtok = ui.input('Service Token (Optional)', password=True).props('outlined dense').classes('w-full')
+                    attach_fields_container.md_params = {'dbname': d_mddb, 'token': d_mdtok}
+
+                elif p == 'duckdb':
+                    attach_alias_input.set_value('attached_duckdb')
+                    with ui.row().classes('w-full gap-2 items-center flex-nowrap'):
+                        d_duck = ui.input('DuckDB Filepath', value='/databases/my_db.duckdb').props('outlined dense').classes('flex-grow')
+                        async def pick_duck():
+                            start_dir = '/databases' if os.path.exists('/databases') else os.path.abspath('.')
+                            picker = local_file_picker(start_dir, upper_limit=None, multiple=False)
+                            res = await picker
+                            if res: d_duck.set_value(res[0])
+                        ui.button(icon='folder_open', on_click=pick_duck).props('dense outline').classes('p-2').tooltip('Browse')
+                        attach_fields_container.duck_params = {'filepath': d_duck}
+
+        db_type_select.on_value_change(lambda _: render_dialog_fields())
+        render_dialog_fields()
+
         async def handle_attach_db():
             alias = attach_alias_input.value.strip()
-            db_type = db_type_select.value
-            conn_path = attach_path_input.value.strip()
-            data_path = ducklake_data_path_input.value.strip() if db_type == 'ducklake' else None
-            
-            if not alias or not conn_path:
-                ui.notify('Please fill out all required fields!', type='warning')
-                return
-                
-            # Slugify alias to prevent SQL injections or bad names
-            alias = "".join([c if c.isalnum() else "_" for c in alias]).strip("_").lower()
+            p = db_type_select.value
+            read_only = attach_readonly_cb.value
+
             if not alias:
-                ui.notify('Please provide a valid alphanumeric database alias!', type='warning')
+                ui.notify('Please provide an Attachment Alias name!', type='warning')
                 return
-                
-            if alias in ('main', 'starter'):
-                ui.notify("Cannot use 'main' or 'starter' as database alias!", type='warning')
+
+            alias = "".join([c if c.isalnum() else "_" for c in alias]).strip("_").lower()
+            if alias in ('main', 'starter', 'system', 'temp', 'memory'):
+                ui.notify("Reserved database alias name cannot be used!", type='warning')
                 return
-                
-            status_label.text = "Attaching database..."
-            
+
+            status_label.text = f"Attaching {p} database '{alias}'..."
             try:
-                # Pre-install/load required extension
-                if db_type == 'sqlite':
-                    explorer.conn.execute("INSTALL sqlite; LOAD sqlite;")
-                elif db_type == 'postgres':
-                    explorer.conn.execute("INSTALL postgres; LOAD postgres;")
-                elif db_type == 'mysql':
-                    explorer.conn.execute("INSTALL mysql; LOAD mysql;")
-                elif db_type == 'ducklake':
-                    explorer.conn.execute("INSTALL ducklake; LOAD ducklake;")
-                    
-                # Construct ATTACH command
-                if db_type == 'ducklake':
-                    # Create directories if they do not exist
-                    meta_dir = os.path.dirname(conn_path)
-                    if meta_dir:
-                        os.makedirs(meta_dir, exist_ok=True)
-                    if data_path:
-                        os.makedirs(data_path, exist_ok=True)
-                    sql = f"ATTACH 'ducklake:{conn_path}' AS {alias} (DATA_PATH '{data_path}');"
-                elif db_type == 'sqlite':
-                    # Ensure sqlite file exists or directory is ready
-                    sqlite_dir = os.path.dirname(conn_path)
-                    if sqlite_dir:
-                        os.makedirs(sqlite_dir, exist_ok=True)
-                    sql = f"ATTACH '{conn_path}' AS {alias} (TYPE sqlite);"
-                elif db_type == 'postgres':
-                    sql = f"ATTACH '{conn_path}' AS {alias} (TYPE postgres);"
-                elif db_type == 'mysql':
-                    sql = f"ATTACH '{conn_path}' AS {alias} (TYPE mysql);"
-                else: # duckdb
-                    db_dir = os.path.dirname(conn_path)
-                    if db_dir:
-                        os.makedirs(db_dir, exist_ok=True)
-                    sql = f"ATTACH '{conn_path}' AS {alias};"
-                    
-                # Execute query in DuckDB to check if connection works
-                explorer.conn.execute(sql)
-                
-                # Save to YAML config
-                save_attached_database(alias, db_type, conn_path, data_path)
-                
-                ui.notify(f"Successfully attached database '{alias}'!", type='success')
+                import db_attachments_manager
+                params = {}
+                if p == 'postgresql':
+                    f = getattr(attach_fields_container, 'pg_params', {})
+                    params = {k: v.value for k, v in f.items()}
+                    db_attachments_manager.attach_database(explorer.conn, 'POSTGRESQL', alias, params, read_only=read_only)
+                elif p == 'sqlite':
+                    f = getattr(attach_fields_container, 'sqlite_params', {})
+                    params = {'filepath': f['filepath'].value}
+                    db_attachments_manager.attach_database(explorer.conn, 'SQLITE', alias, params, read_only=read_only)
+                elif p == 'iceberg':
+                    f = getattr(attach_fields_container, 'iceberg_params', {})
+                    params = {'s3_path': f['s3_path'].value}
+                    db_attachments_manager.attach_database(explorer.conn, 'ICEBERG', alias, params, read_only=read_only)
+                elif p == 'motherduck':
+                    f = getattr(attach_fields_container, 'md_params', {})
+                    params = {k: v.value for k, v in f.items()}
+                    db_attachments_manager.attach_database(explorer.conn, 'MOTHERDUCK', alias, params, read_only=read_only)
+                elif p == 'duckdb':
+                    f = getattr(attach_fields_container, 'duck_params', {})
+                    fp = f['filepath'].value
+                    ro_sql = " (READ_ONLY)" if read_only else ""
+                    explorer.conn.execute(f"ATTACH '{fp}' AS {alias}{ro_sql};")
+
+                ui.notify(f"Successfully attached database '{alias}' ({p})!", type='success')
+                status_label.text = "Database attached successfully"
                 attach_db_dialog.close()
-                
-                # Reset inputs
-                attach_alias_input.value = ''
-                attach_path_input.value = ''
-                db_type_select.value = 'duckdb'
-                ducklake_data_path_input.value = 'data_parquet/'
-                
-                # Refresh UI trees
+
+                # Refresh Explorer Schema Tree
                 refresh_schema_tree()
             except Exception as ex:
-                ui.notify(f"Failed to attach database: {str(ex)}", type='negative', duration=7)
+                ui.notify(f"Failed to attach database: {ex}", type='negative', duration=7)
                 status_label.text = "Error attaching database"
-                
+
         with ui.row().classes('w-full justify-end gap-2 pt-2'):
             ui.button('Cancel', on_click=attach_db_dialog.close).props('flat')
-            ui.button('Attach Database', icon='link', color='primary', on_click=handle_attach_db).props('elevated')
+            ui.button('Attach Database 🔗', icon='link', color='primary', on_click=handle_attach_db).props('elevated')
 
     # Build Rename Database Dialog
     with ui.dialog() as rename_db_dialog, ui.card().classes('w-96 p-6 gap-4'):
