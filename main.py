@@ -2077,12 +2077,192 @@ def index():
             
             # Sub Tabs for database tools
             with ui.tabs().classes('w-full border-b flex-none') as db_tools_subtabs:
+                attachments_tab = ui.tab('Database Attachments Hub', icon='hub')
                 backup_restore_tab = ui.tab('Backup & Restore', icon='settings_backup_restore')
                 ingestion_seeding_tab = ui.tab('Ingestion & Seeding', icon='science')
                 schema_diff_tab = ui.tab('Schema Diff Tool', icon='difference')
                 s3_delta_tab = ui.tab('S3 Delta Catalog', icon='cloud_sync')
                 
-            with ui.tab_panels(db_tools_subtabs, value=backup_restore_tab).classes('w-full bg-transparent min-h-0 flex-grow p-0').style('padding: 0;'):
+            with ui.tab_panels(db_tools_subtabs, value=attachments_tab).classes('w-full bg-transparent min-h-0 flex-grow p-0').style('padding: 0;'):
+                # TAB 0: Database Attachments Hub
+                with ui.tab_panel(attachments_tab).classes('gap-6 p-0 flex-col'):
+                    with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                        with ui.row().classes('items-center justify-between w-full'):
+                            with ui.row().classes('items-center gap-2'):
+                                ui.icon('hub', color='primary').classes('text-2xl')
+                                ui.label('Multi-Database Connection & Attachment Hub').classes('text-lg font-bold text-slate-800 dark:text-white')
+                            
+                            async def refresh_attached_dbs():
+                                try:
+                                    import db_attachments_manager
+                                    loop = asyncio.get_event_loop()
+                                    dbs = await loop.run_in_executor(None, lambda: db_attachments_manager.get_attached_databases(explorer.conn))
+                                    render_attached_table(dbs)
+                                except Exception as ex:
+                                    ui.notify(f"Error fetching attached DBs: {ex}", type='negative')
+
+                            ui.button('Refresh Attachments', icon='refresh', on_click=refresh_attached_dbs).props('flat dense').classes('text-xs')
+
+                        ui.separator().classes('opacity-50')
+                        ui.label('Seamlessly attach PostgreSQL, SQLite, Apache Iceberg, or MotherDuck databases directly into DuckDB for high-speed cross-database SQL querying.').classes('text-xs text-slate-400 leading-relaxed')
+
+                        # Currently Attached Databases Grid Container
+                        attached_table_container = ui.column().classes('w-full gap-2 mt-1')
+
+                        def render_attached_table(attached_list):
+                            attached_table_container.clear()
+                            with attached_table_container:
+                                if not attached_list:
+                                    ui.label('No external databases attached. Use the form below to attach PostgreSQL, SQLite, Iceberg, or MotherDuck.').classes('text-sm text-slate-400 italic py-2')
+                                    return
+
+                                ui.label(f"Currently Attached External Databases ({len(attached_list)} active):").classes('text-xs font-bold text-slate-700 dark:text-slate-300')
+                                
+                                for db in attached_list:
+                                    alias = db['alias']
+                                    db_type = db['type']
+                                    read_only_badge = "READ_ONLY" if db['read_only'] else "READ_WRITE"
+                                    badge_color = "bg-blue-50 text-blue-600 dark:bg-blue-950/40 dark:text-blue-400" if db['read_only'] else "bg-emerald-50 text-emerald-600 dark:bg-emerald-950/40 dark:text-emerald-400"
+                                    
+                                    with ui.card().classes('w-full p-4 border border-slate-200 dark:border-slate-800 rounded-lg flex-row items-center justify-between no-wrap gap-4'):
+                                        with ui.row().classes('items-center gap-3'):
+                                            ui.icon('storage', color='primary').classes('text-xl')
+                                            with ui.column().classes('gap-0.5'):
+                                                with ui.row().classes('items-center gap-2'):
+                                                    ui.label(alias).classes('font-bold text-sm text-slate-800 dark:text-white font-mono')
+                                                    ui.label(db_type).classes('text-[10px] font-bold px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300')
+                                                    ui.label(read_only_badge).classes(f'text-[10px] font-bold px-2 py-0.5 rounded {badge_color}')
+                                                ui.label(f"Path / Connection: {db['path']}").classes('text-xs text-slate-400 font-mono truncate max-w-md')
+                                        
+                                        async def do_detach(a=alias):
+                                            try:
+                                                import db_attachments_manager
+                                                loop = asyncio.get_event_loop()
+                                                ok = await loop.run_in_executor(None, lambda: db_attachments_manager.detach_database(explorer.conn, a))
+                                                if ok:
+                                                    ui.notify(f"Successfully detached '{a}'", type='info')
+                                                    await refresh_attached_dbs()
+                                                    explorer.refresh_database_tree()
+                                                else:
+                                                    ui.notify(f"Failed to detach '{a}'", type='negative')
+                                            except Exception as dex:
+                                                ui.notify(f"Detach error: {dex}", type='negative')
+
+                                        ui.button('Detach 🔗', icon='link_off', color='negative', on_click=do_detach).props('outlined dense').classes('text-xs')
+
+                        # Auto load attached tables on initial render
+                        asyncio.create_task(refresh_attached_dbs())
+
+                    # Form Card: Attach New Database
+                    with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4'):
+                        with ui.row().classes('items-center gap-2'):
+                            ui.icon('add_link', color='primary').classes('text-2xl')
+                            ui.label('Attach New External Database').classes('text-lg font-bold text-slate-800 dark:text-white')
+                        ui.separator().classes('opacity-50')
+
+                        attach_provider_select = ui.select(
+                            options={
+                                'PostgreSQL': '🐘 PostgreSQL Database',
+                                'SQLite': '📁 SQLite File (.db / .sqlite)',
+                                'Iceberg': '🧊 Apache Iceberg Table / Warehouse',
+                                'MotherDuck': '🦆 MotherDuck Cloud Database'
+                            },
+                            value='PostgreSQL',
+                            label='Database Provider'
+                        ).props('outlined dense').classes('w-full')
+
+                        attach_alias_input = ui.input('Attachment Alias (Name in SQL)', value='pg_db').props('outlined dense placeholder="e.g. pg_prod"').classes('w-full')
+                        attach_readonly_checkbox = ui.checkbox('Attach as READ_ONLY (Recommended)', value=True).classes('text-xs font-semibold text-slate-700 dark:text-slate-300')
+
+                        # Dynamic Parameter Fields Container
+                        provider_params_container = ui.column().classes('w-full gap-3')
+
+                        def render_provider_fields():
+                            provider_params_container.clear()
+                            p = attach_provider_select.value
+                            with provider_params_container:
+                                if p == 'PostgreSQL':
+                                    attach_alias_input.set_value('pg_prod')
+                                    with ui.grid().classes('grid grid-cols-1 md:grid-cols-2 gap-3 w-full'):
+                                        pg_host = ui.input('Host', value='localhost').props('outlined dense')
+                                        pg_port = ui.input('Port', value='5432').props('outlined dense')
+                                        pg_dbname = ui.input('Database Name', value='production_db').props('outlined dense')
+                                        pg_user = ui.input('Username', value='postgres').props('outlined dense')
+                                        pg_password = ui.input('Password', password=True).props('outlined dense')
+                                        
+                                        provider_params_container.pg_fields = {
+                                            'host': pg_host, 'port': pg_port, 'dbname': pg_dbname, 'user': pg_user, 'password': pg_password
+                                        }
+
+                                elif p == 'SQLite':
+                                    attach_alias_input.set_value('sqlite_db')
+                                    sqlite_file = ui.input('SQLite Filepath', value='/app/databases/sample.sqlite').props('outlined dense placeholder="/path/to/database.db"').classes('w-full')
+                                    provider_params_container.sqlite_fields = {'filepath': sqlite_file}
+
+                                elif p == 'Iceberg':
+                                    attach_alias_input.set_value('iceberg_wh')
+                                    iceberg_path = ui.input('Iceberg S3 URI / Table Path', value='s3://prodbucket/iceberg_warehouse/db').props('outlined dense placeholder="s3://bucket/path"').classes('w-full')
+                                    provider_params_container.iceberg_fields = {'s3_path': iceberg_path}
+
+                                elif p == 'MotherDuck':
+                                    attach_alias_input.set_value('cloud_md')
+                                    md_db = ui.input('MotherDuck Database Name', value='my_db').props('outlined dense placeholder="Leave blank for default"').classes('w-full')
+                                    md_token = ui.input('MotherDuck Service Token (Optional)', password=True).props('outlined dense').classes('w-full')
+                                    provider_params_container.md_fields = {'dbname': md_db, 'token': md_token}
+
+                        attach_provider_select.on_value_change(lambda _: render_provider_fields())
+                        render_provider_fields()
+
+                        async def handle_attach_submit():
+                            p = attach_provider_select.value
+                            alias = attach_alias_input.value.strip()
+                            read_only = attach_readonly_checkbox.value
+                            if not alias:
+                                ui.notify('Attachment Alias name is required!', type='warning')
+                                return
+
+                            params = {}
+                            if p == 'PostgreSQL':
+                                fields = getattr(provider_params_container, 'pg_fields', {})
+                                params = {k: v.value for k, v in fields.items()}
+                            elif p == 'SQLite':
+                                fields = getattr(provider_params_container, 'sqlite_fields', {})
+                                params = {'filepath': fields['filepath'].value}
+                            elif p == 'Iceberg':
+                                fields = getattr(provider_params_container, 'iceberg_fields', {})
+                                params = {'s3_path': fields['s3_path'].value}
+                            elif p == 'MotherDuck':
+                                fields = getattr(provider_params_container, 'md_fields', {})
+                                params = {k: v.value for k, v in fields.items()}
+
+                            ui.notify(f"Attaching {p} database '{alias}'...", type='info')
+                            try:
+                                import db_attachments_manager
+                                loop = asyncio.get_event_loop()
+                                await loop.run_in_executor(None, lambda: db_attachments_manager.attach_database(explorer.conn, p, alias, params, read_only=read_only))
+                                ui.notify(f"Successfully attached database '{alias}' ({p})!", type='success')
+                                await refresh_attached_dbs()
+                                explorer.refresh_database_tree()
+                            except Exception as aex:
+                                ui.notify(f"Attachment failed: {aex}", type='negative')
+
+                        ui.button('Attach Database 🔗', icon='link', color='primary', on_click=handle_attach_submit).props('elevated dense').classes('px-6 py-2 text-xs font-bold rounded-lg self-start mt-2')
+
+                    # Card 3: Cross-Database Query Snippets
+                    with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-3'):
+                        with ui.row().classes('items-center gap-2 text-indigo-600 dark:text-indigo-400'):
+                            ui.icon('terminal', size='sm')
+                            ui.label('Cross-Database Federation SQL Snippet Generator').classes('font-bold text-sm')
+                        ui.label('Once attached, query across PostgreSQL, SQLite, Iceberg, and DuckDB tables within a single SQL statement:').classes('text-xs text-slate-400')
+                        ui.code("""-- Example: Join PostgreSQL users with SQLite sales and S3 Delta Lake orders
+SELECT 
+    u.id, 
+    u.email, 
+    s.total_amount, 
+    o.order_date
+FROM pg_prod.public.users u
+JOIN sqlite_db.sales s ON u.id = s.user_id
+JOIN prodbucket.f1_marts.fact_race_results o ON u.id = o.driver_id;""", language='sql').classes('w-full font-mono text-xs')
                 # TAB 1: Backup & Restore
                 with ui.tab_panel(backup_restore_tab).classes('gap-6 p-0 flex-col'):
                     with ui.grid().classes('grid grid-cols-1 md:grid-cols-2 gap-6 w-full flex-none'):

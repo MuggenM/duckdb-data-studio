@@ -48,6 +48,7 @@ services:
       - ./column_lineage.py:/app/column_lineage.py
       - ./delta_inspector.py:/app/delta_inspector.py
       - ./delta_optimizer.py:/app/delta_optimizer.py
+      - ./db_attachments_manager.py:/app/db_attachments_manager.py
       - ./main.py:/app/main.py
     environment:
       - STORAGE_SECRET=duckdb_studio_secret_key_1337
