@@ -11,6 +11,70 @@ class CanvasNode:
         self.y = y
         self.data = data if data is not None else {}
 
+    def get_icon(self) -> str:
+        icons = {
+            'source': 'storage',
+            'join': 'hub',
+            'transform': 'auto_awesome',
+            'filter': 'filter_alt',
+            'output': 'flag'
+        }
+        return icons.get(self.type, 'apps')
+
+    def get_color_theme(self) -> dict:
+        themes = {
+            'source': {'border': 'border-indigo-500', 'badge': 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/60 dark:text-indigo-200', 'icon_color': 'indigo'},
+            'join': {'border': 'border-purple-500', 'badge': 'bg-purple-100 text-purple-800 dark:bg-purple-900/60 dark:text-purple-200', 'icon_color': 'purple'},
+            'transform': {'border': 'border-emerald-500', 'badge': 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/60 dark:text-emerald-200', 'icon_color': 'emerald'},
+            'filter': {'border': 'border-amber-500', 'badge': 'bg-amber-100 text-amber-800 dark:bg-amber-900/60 dark:text-amber-200', 'icon_color': 'amber'},
+            'output': {'border': 'border-rose-500', 'badge': 'bg-rose-100 text-rose-800 dark:bg-rose-900/60 dark:text-rose-200', 'icon_color': 'rose'}
+        }
+        return themes.get(self.type, {'border': 'border-slate-400', 'badge': 'bg-slate-100 text-slate-800', 'icon_color': 'primary'})
+
+    def get_summary(self) -> str:
+        d = self.data
+        if self.type == 'source':
+            db = d.get('database', 'main')
+            tbl = d.get('table', 'unselected')
+            alias = d.get('alias', 't1')
+            cols = d.get('selected_columns', [])
+            col_str = f" ({len(cols)} cols)" if cols else ""
+            return f"Source: {db}.{tbl} AS {alias}{col_str}"
+        elif self.type == 'join':
+            jtype = d.get('type', 'LEFT JOIN')
+            db = d.get('database', 'main')
+            tbl = d.get('table', 'unselected')
+            left = d.get('on_left', 't1.id')
+            right = d.get('on_right', 't2.id')
+            return f"{jtype} {db}.{tbl} ON {left}={right}"
+        elif self.type == 'transform':
+            exprs = d.get('expressions', [])
+            if not exprs: return "No transformations configured"
+            ex_summary = []
+            for ex in exprs[:2]:
+                fn = ex.get('func', 'NONE')
+                col = ex.get('column', 'col')
+                alias = ex.get('alias', '')
+                ex_str = f"{fn}({col})" if fn != 'NONE' else col
+                if alias: ex_str += f" AS {alias}"
+                ex_summary.append(ex_str)
+            res = ", ".join(ex_summary)
+            if len(exprs) > 2: res += f" (+{len(exprs)-2} more)"
+            return res
+        elif self.type == 'filter':
+            col = d.get('column', 'column')
+            op = d.get('operator', '=')
+            val = d.get('value', '')
+            return f"WHERE {col} {op} {val}".strip()
+        elif self.type == 'output':
+            ord_col = d.get('order_column', '')
+            ord_dir = d.get('order_direction', 'ASC')
+            lim = d.get('limit', 100)
+            res = f"LIMIT {lim}"
+            if ord_col: res = f"ORDER BY {ord_col} {ord_dir} | {res}"
+            return res
+        return "Configure Node Properties"
+
 class CanvasGraph:
     def __init__(self):
         self.nodes = {}  # node_id -> CanvasNode
@@ -92,6 +156,9 @@ def compile_canvas_to_sql(graph_dict: dict, mode: str = 'standard') -> str:
                     elif fn == 'MIN': expr_str = f"MIN({col})"
                     elif fn == 'MAX': expr_str = f"MAX({col})"
                     elif fn == 'COUNT_DISTINCT': expr_str = f"COUNT(DISTINCT {col})"
+                    elif fn == 'DATE_TRUNC': expr_str = f"DATE_TRUNC('month', {col})"
+                    elif fn == 'ROUND': expr_str = f"ROUND({col}, 2)"
+                    elif fn == 'COALESCE': expr_str = f"COALESCE({col}, 0)"
                     else: expr_str = f"{fn}({col})"
                 else:
                     expr_str = col
