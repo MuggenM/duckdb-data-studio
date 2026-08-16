@@ -5256,300 +5256,212 @@ JOIN prodbucket.f1_marts.fact_race_results o ON u.id = o.driver_id;""", language
                                             db_size = os.path.getsize(DB_NAME) if os.path.exists(DB_NAME) else 0
                                             ui.label(f"{db_size / (1024*1024):.2f} MB").classes('text-sm font-mono font-bold text-slate-800 dark:text-slate-200')
 
-                    # 🧱 VISUAL QUERY BUILDER & DBT STUDIO CARD CONTAINER
+                    # 🎨 INTERACTIVE CANVAS VISUAL QUERY & PIPELINE STUDIO (PHASE 1)
                     vqb_card = ui.card().classes('w-full flex-grow p-4 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden min-h-0 flex-nowrap dark-bg-panel')
                     vqb_card.bind_visibility_from(workspace_sub_tabs, 'value', value='Visual Query Builder')
                     with vqb_card:
-                        vqb_joins_rows = []
-                        vqb_filters_rows = []
-                        vqb_col_controls = []
+                        from canvas_query_builder import CanvasGraph, CanvasNode, compile_canvas_to_sql
+                        
+                        canvas_graph = CanvasGraph()
+                        
+                        # Initialize default canvas nodes (Source 1 + Output)
+                        n_src = CanvasNode('src_1', 'source', '📥 Source Data', x=20, y=20, data={
+                            'database': 'sqlite_lakehouse', 'schema': 'main', 'table': 'complex1', 'alias': 't1',
+                            'selected_columns': []
+                        })
+                        n_out = CanvasNode('out_1', 'output', '📊 Output & Export', x=600, y=20, data={
+                            'order_column': '', 'order_direction': 'ASC', 'limit': 100
+                        })
+                        canvas_graph.add_node(n_src)
+                        canvas_graph.add_node(n_out)
+                        canvas_graph.add_connection('src_1', 'out_1')
 
-                        # Top Header & Mode Toolbar
+                        # Header Bar & Node Creation Toolbar
                         with ui.row().classes('w-full items-center justify-between no-wrap pb-3 border-b border-slate-200 dark:border-slate-800 flex-none'):
                             with ui.row().classes('items-center gap-2'):
                                 ui.icon('auto_awesome', color='primary').classes('text-2xl')
                                 with ui.column().classes('gap-0'):
-                                    ui.label('Visual Query Builder & dbt Studio').classes('text-base font-extrabold text-slate-800 dark:text-white')
-                                    ui.label('Construct cross-database queries visually and export as Standard SQL or dbt Jinja Models.').classes('text-xs text-slate-500')
-                            
-                            with ui.row().classes('items-center gap-2 no-wrap'):
+                                    ui.label('Canvas Visual Pipeline Studio').classes('text-base font-extrabold text-slate-800 dark:text-white')
+                                    ui.label('Drag, connect, transform, and export cross-database queries visually.').classes('text-xs text-slate-500')
+
+                            with ui.row().classes('items-center gap-2 no-wrap flex-wrap'):
+                                ui.button('➕ Add Source', icon='storage', on_click=lambda: canvas_add_node('source')).props('outline dense size=xs color=primary').classes('text-xs font-bold')
+                                ui.button('➕ Add Join', icon='hub', on_click=lambda: canvas_add_node('join')).props('outline dense size=xs color=accent').classes('text-xs font-bold')
+                                ui.button('➕ Add Transform', icon='tune', on_click=lambda: canvas_add_node('transform')).props('outline dense size=xs color=secondary').classes('text-xs font-bold')
+                                ui.button('➕ Add Filter', icon='filter_alt', on_click=lambda: canvas_add_node('filter')).props('outline dense size=xs color=warning').classes('text-xs font-bold')
+                                ui.button('➕ Add Output', icon='flag', on_click=lambda: canvas_add_node('output')).props('outline dense size=xs color=positive').classes('text-xs font-bold')
+                                
+                                ui.separator().props('vertical').classes('h-6 mx-1 hidden sm:block')
+                                
                                 ui.label('Mode:').classes('text-xs font-bold text-slate-600 dark:text-slate-300')
-                                vqb_mode_select = ui.select(
+                                canvas_mode_select = ui.select(
                                     options={
                                         'standard': '⚡ Standard DuckDB SQL',
                                         'dbt': '🦆 dbt Jinja Model (ref/source)'
                                     },
                                     value='standard',
-                                    on_change=lambda _: update_vqb_preview()
-                                ).props('dense outlined').style('width: 220px;')
+                                    on_change=lambda _: render_canvas_sql_preview()
+                                ).props('dense outlined').style('width: 210px;')
 
-                        # Main Scrollable Grid of Builder Blocks
-                        with ui.column().classes('w-full flex-grow overflow-y-auto gap-4 pr-1 min-h-0 flex-nowrap pt-2'):
-                            # Block 1: Primary Data Source Selector
-                            with ui.card().classes('w-full p-3 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-flat gap-2 flex-none'):
-                                with ui.row().classes('items-center gap-2 w-full border-b pb-1.5'):
-                                    ui.icon('storage', color='primary').classes('text-lg')
-                                    ui.label('1. Primary Data Source').classes('text-xs font-bold text-slate-700 dark:text-slate-200 uppercase')
+                        # Main Scrollable Node Canvas Workspace
+                        canvas_container = ui.row().classes('w-full flex-grow relative bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 overflow-auto p-4 gap-6 items-start min-h-[380px] shadow-inner')
+
+                        # Live Code Preview & Export Bar
+                        with ui.card().classes('w-full p-3 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-flat gap-2 flex-none mt-2'):
+                            with ui.row().classes('items-center justify-between w-full border-b pb-1.5'):
+                                with ui.row().classes('items-center gap-2'):
+                                    ui.icon('code', color='primary').classes('text-lg')
+                                    ui.label('Compiled Live Pipeline Query').classes('text-xs font-bold text-slate-700 dark:text-slate-200 uppercase')
                                 
-                                with ui.row().classes('w-full items-center gap-3 flex-wrap'):
-                                    vqb_db_select = ui.select(options=[], value=None, label='Database', on_change=lambda e: vqb_on_db_change(e.value)).props('dense outlined clearable').style('width: 180px;')
-                                    vqb_schema_select = ui.select(options=['main'], value='main', label='Schema', on_change=lambda _: vqb_on_table_change()).props('dense outlined').style('width: 130px;')
-                                    vqb_table_select = ui.select(options=[], value=None, label='Table / Model', on_change=lambda _: vqb_on_table_change()).props('dense outlined clearable').style('width: 220px;')
-                                    vqb_alias_input = ui.input('Table Alias', value='t1', on_change=lambda _: update_vqb_preview()).props('dense outlined').style('width: 100px;')
+                                with ui.row().classes('items-center gap-2'):
+                                    ui.button('Run in SQL Editor 🚀', icon='play_arrow', color='primary', on_click=lambda: canvas_run_in_editor()).props('elevated dense size=sm').classes('text-xs font-bold px-2')
+                                    ui.button('Save to Snippets 💾', icon='bookmark', color='positive', on_click=lambda: open_vqb_save_snippet_dialog()).props('elevated dense size=sm').classes('text-xs font-bold px-2')
+                                    ui.button('Save as dbt Model 📦', icon='account_tree', color='indigo', on_click=lambda: open_vqb_save_dbt_model_dialog()).props('elevated dense size=sm').classes('text-xs font-bold px-2')
 
-                            # Block 2: Columns & Aggregations
-                            with ui.card().classes('w-full p-3 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-flat gap-2 flex-none'):
-                                with ui.row().classes('items-center justify-between w-full border-b pb-1.5'):
-                                    with ui.row().classes('items-center gap-2'):
-                                        ui.icon('view_column', color='secondary').classes('text-lg')
-                                        ui.label('2. Select Columns & Aggregations').classes('text-xs font-bold text-slate-700 dark:text-slate-200 uppercase')
-                                
-                                vqb_columns_container = ui.column().classes('w-full gap-2 max-h-48 overflow-y-auto pr-1')
+                            canvas_preview_editor = ui.codemirror(value='', language='sql', theme='basicLight').classes('w-full border rounded shadow-inner').style('height: 120px; font-size: 13px;')
 
-                            # Block 3: Multi-Table Joins (JOIN Manager)
-                            with ui.card().classes('w-full p-3 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-flat gap-2 flex-none'):
-                                with ui.row().classes('items-center justify-between w-full border-b pb-1.5'):
-                                    with ui.row().classes('items-center gap-2'):
-                                        ui.icon('hub', color='accent').classes('text-lg')
-                                        ui.label('3. Table Joins (Optional)').classes('text-xs font-bold text-slate-700 dark:text-slate-200 uppercase')
-                                    ui.button('Add Join 🔗', icon='add', on_click=lambda: vqb_add_join_row()).props('outline dense size=xs color=primary').classes('text-xs font-bold')
-                                
-                                vqb_joins_container = ui.column().classes('w-full gap-2')
-
-                            # Block 4: Multi-Condition Filters (WHERE)
-                            with ui.card().classes('w-full p-3 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-flat gap-2 flex-none'):
-                                with ui.row().classes('items-center justify-between w-full border-b pb-1.5'):
-                                    with ui.row().classes('items-center gap-2'):
-                                        ui.icon('filter_alt', color='warning').classes('text-lg')
-                                        ui.label('4. Filter Conditions (WHERE)').classes('text-xs font-bold text-slate-700 dark:text-slate-200 uppercase')
-                                    ui.button('Add Filter 🎯', icon='add', on_click=lambda: vqb_add_filter_row()).props('outline dense size=xs color=primary').classes('text-xs font-bold')
-                                
-                                vqb_filters_container = ui.column().classes('w-full gap-2')
-
-                            # Block 5: Grouping, Sorting & Limit
-                            with ui.card().classes('w-full p-3 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-flat gap-2 flex-none'):
-                                with ui.row().classes('items-center gap-2 w-full border-b pb-1.5'):
-                                    ui.icon('sort', color='info').classes('text-lg')
-                                    ui.label('5. Grouping, Order By & Limit').classes('text-xs font-bold text-slate-700 dark:text-slate-200 uppercase')
-                                
-                                with ui.row().classes('w-full items-center gap-3 flex-wrap'):
-                                    vqb_order_col = ui.select(options=[], label='Order By Column', on_change=lambda _: update_vqb_preview()).props('dense outlined clearable').style('width: 200px;')
-                                    vqb_order_dir = ui.select(options={'ASC': 'Ascending', 'DESC': 'Descending'}, value='ASC', label='Direction', on_change=lambda _: update_vqb_preview()).props('dense outlined').style('width: 120px;')
-                                    vqb_limit_input = ui.number(value=100, label='Limit Rows', min=1, on_change=lambda _: update_vqb_preview()).props('dense outlined').style('width: 110px;')
-
-                            # Live Code Preview & Export Toolbar
-                            with ui.card().classes('w-full p-3 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-flat gap-3 flex-none'):
-                                with ui.row().classes('items-center justify-between w-full border-b pb-1.5'):
-                                    with ui.row().classes('items-center gap-2'):
-                                        ui.icon('code', color='primary').classes('text-lg')
-                                        ui.label('Generated Live Query Preview').classes('text-xs font-bold text-slate-700 dark:text-slate-200 uppercase')
-                                    
-                                    with ui.row().classes('items-center gap-2'):
-                                        ui.button('Run in SQL Editor 🚀', icon='play_arrow', color='primary', on_click=lambda: vqb_run_in_editor()).props('elevated dense size=sm').classes('text-xs font-bold px-2')
-                                        ui.button('Save to Snippets 💾', icon='bookmark', color='positive', on_click=lambda: open_vqb_save_snippet_dialog()).props('elevated dense size=sm').classes('text-xs font-bold px-2')
-                                        ui.button('Save as dbt Model 📦', icon='account_tree', color='indigo', on_click=lambda: open_vqb_save_dbt_model_dialog()).props('elevated dense size=sm').classes('text-xs font-bold px-2')
-
-                                vqb_preview_editor = ui.codemirror(value='', language='sql', theme='basicLight').classes('w-full border rounded shadow-inner').style('height: 140px; font-size: 13px;')
-
-                    def vqb_init_dropdowns():
-                        try:
-                            dbs = [r[0] for r in explorer.conn.execute("SELECT database_name FROM duckdb_databases() WHERE database_name NOT IN ('system', 'temp') AND NOT database_name LIKE '__%' ORDER BY database_name").fetchall()]
-                            vqb_db_select.options = {d: d for d in dbs}
-                            if dbs and not vqb_db_select.value:
-                                vqb_db_select.value = dbs[0]
-                                vqb_on_db_change(dbs[0])
-                            vqb_db_select.update()
-                        except Exception as ex:
-                            print(f"DEBUG: vqb_init_dropdowns error: {ex}", flush=True)
-
-                    def vqb_on_db_change(db):
-                        if not db: return
-                        try:
-                            tbls = [r[0] for r in explorer.conn.execute("SELECT table_name FROM information_schema.tables WHERE table_catalog = ? AND table_schema NOT IN ('information_schema', 'pg_catalog') ORDER BY table_name", (db,)).fetchall()]
-                            vqb_table_select.options = {t: t for t in tbls}
-                            if tbls:
-                                vqb_table_select.value = tbls[0]
-                                vqb_on_table_change()
-                            else:
-                                vqb_table_select.value = None
-                            vqb_table_select.update()
-                        except Exception as ex:
-                            print(f"DEBUG: vqb_on_db_change error: {ex}", flush=True)
-
-                    def vqb_on_table_change():
-                        tbl = vqb_table_select.value
-                        db = vqb_db_select.value
-                        if not tbl or not db: return
+                    def canvas_add_node(ntype):
+                        nid = f"{ntype}_{uuid.uuid4().hex[:4]}"
+                        title_map = {
+                            'source': '📥 Source Table',
+                            'join': '🔗 Table Join',
+                            'transform': '⚡ Transform & Function',
+                            'filter': '🎯 Filter (WHERE)',
+                            'output': '📊 Output & Export'
+                        }
                         
-                        vqb_columns_container.clear()
-                        vqb_col_controls.clear()
+                        dbs = [r[0] for r in explorer.conn.execute("SELECT database_name FROM duckdb_databases() WHERE database_name NOT IN ('system', 'temp') AND NOT database_name LIKE '__%'").fetchall()]
+                        default_db = dbs[0] if dbs else 'main'
                         
-                        try:
-                            cols = explorer.list_columns_with_types(tbl, database=db, schema='main')
-                            col_names = [c[0] for c in cols]
-                            p_alias = vqb_alias_input.value or 't1'
-                            
-                            vqb_order_col.options = ['(None)'] + [f"{p_alias}.{c}" for c in col_names]
-                            vqb_order_col.update()
+                        init_data = {}
+                        if ntype == 'source':
+                            init_data = {'database': default_db, 'schema': 'main', 'table': '', 'alias': f"t{len(canvas_graph.nodes)+1}", 'selected_columns': []}
+                        elif ntype == 'join':
+                            init_data = {'type': 'LEFT JOIN', 'database': default_db, 'schema': 'main', 'table': '', 'alias': f"t{len(canvas_graph.nodes)+1}", 'on_left': 't1.id', 'on_right': 't2.id'}
+                        elif ntype == 'transform':
+                            init_data = {'expressions': [{'column': 't1.name', 'func': 'UPPER', 'alias': 'upper_name'}]}
+                        elif ntype == 'filter':
+                            init_data = {'column': 't1.name', 'operator': '=', 'value': ''}
+                        elif ntype == 'output':
+                            init_data = {'order_column': '', 'order_direction': 'ASC', 'limit': 100}
 
-                            with vqb_columns_container:
-                                for c_name, c_type in cols:
-                                    with ui.row().classes('w-full items-center gap-3 no-wrap border-b border-slate-100 dark:border-slate-800 pb-1'):
-                                        cb = ui.checkbox(f"{c_name} ({c_type})", value=True, on_change=lambda _: update_vqb_preview()).classes('text-xs font-mono text-slate-700 dark:text-slate-300 min-w-[200px]')
-                                        agg_sel = ui.select(options={'NONE': 'None', 'SUM': 'SUM', 'COUNT': 'COUNT', 'AVG': 'AVG', 'MIN': 'MIN', 'MAX': 'MAX', 'COUNT_DISTINCT': 'COUNT DISTINCT'}, value='NONE', label='Agg', on_change=lambda _: update_vqb_preview()).props('dense outlined size=xs').style('width: 130px;')
-                                        alias_in = ui.input('Alias', value='', on_change=lambda _: update_vqb_preview()).props('dense outlined size=xs').style('width: 130px;')
-                                        vqb_col_controls.append({'col': c_name, 'cb': cb, 'agg': agg_sel, 'alias': alias_in})
-                        except Exception as ex:
-                            print(f"DEBUG: vqb_on_table_change error: {ex}", flush=True)
+                        node = CanvasNode(nid, ntype, title_map.get(ntype, 'Node'), x=20, y=20, data=init_data)
+                        canvas_graph.add_node(node)
+                        render_canvas_nodes()
 
-                        update_vqb_preview()
+                    def render_canvas_nodes():
+                        canvas_container.clear()
+                        with canvas_container:
+                            for nid, node in list(canvas_graph.nodes.items()):
+                                render_canvas_node_card(node)
+                        render_canvas_sql_preview()
 
-                    def vqb_add_join_row():
-                        p_alias = vqb_alias_input.value or 't1'
-                        j_idx = len(vqb_joins_rows) + 2
-                        j_alias_default = f"t{j_idx}"
+                    def render_canvas_node_card(node):
+                        ntype = node.type
+                        bg_border = 'border-primary' if ntype == 'source' else ('border-accent' if ntype == 'join' else ('border-secondary' if ntype == 'transform' else ('border-warning' if ntype == 'filter' else 'border-positive')))
                         
-                        with vqb_joins_container:
-                            j_row_container = ui.row().classes('w-full items-center gap-2 flex-wrap border-b border-slate-200 dark:border-slate-800 pb-2')
-                            with j_row_container:
-                                j_type = ui.select(options={'INNER JOIN': 'INNER JOIN', 'LEFT JOIN': 'LEFT JOIN', 'RIGHT JOIN': 'RIGHT JOIN', 'FULL JOIN': 'FULL JOIN'}, value='LEFT JOIN', label='Join Type', on_change=lambda _: update_vqb_preview()).props('dense outlined').style('width: 130px;')
-                                dbs = [r[0] for r in explorer.conn.execute("SELECT database_name FROM duckdb_databases() WHERE database_name NOT IN ('system', 'temp') AND NOT database_name LIKE '__%'").fetchall()]
-                                j_db = ui.select(options={d: d for d in dbs}, value=dbs[0] if dbs else 'main', label='Target DB', on_change=lambda e: j_update_tables(e.value, j_tbl)).props('dense outlined').style('width: 140px;')
-                                j_tbl = ui.select(options=[], value=None, label='Target Table', on_change=lambda _: update_vqb_preview()).props('dense outlined').style('width: 180px;')
-                                j_alias = ui.input('Alias', value=j_alias_default, on_change=lambda _: update_vqb_preview()).props('dense outlined').style('width: 90px;')
-                                j_left = ui.input('Left Col', value=f"{p_alias}.id", on_change=lambda _: update_vqb_preview()).props('dense outlined').style('width: 140px;')
-                                ui.label('=').classes('text-xs font-bold text-slate-500')
-                                j_right = ui.input('Right Col', value=f"{j_alias_default}.id", on_change=lambda _: update_vqb_preview()).props('dense outlined').style('width: 140px;')
+                        with ui.card().classes(f'w-80 p-3 border-2 {bg_border} rounded-xl shadow-md bg-white dark:bg-slate-800 gap-2 relative flex-none'):
+                            # Header Bar
+                            with ui.row().classes('w-full items-center justify-between no-wrap border-b pb-1.5'):
+                                with ui.row().classes('items-center gap-1.5'):
+                                    icon_name = 'storage' if ntype == 'source' else ('hub' if ntype == 'join' else ('tune' if ntype == 'transform' else ('filter_alt' if ntype == 'filter' else 'flag')))
+                                    ui.icon(icon_name, color='primary').classes('text-base')
+                                    ui.label(node.title).classes('text-xs font-bold text-slate-800 dark:text-white uppercase')
                                 
-                                def j_update_tables(db_name, select_widget):
+                                ui.button(icon='close', on_click=lambda n=node.id: (canvas_graph.remove_node(n), render_canvas_nodes())).props('flat dense round color=negative size=xs').tooltip('Remove Node')
+
+                            # Node Specific Body Controls
+                            if ntype == 'source':
+                                dbs = [r[0] for r in explorer.conn.execute("SELECT database_name FROM duckdb_databases() WHERE database_name NOT IN ('system', 'temp') AND NOT database_name LIKE '__%' ORDER BY database_name").fetchall()]
+                                s_db = ui.select(options={d: d for d in dbs}, value=node.data.get('database', dbs[0] if dbs else 'main'), label='Database', on_change=lambda e: (node.data.update(database=e.value), update_source_tables(e.value, s_tbl, node))).props('dense outlined').classes('w-full')
+                                s_tbl = ui.select(options=[], value=node.data.get('table'), label='Table', on_change=lambda e: (node.data.update(table=e.value), update_source_columns(e.value, node.data.get('database'), col_box, node))).props('dense outlined').classes('w-full')
+                                s_alias = ui.input('Table Alias', value=node.data.get('alias', 't1'), on_change=lambda e: (node.data.update(alias=e.value), render_canvas_sql_preview())).props('dense outlined').classes('w-full')
+                                col_box = ui.column().classes('w-full gap-1 max-h-28 overflow-y-auto border p-1 rounded')
+
+                                def update_source_tables(db, widget, nd):
                                     try:
-                                        tbls = [r[0] for r in explorer.conn.execute("SELECT table_name FROM information_schema.tables WHERE table_catalog = ? AND table_schema NOT IN ('information_schema', 'pg_catalog')", (db_name,)).fetchall()]
-                                        select_widget.options = {t: t for t in tbls}
-                                        if tbls: select_widget.value = tbls[0]
-                                        select_widget.update()
-                                        update_vqb_preview()
+                                        tbls = [r[0] for r in explorer.conn.execute("SELECT table_name FROM information_schema.tables WHERE table_catalog = ? AND table_schema NOT IN ('information_schema', 'pg_catalog') ORDER BY table_name", (db,)).fetchall()]
+                                        widget.options = {t: t for t in tbls}
+                                        if tbls and not nd.data.get('table'): nd.data['table'] = tbls[0]
+                                        widget.value = nd.data.get('table')
+                                        widget.update()
+                                        update_source_columns(widget.value, db, col_box, nd)
                                     except Exception: pass
 
-                                if dbs: j_update_tables(dbs[0], j_tbl)
-                                
-                                def remove_j_row(row_elem, entry_dict):
-                                    vqb_joins_container.remove(row_elem)
-                                    if entry_dict in vqb_joins_rows:
-                                        vqb_joins_rows.remove(entry_dict)
-                                    update_vqb_preview()
+                                def update_source_columns(tbl, db, container, nd):
+                                    if not tbl or not db: return
+                                    container.clear()
+                                    try:
+                                        cols = explorer.list_columns_with_types(tbl, database=db, schema='main')
+                                        with container:
+                                            for c_name, _ in cols:
+                                                is_checked = c_name in nd.data.get('selected_columns', [])
+                                                def toggle_col(e, c=c_name, n=nd):
+                                                    sc = n.data.get('selected_columns', [])
+                                                    if e.value and c not in sc: sc.append(c)
+                                                    elif not e.value and c in sc: sc.remove(c)
+                                                    n.data['selected_columns'] = sc
+                                                    render_canvas_sql_preview()
+                                                ui.checkbox(c_name, value=is_checked, on_change=toggle_col).classes('text-xs')
+                                    except Exception: pass
 
-                                entry = {'type': j_type, 'db': j_db, 'tbl': j_tbl, 'alias': j_alias, 'left': j_left, 'right': j_right}
-                                vqb_joins_rows.append(entry)
-                                ui.button(icon='delete', on_click=lambda r=j_row_container, e=entry: remove_j_row(r, e)).props('flat dense round color=negative size=sm').tooltip('Remove Join')
-                        
-                        update_vqb_preview()
+                                if dbs: update_source_tables(s_db.value, s_tbl, node)
 
-                    def vqb_add_filter_row():
-                        p_alias = vqb_alias_input.value or 't1'
-                        with vqb_filters_container:
-                            f_row_container = ui.row().classes('w-full items-center gap-2 flex-wrap border-b border-slate-200 dark:border-slate-800 pb-2')
-                            with f_row_container:
-                                f_col = ui.input('Column', value=f"{p_alias}.name", on_change=lambda _: update_vqb_preview()).props('dense outlined').style('width: 180px;')
-                                f_op = ui.select(options={'=': '=', '>': '>', '<': '<', '>=': '>=', '<=': '<=', 'LIKE': 'LIKE', 'IN': 'IN', 'IS NOT NULL': 'IS NOT NULL'}, value='=', label='Operator', on_change=lambda _: update_vqb_preview()).props('dense outlined').style('width: 130px;')
-                                f_val = ui.input('Value', value='', on_change=lambda _: update_vqb_preview()).props('dense outlined').style('width: 180px;')
-                                
-                                def remove_f_row(row_elem, entry_dict):
-                                    vqb_filters_container.remove(row_elem)
-                                    if entry_dict in vqb_filters_rows:
-                                        vqb_filters_rows.remove(entry_dict)
-                                    update_vqb_preview()
+                            elif ntype == 'join':
+                                j_type = ui.select(options={'INNER JOIN': 'INNER JOIN', 'LEFT JOIN': 'LEFT JOIN', 'RIGHT JOIN': 'RIGHT JOIN', 'FULL JOIN': 'FULL JOIN'}, value=node.data.get('type', 'LEFT JOIN'), label='Join Type', on_change=lambda e: (node.data.update(type=e.value), render_canvas_sql_preview())).props('dense outlined').classes('w-full')
+                                dbs = [r[0] for r in explorer.conn.execute("SELECT database_name FROM duckdb_databases() WHERE database_name NOT IN ('system', 'temp') AND NOT database_name LIKE '__%'").fetchall()]
+                                j_db = ui.select(options={d: d for d in dbs}, value=node.data.get('database', dbs[0] if dbs else 'main'), label='Target DB', on_change=lambda e: (node.data.update(database=e.value), update_j_tables(e.value, j_tbl, node))).props('dense outlined').classes('w-full')
+                                j_tbl = ui.select(options=[], value=node.data.get('table'), label='Target Table', on_change=lambda e: (node.data.update(table=e.value), render_canvas_sql_preview())).props('dense outlined').classes('w-full')
+                                j_alias = ui.input('Join Alias', value=node.data.get('alias', 't2'), on_change=lambda e: (node.data.update(alias=e.value), render_canvas_sql_preview())).props('dense outlined').classes('w-full')
+                                j_left = ui.input('ON Left', value=node.data.get('on_left', 't1.id'), on_change=lambda e: (node.data.update(on_left=e.value), render_canvas_sql_preview())).props('dense outlined').classes('w-full')
+                                j_right = ui.input('ON Right', value=node.data.get('on_right', 't2.id'), on_change=lambda e: (node.data.update(on_right=e.value), render_canvas_sql_preview())).props('dense outlined').classes('w-full')
 
-                                entry = {'col': f_col, 'op': f_op, 'val': f_val}
-                                vqb_filters_rows.append(entry)
-                                ui.button(icon='delete', on_click=lambda r=f_row_container, e=entry: remove_f_row(r, e)).props('flat dense round color=negative size=sm').tooltip('Remove Filter')
+                                def update_j_tables(db, widget, nd):
+                                    try:
+                                        tbls = [r[0] for r in explorer.conn.execute("SELECT table_name FROM information_schema.tables WHERE table_catalog = ? AND table_schema NOT IN ('information_schema', 'pg_catalog')", (db,)).fetchall()]
+                                        widget.options = {t: t for t in tbls}
+                                        if tbls and not nd.data.get('table'): nd.data['table'] = tbls[0]
+                                        widget.value = nd.data.get('table')
+                                        widget.update()
+                                        render_canvas_sql_preview()
+                                    except Exception: pass
 
-                        update_vqb_preview()
+                                if dbs: update_j_tables(j_db.value, j_tbl, node)
 
-                    def update_vqb_preview():
-                        from visual_query_builder import generate_visual_query
-                        p_alias = vqb_alias_input.value or 't1'
-                        
-                        # Collect columns
-                        cols_cfg = []
-                        group_by_cols = []
-                        has_agg = False
-                        
-                        for item in vqb_col_controls:
-                            if item['cb'].value:
-                                c_name = item['col']
-                                full_expr = f"{p_alias}.{c_name}"
-                                agg = item['agg'].value
-                                alias_val = item['alias'].value.strip() or c_name
-                                
-                                if agg and agg != 'NONE':
-                                    has_agg = True
-                                    if agg == 'COUNT_DISTINCT':
-                                        expr_str = f"COUNT(DISTINCT {full_expr})"
-                                    else:
-                                        expr_str = f"{agg}({full_expr})"
-                                else:
-                                    expr_str = full_expr
-                                    group_by_cols.append(full_expr)
-                                    
-                                cols_cfg.append({'expr': expr_str, 'alias': alias_val})
+                            elif ntype == 'transform':
+                                exprs = node.data.get('expressions', [{'column': 't1.name', 'func': 'UPPER', 'alias': 'upper_name'}])
+                                first_ex = exprs[0] if exprs else {'column': 't1.name', 'func': 'UPPER', 'alias': 'upper_name'}
+                                t_col = ui.input('Column Expr', value=first_ex.get('column', 't1.name'), on_change=lambda e: (first_ex.update(column=e.value), node.data.update(expressions=[first_ex]), render_canvas_sql_preview())).props('dense outlined').classes('w-full')
+                                t_func = ui.select(options={'NONE': 'None', 'UPPER': 'UPPER', 'LOWER': 'LOWER', 'SUM': 'SUM', 'COUNT': 'COUNT', 'AVG': 'AVG', 'MIN': 'MIN', 'MAX': 'MAX', 'COUNT_DISTINCT': 'COUNT DISTINCT'}, value=first_ex.get('func', 'UPPER'), label='DuckDB Function', on_change=lambda e: (first_ex.update(func=e.value), node.data.update(expressions=[first_ex]), render_canvas_sql_preview())).props('dense outlined').classes('w-full')
+                                t_alias = ui.input('Output Alias', value=first_ex.get('alias', 'upper_name'), on_change=lambda e: (first_ex.update(alias=e.value), node.data.update(expressions=[first_ex]), render_canvas_sql_preview())).props('dense outlined').classes('w-full')
 
-                        # Collect joins
-                        joins_cfg = []
-                        for j in vqb_joins_rows:
-                            if j['tbl'].value:
-                                joins_cfg.append({
-                                    'type': j['type'].value,
-                                    'database': j['db'].value,
-                                    'schema': 'main',
-                                    'table': j['tbl'].value,
-                                    'alias': j['alias'].value,
-                                    'on_left': j['left'].value,
-                                    'on_right': j['right'].value
-                                })
+                            elif ntype == 'filter':
+                                f_col = ui.input('Column', value=node.data.get('column', 't1.name'), on_change=lambda e: (node.data.update(column=e.value), render_canvas_sql_preview())).props('dense outlined').classes('w-full')
+                                f_op = ui.select(options={'=': '=', '>': '>', '<': '<', '>=': '>=', '<=': '<=', 'LIKE': 'LIKE', 'IN': 'IN', 'IS NOT NULL': 'IS NOT NULL'}, value=node.data.get('operator', '='), label='Operator', on_change=lambda e: (node.data.update(operator=e.value), render_canvas_sql_preview())).props('dense outlined').classes('w-full')
+                                f_val = ui.input('Value', value=node.data.get('value', ''), on_change=lambda e: (node.data.update(value=e.value), render_canvas_sql_preview())).props('dense outlined').classes('w-full')
 
-                        # Collect filters
-                        filters_cfg = []
-                        for f in vqb_filters_rows:
-                            if f['col'].value:
-                                filters_cfg.append({
-                                    'column': f['col'].value,
-                                    'operator': f['op'].value,
-                                    'value': f['val'].value
-                                })
+                            elif ntype == 'output':
+                                o_col = ui.input('Order Column', value=node.data.get('order_column', ''), on_change=lambda e: (node.data.update(order_column=e.value), render_canvas_sql_preview())).props('dense outlined').classes('w-full')
+                                o_dir = ui.select(options={'ASC': 'Ascending', 'DESC': 'Descending'}, value=node.data.get('order_direction', 'ASC'), label='Direction', on_change=lambda e: (node.data.update(order_direction=e.value), render_canvas_sql_preview())).props('dense outlined').classes('w-full')
+                                o_lim = ui.number('Limit', value=node.data.get('limit', 100), min=1, on_change=lambda e: (node.data.update(limit=e.value), render_canvas_sql_preview())).props('dense outlined').classes('w-full')
 
-                        ord_col_val = vqb_order_col.value
-                        order_cfg = []
-                        if ord_col_val and ord_col_val != '(None)':
-                            order_cfg.append({'column': ord_col_val, 'direction': vqb_order_dir.value})
+                    def render_canvas_sql_preview():
+                        from canvas_query_builder import compile_canvas_to_sql
+                        sql = compile_canvas_to_sql(canvas_graph.to_dict(), mode=canvas_mode_select.value)
+                        canvas_preview_editor.set_value(sql)
 
-                        cfg = {
-                            'mode': vqb_mode_select.value,
-                            'primary': {
-                                'database': vqb_db_select.value or 'main',
-                                'schema': vqb_schema_select.value or 'main',
-                                'table': vqb_table_select.value or '',
-                                'alias': p_alias
-                            },
-                            'joins': joins_cfg,
-                            'columns': cols_cfg,
-                            'filters': filters_cfg,
-                            'group_by': group_by_cols if has_agg else [],
-                            'order_by': order_cfg,
-                            'limit': vqb_limit_input.value
-                        }
-
-                        sql = generate_visual_query(cfg)
-                        vqb_preview_editor.set_value(sql)
-
-                    def vqb_run_in_editor():
-                        sql = vqb_preview_editor.value.strip()
+                    def canvas_run_in_editor():
+                        sql = canvas_preview_editor.value.strip()
                         if not sql:
                             ui.notify('No query generated to run!', type='warning')
                             return
                         sql_editor.value = sql
                         workspace_sub_tabs.set_value('SQL Workspace')
                         run_editor_query()
-                        ui.notify('Query loaded to SQL Workspace & executed!', type='success')
+                        ui.notify('Canvas query loaded into SQL Workspace & executed!', type='success')
+
+                    def vqb_init_dropdowns():
+                        render_canvas_nodes()
 
                     # Build Save to Snippets Dialog
                     with ui.dialog() as vqb_save_snippet_dialog, ui.card().classes('w-96 p-6 gap-4'):
