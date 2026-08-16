@@ -406,14 +406,13 @@ def load_attached_databases_for_connection(conn):
                 
                 # Construct attach SQL
                 if db_type == 'ducklake':
-                    data_path = options.get('data_path', 'data_parquet/')
+                    data_path = options.get('data_path', '/ducklake/sqlite_data_parquet/')
                     try:
-                        sql = f"ATTACH 'ducklake:{db_path}' AS {db_name} (DATA_PATH '{data_path}');"
+                        sql = f"ATTACH 'ducklake:{db_path}' AS {db_name} (DATA_PATH '{data_path}', OVERRIDE_DATA_PATH true);"
                         conn.execute(sql)
                     except Exception as ex_dl:
-                        rel_data_path = data_path.lstrip('/')
                         try:
-                            sql = f"ATTACH 'ducklake:{db_path}' AS {db_name} (DATA_PATH '{rel_data_path}');"
+                            sql = f"ATTACH 'ducklake:{db_path}' AS {db_name} (DATA_PATH '{data_path}');"
                             conn.execute(sql)
                         except Exception:
                             sql = f"ATTACH 'ducklake:{db_path}' AS {db_name};"
