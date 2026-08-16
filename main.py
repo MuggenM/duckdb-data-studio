@@ -9003,6 +9003,7 @@ CRITICAL DUCKDB SQL RULES:
             options={
                 'postgresql': '🐘 PostgreSQL Database',
                 'sqlite': '📁 SQLite File (.db, .sqlite)',
+                'ducklake': '🦆 DuckLake Table Format (Catalog)',
                 'iceberg': '🧊 Apache Iceberg Table / Warehouse',
                 'motherduck': '🦆 MotherDuck Cloud Database',
                 'duckdb': '🦆 DuckDB Database File (.duckdb)'
@@ -9041,6 +9042,12 @@ CRITICAL DUCKDB SQL RULES:
                             if res: d_file.set_value(res[0])
                         ui.button(icon='folder_open', on_click=pick_sqlite).props('dense outline').classes('p-2').tooltip('Browse')
                         attach_fields_container.sqlite_params = {'filepath': d_file}
+
+                elif p == 'ducklake':
+                    attach_alias_input.set_value('my_lakehouse')
+                    d_meta = ui.input('Metadata DB Filepath', value='/databases/my_lakehouse.db').props('outlined dense').classes('w-full')
+                    d_data = ui.input('Parquet Data Folder', value='data_parquet/').props('outlined dense').classes('w-full')
+                    attach_fields_container.ducklake_params = {'filepath': d_meta, 'data_path': d_data}
 
                 elif p == 'iceberg':
                     attach_alias_input.set_value('iceberg_wh')
@@ -9094,6 +9101,10 @@ CRITICAL DUCKDB SQL RULES:
                     f = getattr(attach_fields_container, 'sqlite_params', {})
                     params = {'filepath': f['filepath'].value}
                     db_attachments_manager.attach_database(explorer.conn, 'SQLITE', alias, params, read_only=read_only)
+                elif p == 'ducklake':
+                    f = getattr(attach_fields_container, 'ducklake_params', {})
+                    params = {'filepath': f['filepath'].value, 'data_path': f['data_path'].value}
+                    db_attachments_manager.attach_database(explorer.conn, 'DUCKLAKE', alias, params, read_only=read_only)
                 elif p == 'iceberg':
                     f = getattr(attach_fields_container, 'iceberg_params', {})
                     params = {'s3_path': f['s3_path'].value}

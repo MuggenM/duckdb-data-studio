@@ -166,6 +166,28 @@ def attach_database(duckdb_conn, db_type, alias, params, read_only=True):
             'read_only': read_only
         })
 
+    elif db_type_upper == 'DUCKLAKE':
+        ensure_extension_loaded(duckdb_conn, 'ducklake')
+        filepath = params.get('filepath', '')
+        data_path = params.get('data_path', 'data_parquet/')
+        if not filepath:
+            raise ValueError("Metadata DB filepath is required for DuckLake attachment.")
+            
+        meta_dir = os.path.dirname(filepath)
+        if meta_dir:
+            os.makedirs(meta_dir, exist_ok=True)
+        if data_path:
+            os.makedirs(data_path, exist_ok=True)
+
+        sql = f"ATTACH 'ducklake:{filepath}' AS {alias} (DATA_PATH '{data_path}');"
+        duckdb_conn.execute(sql)
+        save_attachment_config({
+            'alias': alias,
+            'db_type': 'DUCKLAKE',
+            'params': {'filepath': filepath, 'data_path': data_path},
+            'read_only': read_only
+        })
+
     else:
         raise ValueError(f"Unsupported database provider: {db_type}")
 
