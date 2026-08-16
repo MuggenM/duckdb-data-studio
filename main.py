@@ -6238,7 +6238,7 @@ CRITICAL DUCKDB SQL RULES:
                 print(f"Error querying duckdb_databases: {e}")
                 all_dbs = []
 
-            # Query global tables and views across all attached databases, excluding system catalogs
+            # Query global tables and views across all attached databases (combining duckdb_tables and information_schema.tables for external formats like DuckLake, Iceberg, Postgres)
             query_tables = """
                 SELECT database_name, schema_name, table_name, 'BASE TABLE' AS table_type 
                 FROM duckdb_tables
@@ -6247,10 +6247,22 @@ CRITICAL DUCKDB SQL RULES:
                 SELECT database_name, schema_name, view_name AS table_name, 'VIEW' AS table_type 
                 FROM duckdb_views
                 WHERE database_name != 'system' AND schema_name NOT IN ('information_schema', 'pg_catalog')
+                UNION ALL
+                SELECT table_catalog AS database_name, table_schema AS schema_name, table_name, table_type
+                FROM information_schema.tables
+                WHERE table_catalog NOT IN ('system', 'temp') AND table_schema NOT IN ('information_schema', 'pg_catalog')
                 ORDER BY database_name, schema_name, table_name;
             """
             try:
-                rows = explorer.conn.execute(query_tables).fetchall()
+                raw_rows = explorer.conn.execute(query_tables).fetchall()
+                # Deduplicate rows by (db, schema, table)
+                seen_tables = set()
+                rows = []
+                for r in raw_rows:
+                    key = (r[0], r[1], r[2])
+                    if key not in seen_tables:
+                        seen_tables.add(key)
+                        rows.append(r)
             except Exception as e:
                 print(f"Error querying global catalogs: {e}")
                 rows = []

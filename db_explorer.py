@@ -51,7 +51,21 @@ class DuckDBExplorer:
             if database and schema:
                 query_str = f"SELECT column_name, data_type FROM duckdb_columns WHERE database_name = '{database}' AND schema_name = '{schema}' AND table_name = '{table}' ORDER BY column_index;"
                 columns = self.conn.execute(query_str).fetchall()
-                return [(row[0], row[1]) for row in columns]
+                if columns:
+                    return [(row[0], row[1]) for row in columns]
+
+                # Fallback 1: information_schema.columns for external table formats (DuckLake, Iceberg, Postgres)
+                inf_query = f"SELECT column_name, data_type FROM information_schema.columns WHERE table_catalog = '{database}' AND table_schema = '{schema}' AND table_name = '{table}' ORDER BY ordinal_position;"
+                inf_cols = self.conn.execute(inf_query).fetchall()
+                if inf_cols:
+                    return [(row[0], row[1]) for row in inf_cols]
+
+                # Fallback 2: PRAGMA table_info
+                pragma_cols = self.conn.execute(f"PRAGMA table_info('{database}.{schema}.{table}')").fetchall()
+                if pragma_cols:
+                    return [(row[1], row[2]) for row in pragma_cols]
+
+                return []
             else:
                 columns = self.conn.execute(f"PRAGMA table_info('{table}')").fetchall()
                 return [(row[1], row[2]) for row in columns]  # (name, type)
