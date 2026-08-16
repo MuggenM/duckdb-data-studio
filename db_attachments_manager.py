@@ -180,12 +180,11 @@ def attach_database(duckdb_conn, db_type, alias, params, read_only=True):
             os.makedirs(data_path, exist_ok=True)
 
         try:
-            sql = f"ATTACH 'ducklake:{filepath}' AS {alias} (DATA_PATH '{data_path}');"
+            sql = f"ATTACH 'ducklake:{filepath}' AS {alias} (DATA_PATH '{data_path}', OVERRIDE_DATA_PATH true);"
             duckdb_conn.execute(sql)
         except Exception as ex:
-            rel_data_path = data_path.lstrip('/')
             try:
-                sql = f"ATTACH 'ducklake:{filepath}' AS {alias} (DATA_PATH '{rel_data_path}');"
+                sql = f"ATTACH 'ducklake:{filepath}' AS {alias} (DATA_PATH '{data_path}');"
                 duckdb_conn.execute(sql)
             except Exception:
                 sql = f"ATTACH 'ducklake:{filepath}' AS {alias};"
