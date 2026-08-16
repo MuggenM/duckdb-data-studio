@@ -5,6 +5,7 @@ import io
 import csv
 import time
 import random
+import uuid
 from datetime import datetime, timedelta
 from collections import defaultdict
 from nicegui import ui, app
@@ -39,7 +40,6 @@ async def serve_dbt_docs(path: str = ""):
 from fastapi import Query, Request
 import duckdb
 from local_file_picker.local_file_picker import local_file_picker
-
 
 from slowapi.errors import RateLimitExceeded
 
@@ -663,6 +663,50 @@ config_db = SQLiteConfigManager()
 @ui.page('/')
 def index():
     global DB_NAME
+    ui.add_head_html('''
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.48/dist/drawflow.min.css">
+    <script src="https://cdn.jsdelivr.net/gh/jerosoler/Drawflow@0.0.48/dist/drawflow.min.js"></script>
+    <style>
+      #drawflow_canvas {
+        width: 100%;
+        height: 100%;
+        min-height: 420px;
+        background: #f8fafc;
+        background-size: 25px 25px;
+        background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
+        position: relative;
+        border-radius: 12px;
+      }
+      .drawflow .drawflow-node {
+        background: #ffffff !important;
+        border: 2px solid #6366f1 !important;
+        border-radius: 12px !important;
+        min-width: 220px !important;
+        padding: 10px !important;
+        box-shadow: 0 4px 10px -1px rgba(0, 0, 0, 0.1) !important;
+      }
+      .drawflow .drawflow-node.source { border-color: #6366f1 !important; }
+      .drawflow .drawflow-node.join { border-color: #a855f7 !important; }
+      .drawflow .drawflow-node.transform { border-color: #10b981 !important; }
+      .drawflow .drawflow-node.filter { border-color: #f59e0b !important; }
+      .drawflow .drawflow-node.output { border-color: #f43f5e !important; }
+
+      .drawflow .drawflow-node .input, .drawflow .drawflow-node .output {
+        width: 16px !important;
+        height: 16px !important;
+        background: #6366f1 !important;
+        border: 2px solid #ffffff !important;
+        border-radius: 50% !important;
+        top: 14px !important;
+      }
+      .drawflow .drawflow-node .input { left: -8px !important; }
+      .drawflow .drawflow-node .output { right: -8px !important; }
+      .drawflow .connection .main-path {
+        stroke-width: 3.5px !important;
+        stroke: #6366f1 !important;
+      }
+    </style>
+    ''')
     ui.query('.nicegui-content').classes('p-0 gap-0')
     
     # Scoping variables for sidebar explorers
@@ -5256,25 +5300,22 @@ JOIN prodbucket.f1_marts.fact_race_results o ON u.id = o.driver_id;""", language
                                             db_size = os.path.getsize(DB_NAME) if os.path.exists(DB_NAME) else 0
                                             ui.label(f"{db_size / (1024*1024):.2f} MB").classes('text-sm font-mono font-bold text-slate-800 dark:text-slate-200')
 
-                    # 🎨 INTERACTIVE CANVAS VISUAL QUERY & PIPELINE STUDIO (PHASE 1)
+                    # 🎨 DRAWFLOW CLIENT-SIDE VISUAL CANVAS PIPELINE STUDIO
                     vqb_card = ui.card().classes('w-full flex-grow p-4 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden min-h-0 flex-nowrap dark-bg-panel')
                     vqb_card.bind_visibility_from(workspace_sub_tabs, 'value', value='Visual Query Builder')
                     with vqb_card:
-                        from canvas_query_builder import CanvasGraph, CanvasNode, compile_canvas_to_sql
-                        
-                        canvas_graph = CanvasGraph()
-                        
-                        # Initialize default canvas nodes (Source 1 + Output)
-                        n_src = CanvasNode('src_1', 'source', '📥 Source Data', x=20, y=20, data={
-                            'database': 'sqlite_lakehouse', 'schema': 'main', 'table': 'complex1', 'alias': 't1',
-                            'selected_columns': []
-                        })
-                        n_out = CanvasNode('out_1', 'output', '📊 Output & Export', x=600, y=20, data={
-                            'order_column': '', 'order_direction': 'ASC', 'limit': 100
-                        })
-                        canvas_graph.add_node(n_src)
-                        canvas_graph.add_node(n_out)
-                        canvas_graph.add_connection('src_1', 'out_1')
+                        from canvas_query_builder import compile_drawflow_json_to_sql
+
+                        current_drawflow_export = {'drawflow': {'Home': {'data': {}}}}
+
+                        def update_canvas_sql_from_drawflow(df_json=None):
+                            nonlocal current_drawflow_export
+                            if df_json is not None:
+                                current_drawflow_export = df_json
+                            mode = canvas_mode_select.value if 'canvas_mode_select' in locals() else 'standard'
+                            sql = compile_drawflow_json_to_sql(current_drawflow_export, mode=mode)
+                            canvas_preview_editor.value = sql
+                            canvas_preview_editor.update()
 
                         # Header Bar & Node Creation Toolbar
                         with ui.row().classes('w-full items-center justify-between no-wrap pb-3 border-b border-slate-200 dark:border-slate-800 flex-none'):
@@ -5285,11 +5326,11 @@ JOIN prodbucket.f1_marts.fact_race_results o ON u.id = o.driver_id;""", language
                                     ui.label('Drag, connect, transform, and export cross-database queries visually.').classes('text-xs text-slate-500')
 
                             with ui.row().classes('items-center gap-2 no-wrap flex-wrap'):
-                                ui.button('➕ Add Source', icon='storage', on_click=lambda: canvas_add_node('source')).props('outline dense size=xs color=primary').classes('text-xs font-bold')
-                                ui.button('➕ Add Join', icon='hub', on_click=lambda: canvas_add_node('join')).props('outline dense size=xs color=purple').classes('text-xs font-bold')
-                                ui.button('➕ Add Transform', icon='auto_awesome', on_click=lambda: canvas_add_node('transform')).props('outline dense size=xs color=emerald').classes('text-xs font-bold')
-                                ui.button('➕ Add Filter', icon='filter_alt', on_click=lambda: canvas_add_node('filter')).props('outline dense size=xs color=amber').classes('text-xs font-bold')
-                                ui.button('➕ Add Output', icon='flag', on_click=lambda: canvas_add_node('output')).props('outline dense size=xs color=rose').classes('text-xs font-bold')
+                                ui.button('➕ Add Source', icon='storage', on_click=lambda: ui.run_javascript("window.add_df_node('source')")).props('outline dense size=xs color=primary').classes('text-xs font-bold')
+                                ui.button('➕ Add Join', icon='hub', on_click=lambda: ui.run_javascript("window.add_df_node('join')")).props('outline dense size=xs color=purple').classes('text-xs font-bold')
+                                ui.button('➕ Add Transform', icon='auto_awesome', on_click=lambda: ui.run_javascript("window.add_df_node('transform')")).props('outline dense size=xs color=emerald').classes('text-xs font-bold')
+                                ui.button('➕ Add Filter', icon='filter_alt', on_click=lambda: ui.run_javascript("window.add_df_node('filter')")).props('outline dense size=xs color=amber').classes('text-xs font-bold')
+                                ui.button('➕ Add Output', icon='flag', on_click=lambda: ui.run_javascript("window.add_df_node('output')")).props('outline dense size=xs color=rose').classes('text-xs font-bold')
                                 
                                 ui.separator().props('vertical').classes('h-6 mx-1 hidden sm:block')
                                 
@@ -5300,52 +5341,52 @@ JOIN prodbucket.f1_marts.fact_race_results o ON u.id = o.driver_id;""", language
                                         'dbt': '🦆 dbt Jinja Model (ref/source)'
                                     },
                                     value='standard',
-                                    on_change=lambda _: render_canvas_sql_preview()
+                                    on_change=lambda _: update_canvas_sql_from_drawflow()
                                 ).props('dense outlined').style('width: 210px;')
 
-                        # Main Canvas Split Row (Left Palette Dock + Main Interactive Canvas)
-                        with ui.row().classes('w-full flex-grow min-h-[400px] gap-3 items-stretch no-wrap overflow-hidden'):
+                        # Main Canvas Split Row (Left Palette Dock + Main Client-Side Drawflow Canvas)
+                        with ui.row().classes('w-full flex-grow min-h-[420px] gap-3 items-stretch no-wrap overflow-hidden'):
                             # Left Node Palette Dock
                             with ui.column().classes('w-52 p-3 bg-slate-50 dark:bg-slate-900/80 rounded-xl border border-slate-200 dark:border-slate-800 gap-2 flex-none shadow-sm'):
                                 ui.label('NODE PALETTE').classes('text-[11px] font-extrabold text-slate-400 dark:text-slate-400 tracking-wider uppercase mb-1')
                                 
                                 with ui.card().classes('w-full p-2.5 border-l-4 border-indigo-500 rounded-lg cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all gap-1') \
-                                     .on('click', lambda: canvas_add_node('source')):
+                                     .on('click', lambda: ui.run_javascript("window.add_df_node('source')")):
                                     with ui.row().classes('items-center gap-2'):
                                         ui.icon('storage', color='indigo').classes('text-lg')
                                         ui.label('Source Table').classes('text-xs font-bold text-slate-800 dark:text-white')
                                     ui.label('Database & table picker').classes('text-[10px] text-slate-500')
 
                                 with ui.card().classes('w-full p-2.5 border-l-4 border-purple-500 rounded-lg cursor-pointer hover:bg-purple-50 dark:hover:bg-purple-950/40 transition-all gap-1') \
-                                     .on('click', lambda: canvas_add_node('join')):
+                                     .on('click', lambda: ui.run_javascript("window.add_df_node('join')")):
                                     with ui.row().classes('items-center gap-2'):
                                         ui.icon('hub', color='purple').classes('text-lg')
                                         ui.label('Table Join').classes('text-xs font-bold text-slate-800 dark:text-white')
                                     ui.label('INNER / LEFT / RIGHT Join').classes('text-[10px] text-slate-500')
 
                                 with ui.card().classes('w-full p-2.5 border-l-4 border-emerald-500 rounded-lg cursor-pointer hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-all gap-1') \
-                                     .on('click', lambda: canvas_add_node('transform')):
+                                     .on('click', lambda: ui.run_javascript("window.add_df_node('transform')")):
                                     with ui.row().classes('items-center gap-2'):
                                         ui.icon('auto_awesome', color='emerald').classes('text-lg')
                                         ui.label('Transform & Function').classes('text-xs font-bold text-slate-800 dark:text-white')
                                     ui.label('DuckDB functions & aggs').classes('text-[10px] text-slate-500')
 
                                 with ui.card().classes('w-full p-2.5 border-l-4 border-amber-500 rounded-lg cursor-pointer hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-all gap-1') \
-                                     .on('click', lambda: canvas_add_node('filter')):
+                                     .on('click', lambda: ui.run_javascript("window.add_df_node('filter')")):
                                     with ui.row().classes('items-center gap-2'):
                                         ui.icon('filter_alt', color='amber').classes('text-lg')
                                         ui.label('Filter (WHERE)').classes('text-xs font-bold text-slate-800 dark:text-white')
                                     ui.label('Where filter clauses').classes('text-[10px] text-slate-500')
 
                                 with ui.card().classes('w-full p-2.5 border-l-4 border-rose-500 rounded-lg cursor-pointer hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-all gap-1') \
-                                     .on('click', lambda: canvas_add_node('output')):
+                                     .on('click', lambda: ui.run_javascript("window.add_df_node('output')")):
                                     with ui.row().classes('items-center gap-2'):
                                         ui.icon('flag', color='rose').classes('text-lg')
                                         ui.label('Output & Export').classes('text-xs font-bold text-slate-800 dark:text-white')
                                     ui.label('Order By & Limit rows').classes('text-[10px] text-slate-500')
 
-                            # Main Scrollable Node Canvas Workspace
-                            canvas_container = ui.row().classes('flex-grow h-full relative bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 overflow-auto p-4 gap-4 items-start min-h-[380px] shadow-inner flex-nowrap')
+                            # Main Drawflow Canvas Container
+                            canvas_container = ui.element('div').props('id=drawflow_canvas').classes('flex-grow h-full min-h-[420px] rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-inner relative')
 
                         # Live Code Preview & Export Bar
                         with ui.card().classes('w-full p-3 border border-slate-200 dark:border-slate-800 rounded-lg dark-bg-flat gap-2 flex-none mt-2'):
@@ -5361,242 +5402,87 @@ JOIN prodbucket.f1_marts.fact_race_results o ON u.id = o.driver_id;""", language
 
                             canvas_preview_editor = ui.codemirror(value='', language='sql', theme='basicLight').classes('w-full border rounded shadow-inner').style('height: 120px; font-size: 13px;')
 
-                    def canvas_add_node(ntype):
-                        nid = f"{ntype}_{uuid.uuid4().hex[:4]}"
-                        title_map = {
-                            'source': '📥 Source Table',
-                            'join': '🔗 Table Join',
-                            'transform': '⚡ Transform & Function',
-                            'filter': '🎯 Filter (WHERE)',
-                            'output': '📊 Output & Export'
-                        }
-                        
-                        dbs = [r[0] for r in explorer.conn.execute("SELECT database_name FROM duckdb_databases() WHERE database_name NOT IN ('system', 'temp') AND NOT database_name LIKE '__%'").fetchall()]
-                        default_db = dbs[0] if dbs else 'main'
-                        
-                        init_data = {}
-                        if ntype == 'source':
-                            init_data = {'database': default_db, 'schema': 'main', 'table': '', 'alias': f"t{len(canvas_graph.nodes)+1}", 'selected_columns': []}
-                        elif ntype == 'join':
-                            init_data = {'type': 'LEFT JOIN', 'database': default_db, 'schema': 'main', 'table': '', 'alias': f"t{len(canvas_graph.nodes)+1}", 'on_left': 't1.id', 'on_right': 't2.id'}
-                        elif ntype == 'transform':
-                            init_data = {'expressions': [{'column': 't1.name', 'func': 'UPPER', 'alias': 'upper_name'}]}
-                        elif ntype == 'filter':
-                            init_data = {'column': 't1.name', 'operator': '=', 'value': ''}
-                        elif ntype == 'output':
-                            init_data = {'order_column': '', 'order_direction': 'ASC', 'limit': 100}
+                    def vqb_init_dropdowns():
+                        ui.run_javascript(r'''
+                            if (!window.drawflow_initialized && document.getElementById('drawflow_canvas')) {
+                                window.drawflow_initialized = true;
+                                const id = document.getElementById('drawflow_canvas');
+                                window.drawflow_editor = new Drawflow(id);
+                                window.drawflow_editor.reroute = true;
+                                window.drawflow_editor.start();
 
-                        node = CanvasNode(nid, ntype, title_map.get(ntype, 'Node'), x=20, y=20, data=init_data)
-                        canvas_graph.add_node(node)
-                        render_canvas_nodes()
-                        ui.notify(f"Added {node.title} to canvas!", type='info', duration=2)
+                                window.add_df_node = function(type) {
+                                    const titles = {
+                                        source: '📥 Source Table',
+                                        join: '🔗 Table Join',
+                                        transform: '⚡ Transform & Function',
+                                        filter: '🎯 Filter (WHERE)',
+                                        output: '📊 Output & Export'
+                                    };
+                                    const colors = {
+                                        source: 'indigo', join: 'purple', transform: 'emerald', filter: 'amber', output: 'rose'
+                                    };
+                                    const node_data = { node_type: type };
+                                    if (type === 'source') {
+                                        node_data.database = 'sqlite_lakehouse';
+                                        node_data.schema = 'main';
+                                        node_data.table = 'complex1';
+                                        node_data.alias = 't1';
+                                        node_data.selected_columns = [];
+                                    } else if (type === 'join') {
+                                        node_data.type = 'LEFT JOIN';
+                                        node_data.database = 'car_rental';
+                                        node_data.schema = 'main';
+                                        node_data.table = 'customers';
+                                        node_data.alias = 't2';
+                                        node_data.on_left = 't1.mainid';
+                                        node_data.on_right = 't2.customer_id';
+                                    } else if (type === 'transform') {
+                                        node_data.expressions = [{ column: 't1.firstName', func: 'UPPER', alias: 'upper_first' }];
+                                    } else if (type === 'filter') {
+                                        node_data.column = 't1.firstName';
+                                        node_data.operator = '=';
+                                        node_data.value = '';
+                                    } else if (type === 'output') {
+                                        node_data.order_column = '';
+                                        node_data.order_direction = 'ASC';
+                                        node_data.limit = 100;
+                                    }
 
-                    def render_canvas_nodes():
-                        canvas_container.clear()
-                        with canvas_container:
-                            for nid, node in list(canvas_graph.nodes.items()):
-                                render_canvas_node_card(node)
-                        render_canvas_sql_preview()
+                                    const html = `
+                                        <div class="drawflow-node-content">
+                                            <div class="flex items-center justify-between border-b pb-1 font-extrabold text-xs text-\${colors[type]}-600 uppercase">
+                                                <span>\${titles[type]}</span>
+                                                <button onclick="window.emit_node_edit(this)" class="text-slate-400 hover:text-slate-600">⚙️</button>
+                                            </div>
+                                            <div class="text-[11px] font-mono mt-1 text-slate-700">Click ⚙️ to configure</div>
+                                        </div>
+                                    `;
+                                    
+                                    const num_inputs = type === 'source' ? 0 : 1;
+                                    const num_outputs = type === 'output' ? 0 : 1;
+                                    window.drawflow_editor.addNode(type, num_inputs, num_outputs, 150, 100, type, node_data, html);
+                                    window.sync_drawflow_to_backend();
+                                };
 
-                    def render_canvas_node_card(node):
-                        ntype = node.type
-                        theme = node.get_color_theme()
-                        icon_name = node.get_icon()
-                        summary_text = node.get_summary()
+                                window.sync_drawflow_to_backend = function() {
+                                    if (window.drawflow_editor) {
+                                        const export_data = window.drawflow_editor.export();
+                                        emitEvent('drawflow_updated', export_data);
+                                    }
+                                };
 
-                        # Node Card Container with double-click support
-                        card_elem = ui.card().classes(
-                            f"w-80 p-3 border-2 {theme['border']} rounded-xl shadow-md bg-white dark:bg-slate-800 gap-2 relative flex-none cursor-pointer hover:shadow-lg transition-all"
-                        )
-                        card_elem.on('dblclick', lambda _, n=node: open_node_properties_dialog(n))
+                                window.drawflow_editor.on('nodeCreated', window.sync_drawflow_to_backend);
+                                window.drawflow_editor.on('nodeRemoved', window.sync_drawflow_to_backend);
+                                window.drawflow_editor.on('connectionCreated', window.sync_drawflow_to_backend);
+                                window.drawflow_editor.on('connectionRemoved', window.sync_drawflow_to_backend);
+                                window.drawflow_editor.on('nodeMoved', window.sync_drawflow_to_backend);
 
-                        with card_elem:
-                            # Header Bar with Icon, Title, Settings Gear, Delete
-                            with ui.row().classes('w-full items-center justify-between no-wrap border-b pb-1.5'):
-                                with ui.row().classes('items-center gap-1.5'):
-                                    ui.icon(icon_name, color=theme['icon_color']).classes('text-lg')
-                                    ui.label(node.title).classes('text-xs font-extrabold text-slate-800 dark:text-white uppercase tracking-wider')
-                                
-                                with ui.row().classes('items-center gap-1 no-wrap'):
-                                    # ⚙️ Settings Gear Button
-                                    ui.button(icon='settings', on_click=lambda _, n=node: open_node_properties_dialog(n)).props('flat dense round color=secondary size=xs').tooltip('Configure Node Properties (Double-Click)')
-                                    # ❌ Delete Button
-                                    ui.button(icon='close', on_click=lambda _, n=node.id: (canvas_graph.remove_node(n), render_canvas_nodes())).props('flat dense round color=negative size=xs').tooltip('Delete Node')
-
-                            # Summary Badge / Properties Banner
-                            with ui.row().classes(f"w-full p-2 rounded-lg {theme['badge']} items-center gap-2 cursor-pointer") \
-                                 .on('click', lambda _, n=node: open_node_properties_dialog(n)):
-                                ui.icon('info', size='xs')
-                                ui.label(summary_text).classes('text-xs font-medium break-all')
-
-                            # Double click hint
-                            ui.label('💡 Double-click or click ⚙️ gear to edit properties').classes('text-[10px] text-slate-400 italic text-center w-full')
-
-                    def open_node_properties_dialog(node):
-                        ntype = node.type
-                        theme = node.get_color_theme()
-                        icon_name = node.get_icon()
-
-                        with ui.dialog() as prop_dialog, ui.card().classes('w-[520px] max-w-full p-6 gap-4'):
-                            with ui.row().classes('w-full items-center justify-between border-b pb-3'):
-                                with ui.row().classes('items-center gap-2'):
-                                    ui.icon(icon_name, color=theme['icon_color']).classes('text-2xl')
-                                    with ui.column().classes('gap-0'):
-                                        ui.label(f"Configure {node.title}").classes('text-base font-extrabold text-slate-800 dark:text-white')
-                                        ui.label(f"Node ID: {node.id}").classes('text-xs font-mono text-slate-400')
-                                ui.button(icon='close', on_click=prop_dialog.close).props('flat dense round size=sm')
-
-                            # Node specific properties form
-                            if ntype == 'source':
-                                dbs = [r[0] for r in explorer.conn.execute("SELECT database_name FROM duckdb_databases() WHERE database_name NOT IN ('system', 'temp') AND NOT database_name LIKE '__%' ORDER BY database_name").fetchall()]
-                                p_db = ui.select(options={d: d for d in dbs}, value=node.data.get('database', dbs[0] if dbs else 'main'), label='Database').props('outlined dense').classes('w-full')
-                                p_tbl = ui.select(options=[], value=node.data.get('table'), label='Table / Model').props('outlined dense').classes('w-full')
-                                p_alias = ui.input('Table Alias', value=node.data.get('alias', 't1')).props('outlined dense').classes('w-full')
-                                
-                                ui.label('Select Columns to Propagate:').classes('text-xs font-bold text-slate-600 dark:text-slate-300 mt-2')
-                                col_container = ui.column().classes('w-full gap-1 max-h-48 overflow-y-auto border rounded p-2 bg-slate-50 dark:bg-slate-900')
-                                
-                                sel_cols = list(node.data.get('selected_columns', []))
-
-                                def load_tbl_cols(db_val, tbl_val):
-                                    col_container.clear()
-                                    if not db_val or not tbl_val: return
-                                    try:
-                                        cols = explorer.list_columns_with_types(tbl_val, database=db_val, schema='main')
-                                        with col_container:
-                                            for c_name, c_type in cols:
-                                                is_in = c_name in sel_cols
-                                                def toggle_col(e, c=c_name):
-                                                    if e.value and c not in sel_cols: sel_cols.append(c)
-                                                    elif not e.value and c in sel_cols: sel_cols.remove(c)
-                                                ui.checkbox(f"{c_name} ({c_type})", value=is_in, on_change=toggle_col).classes('text-xs font-mono')
-                                    except Exception: pass
-
-                                def on_db_sel(db_val):
-                                    try:
-                                        tbls = [r[0] for r in explorer.conn.execute("SELECT table_name FROM information_schema.tables WHERE table_catalog = ? AND table_schema NOT IN ('information_schema', 'pg_catalog') ORDER BY table_name", (db_val,)).fetchall()]
-                                        p_tbl.options = {t: t for t in tbls}
-                                        if tbls and not p_tbl.value: p_tbl.value = tbls[0]
-                                        p_tbl.update()
-                                        load_tbl_cols(db_val, p_tbl.value)
-                                    except Exception: pass
-
-                                p_db.on_value_change(lambda e: on_db_sel(e.value))
-                                p_tbl.on_value_change(lambda e: load_tbl_cols(p_db.value, e.value))
-                                if dbs: on_db_sel(p_db.value)
-
-                                def save_source_props():
-                                    node.data['database'] = p_db.value
-                                    node.data['table'] = p_tbl.value
-                                    node.data['alias'] = p_alias.value.strip() or 't1'
-                                    node.data['selected_columns'] = sel_cols
-                                    prop_dialog.close()
-                                    render_canvas_nodes()
-
-                            elif ntype == 'join':
-                                j_type = ui.select(options={'INNER JOIN': 'INNER JOIN', 'LEFT JOIN': 'LEFT JOIN', 'RIGHT JOIN': 'RIGHT JOIN', 'FULL JOIN': 'FULL JOIN'}, value=node.data.get('type', 'LEFT JOIN'), label='Join Type').props('outlined dense').classes('w-full')
-                                dbs = [r[0] for r in explorer.conn.execute("SELECT database_name FROM duckdb_databases() WHERE database_name NOT IN ('system', 'temp') AND NOT database_name LIKE '__%'").fetchall()]
-                                j_db = ui.select(options={d: d for d in dbs}, value=node.data.get('database', dbs[0] if dbs else 'main'), label='Target DB').props('outlined dense').classes('w-full')
-                                j_tbl = ui.select(options=[], value=node.data.get('table'), label='Target Table').props('outlined dense').classes('w-full')
-                                j_alias = ui.input('Join Table Alias', value=node.data.get('alias', 't2')).props('outlined dense').classes('w-full')
-                                j_left = ui.input('ON Left Expression', value=node.data.get('on_left', 't1.id')).props('outlined dense').classes('w-full')
-                                j_right = ui.input('ON Right Expression', value=node.data.get('on_right', 't2.id')).props('outlined dense').classes('w-full')
-
-                                def on_j_db_sel(db_val):
-                                    try:
-                                        tbls = [r[0] for r in explorer.conn.execute("SELECT table_name FROM information_schema.tables WHERE table_catalog = ? AND table_schema NOT IN ('information_schema', 'pg_catalog')", (db_val,)).fetchall()]
-                                        j_tbl.options = {t: t for t in tbls}
-                                        if tbls and not j_tbl.value: j_tbl.value = tbls[0]
-                                        j_tbl.update()
-                                    except Exception: pass
-
-                                j_db.on_value_change(lambda e: on_j_db_sel(e.value))
-                                if dbs: on_j_db_sel(j_db.value)
-
-                                def save_join_props():
-                                    node.data['type'] = j_type.value
-                                    node.data['database'] = j_db.value
-                                    node.data['table'] = j_tbl.value
-                                    node.data['alias'] = j_alias.value.strip() or 't2'
-                                    node.data['on_left'] = j_left.value.strip()
-                                    node.data['on_right'] = j_right.value.strip()
-                                    prop_dialog.close()
-                                    render_canvas_nodes()
-
-                            elif ntype == 'transform':
-                                exprs = [dict(ex) for ex in node.data.get('expressions', [{'column': 't1.name', 'func': 'UPPER', 'alias': 'upper_name'}])]
-                                expr_container = ui.column().classes('w-full gap-2 max-h-56 overflow-y-auto')
-                                
-                                def render_expr_rows():
-                                    expr_container.clear()
-                                    with expr_container:
-                                        for idx, ex in enumerate(exprs):
-                                            with ui.row().classes('w-full items-center gap-2 no-wrap border-b pb-2'):
-                                                c_in = ui.input('Column Expr', value=ex.get('column', 't1.name')).props('outlined dense size=sm').style('width: 140px;')
-                                                f_sel = ui.select(options={'NONE': 'None', 'UPPER': 'UPPER', 'LOWER': 'LOWER', 'ROUND': 'ROUND', 'DATE_TRUNC': 'DATE_TRUNC', 'SUM': 'SUM', 'COUNT': 'COUNT', 'AVG': 'AVG', 'MIN': 'MIN', 'MAX': 'MAX', 'COUNT_DISTINCT': 'COUNT DISTINCT', 'COALESCE': 'COALESCE'}, value=ex.get('func', 'UPPER'), label='Function').props('outlined dense size=sm').style('width: 140px;')
-                                                a_in = ui.input('Output Alias', value=ex.get('alias', '')).props('outlined dense size=sm').style('width: 130px;')
-                                                
-                                                c_in.on_value_change(lambda e, i=idx: exprs[i].update(column=e.value))
-                                                f_sel.on_value_change(lambda e, i=idx: exprs[i].update(func=e.value))
-                                                a_in.on_value_change(lambda e, i=idx: exprs[i].update(alias=e.value))
-
-                                                def del_ex(i=idx):
-                                                    if len(exprs) > 1:
-                                                        exprs.pop(i)
-                                                        render_expr_rows()
-
-                                                ui.button(icon='delete', on_click=lambda _, i=idx: del_ex(i)).props('flat dense round color=negative size=xs')
-
-                                render_expr_rows()
-                                ui.button('➕ Add Expression Transformation', icon='add', on_click=lambda: (exprs.append({'column': 't1.column', 'func': 'NONE', 'alias': ''}), render_expr_rows())).props('outline dense size=xs color=primary').classes('w-full mt-2')
-
-                                def save_transform_props():
-                                    node.data['expressions'] = exprs
-                                    prop_dialog.close()
-                                    render_canvas_nodes()
-
-                            elif ntype == 'filter':
-                                f_col = ui.input('Column Name / Expr', value=node.data.get('column', 't1.name')).props('outlined dense').classes('w-full')
-                                f_op = ui.select(options={'=': '=', '>': '>', '<': '<', '>=': '>=', '<=': '<=', 'LIKE': 'LIKE', 'IN': 'IN', 'IS NOT NULL': 'IS NOT NULL'}, value=node.data.get('operator', '='), label='Operator').props('outlined dense').classes('w-full')
-                                f_val = ui.input('Filter Value', value=node.data.get('value', '')).props('outlined dense').classes('w-full')
-
-                                def save_filter_props():
-                                    node.data['column'] = f_col.value.strip()
-                                    node.data['operator'] = f_op.value
-                                    node.data['value'] = f_val.value.strip()
-                                    prop_dialog.close()
-                                    render_canvas_nodes()
-
-                            elif ntype == 'output':
-                                o_col = ui.input('Order By Column', value=node.data.get('order_column', '')).props('outlined dense').classes('w-full')
-                                o_dir = ui.select(options={'ASC': 'Ascending', 'DESC': 'Descending'}, value=node.data.get('order_direction', 'ASC'), label='Sort Direction').props('outlined dense').classes('w-full')
-                                o_lim = ui.number('Limit Rows', value=node.data.get('limit', 100), min=1).props('outlined dense').classes('w-full')
-
-                                def save_output_props():
-                                    node.data['order_column'] = o_col.value.strip()
-                                    node.data['order_direction'] = o_dir.value
-                                    node.data['limit'] = int(o_lim.value or 100)
-                                    prop_dialog.close()
-                                    render_canvas_nodes()
-
-                            save_func_map = {
-                                'source': save_source_props,
-                                'join': save_join_props,
-                                'transform': save_transform_props,
-                                'filter': save_filter_props,
-                                'output': save_output_props
+                                // Add default initial nodes
+                                window.add_df_node('source');
+                                window.add_df_node('output');
                             }
-
-                            with ui.row().classes('w-full justify-end gap-2 pt-3 border-t'):
-                                ui.button('Cancel', on_click=prop_dialog.close).props('flat')
-                                ui.button('Save Properties 💾', color='primary', on_click=save_func_map[ntype]).props('elevated')
-
-                        prop_dialog.open()
-
-                    def render_canvas_sql_preview():
-                        from canvas_query_builder import compile_canvas_to_sql
-                        sql = compile_canvas_to_sql(canvas_graph.to_dict(), mode=canvas_mode_select.value)
-                        canvas_preview_editor.set_value(sql)
+                        ''')
 
                     def canvas_run_in_editor():
                         sql = canvas_preview_editor.value.strip()
@@ -5608,11 +5494,27 @@ JOIN prodbucket.f1_marts.fact_race_results o ON u.id = o.driver_id;""", language
                         run_editor_query()
                         ui.notify('Canvas query loaded into SQL Workspace & executed!', type='success')
 
-                    def vqb_init_dropdowns():
-                        render_canvas_nodes()
+                    def open_vqb_save_snippet_dialog():
+                        sql = canvas_preview_editor.value.strip()
+                        if not sql:
+                            ui.notify('No query generated to save!', type='warning')
+                            return
+                        save_snippet(title="Canvas Pipeline Query", sql_text=sql)
 
-                    # Build Save to Snippets Dialog
-                    with ui.dialog() as vqb_save_snippet_dialog, ui.card().classes('w-96 p-6 gap-4'):
+                    def open_vqb_save_dbt_model_dialog():
+                        sql = canvas_preview_editor.value.strip()
+                        if not sql:
+                            ui.notify('No query generated for dbt model!', type='warning')
+                            return
+                        # Save model to dbt_project/models/
+                        model_name = f"canvas_model_{int(time.time())}"
+                        file_path = f"/app/dbt_project/models/{model_name}.sql"
+                        try:
+                            with open(file_path, 'w') as f:
+                                f.write(sql)
+                            ui.notify(f"Successfully saved dbt model to models/{model_name}.sql! 📦", type='positive')
+                        except Exception as ex:
+                            ui.notify(f"Error saving dbt model: {ex}", type='negative')
                         ui.label('💾 Save to SQL Snippet Library').classes('text-lg font-bold text-slate-800 dark:text-white')
                         vqb_snip_name = ui.input('Snippet Name', value='Visual Query 1', placeholder='e.g., Lakehouse Revenue Analysis').props('outlined dense').classes('w-full')
                         vqb_snip_cat = ui.select(options=['Analytical', 'Utility', 'DDL/DML'], value='Analytical', label='Category').props('outlined dense').classes('w-full')
