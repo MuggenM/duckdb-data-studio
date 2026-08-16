@@ -47,6 +47,7 @@ services:
       - ./s3_catalog_plugin.py:/app/s3_catalog_plugin.py
       - ./column_lineage.py:/app/column_lineage.py
       - ./delta_inspector.py:/app/delta_inspector.py
+      - ./delta_optimizer.py:/app/delta_optimizer.py
       - ./main.py:/app/main.py
     environment:
       - STORAGE_SECRET=duckdb_studio_secret_key_1337

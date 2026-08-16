@@ -2558,6 +2558,158 @@ def index():
                         time_travel_table_select.on_value_change(lambda _: update_delta_table_history())
                         if time_travel_table_select.value:
                             asyncio.create_task(update_delta_table_history())
+
+                    # 4. S3 Delta Lake Compaction & Vacuum Optimization Hub Card
+                    with ui.card().classes('p-6 shadow-sm border border-slate-200 dark:border-slate-800 dark-bg-panel rounded-xl flex-col gap-4 mt-4'):
+                        with ui.row().classes('items-center justify-between w-full'):
+                            with ui.row().classes('items-center gap-2'):
+                                ui.icon('cleaning_services', color='primary').classes('text-2xl')
+                                ui.label('S3 Delta Lake Compaction & Vacuum Optimization Hub').classes('text-lg font-bold text-slate-800 dark:text-white')
+                            
+                            ui.label('Storage & Latency Optimizer').classes('text-xs font-semibold text-emerald-500 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-1 rounded-full border border-emerald-200 dark:border-emerald-900')
+
+                        ui.separator().classes('opacity-50')
+                        ui.label('Diagnose S3 file fragmentation, consolidate tiny Parquet files into optimal 128 MB blocks, and vacuum stale tombstoned files to optimize read performance and reduce S3 costs.').classes('text-xs text-slate-400 leading-relaxed')
+
+                        # Health Metrics Container
+                        opt_health_container = ui.column().classes('w-full gap-3 mt-1')
+
+                        async def update_optimization_health():
+                            opt_health_container.clear()
+                            s3_uri = time_travel_table_select.value
+                            if not s3_uri:
+                                with opt_health_container:
+                                    ui.label('Select an S3 Delta Table above to run health diagnostics.').classes('text-sm text-slate-400 italic')
+                                return
+
+                            with opt_health_container:
+                                ui.spinner('dots', size='md', color='primary').classes('self-center my-3')
+
+                            try:
+                                import delta_optimizer
+                                loop = asyncio.get_event_loop()
+                                metrics = await loop.run_in_executor(None, lambda: delta_optimizer.get_table_health_metrics(s3_uri))
+                                opt_health_container.clear()
+                                render_optimization_controls(s3_uri, metrics)
+                            except Exception as ex:
+                                opt_health_container.clear()
+                                with opt_health_container:
+                                    ui.notify(f'Failed to compute table health metrics: {ex}', type='negative')
+
+                        def render_optimization_controls(s3_uri, metrics):
+                            with opt_health_container:
+                                if not metrics:
+                                    ui.label('Could not fetch health metrics for this table.').classes('text-sm text-slate-400 italic')
+                                    return
+
+                                # Metrics Badges Row
+                                with ui.row().classes('w-full gap-3 flex-nowrap justify-between'):
+                                    # Card 1: Active Files
+                                    with ui.card().classes('flex-grow p-3 border border-slate-100 dark:border-slate-800 shadow-none dark-bg-panel items-center gap-1'):
+                                        ui.icon('inventory_2', color='primary').classes('text-lg')
+                                        ui.label('Active Parquet Files').classes('text-[10px] text-slate-400 font-semibold uppercase')
+                                        ui.label(f"{metrics['active_file_count']} files ({metrics['active_size_mb']} MB)").classes('text-xs font-bold text-slate-800 dark:text-white text-center')
+
+                                    # Card 2: Avg File Size
+                                    avg_color = 'positive' if metrics['avg_file_size_mb'] >= 5.0 else 'warning'
+                                    with ui.card().classes('flex-grow p-3 border border-slate-100 dark:border-slate-800 shadow-none dark-bg-panel items-center gap-1'):
+                                        ui.icon('straighten', color=avg_color).classes('text-lg')
+                                        ui.label('Avg File Size').classes('text-[10px] text-slate-400 font-semibold uppercase')
+                                        ui.label(f"{metrics['avg_file_size_mb']} MB / file").classes('text-xs font-bold text-slate-800 dark:text-white text-center')
+
+                                    # Card 3: Tombstoned / Stale Files
+                                    stale_color = 'negative' if metrics['tombstoned_file_count'] > 5 else 'positive'
+                                    with ui.card().classes('flex-grow p-3 border border-slate-100 dark:border-slate-800 shadow-none dark-bg-panel items-center gap-1'):
+                                        ui.icon('auto_delete', color=stale_color).classes('text-lg')
+                                        ui.label('Stale/Tombstoned Files').classes('text-[10px] text-slate-400 font-semibold uppercase')
+                                        ui.label(f"{metrics['tombstoned_file_count']} files ({metrics['wasted_size_mb']} MB)").classes('text-xs font-bold text-slate-800 dark:text-white text-center')
+
+                                    # Card 4: Health Score
+                                    score_color = 'text-emerald-500' if metrics['health_score'] >= 80 else ('text-amber-500' if metrics['health_score'] >= 50 else 'text-red-500')
+                                    with ui.card().classes('flex-grow p-3 border border-slate-100 dark:border-slate-800 shadow-none dark-bg-panel items-center gap-1'):
+                                        ui.icon('health_and_safety', color='primary').classes('text-lg')
+                                        ui.label('Health Score').classes('text-[10px] text-slate-400 font-semibold uppercase')
+                                        ui.label(f"{metrics['health_score']}% ({metrics['health_label']})").classes(f'text-xs font-bold text-center {score_color}')
+
+                                # Dual Column Controls (Compaction vs Vacuum)
+                                with ui.row().classes('w-full gap-4 mt-2 no-wrap'):
+                                    # Column 1: Compaction
+                                    with ui.card().classes('flex-grow p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex-col gap-3'):
+                                        with ui.row().classes('items-center gap-2 text-indigo-600 dark:text-indigo-400'):
+                                            ui.icon('compress', size='sm')
+                                            ui.label('1. Small File Compaction (Bin-Packing)').classes('font-bold text-sm')
+                                        ui.label('Consolidate small Parquet files into optimal target-sized Parquet files to accelerate S3 scan queries.').classes('text-xs text-slate-400')
+                                        
+                                        target_size_select = ui.select(
+                                            options={32: '32 MB', 64: '64 MB', 128: '128 MB (Recommended)', 256: '256 MB'},
+                                            value=128,
+                                            label='Target Parquet File Size'
+                                        ).props('outlined dense').classes('w-full')
+
+                                        async def run_compaction_action():
+                                            opt_log_area.set_value(f"[INFO] Compaction started for {s3_uri} (target: {target_size_select.value} MB)...\n")
+                                            try:
+                                                import delta_optimizer
+                                                loop = asyncio.get_event_loop()
+                                                res = await loop.run_in_executor(None, lambda: delta_optimizer.run_compaction_delta_table(explorer.conn, s3_uri, target_size_select.value))
+                                                if res.get('success'):
+                                                    opt_log_area.set_value(f"[SUCCESS] {res['message']}\nInitial Active Files: {res['before_file_count']} ➔ Verified: {res['row_count']} rows.\n")
+                                                    ui.notify('Compaction complete!', type='success')
+                                                    await update_optimization_health()
+                                                else:
+                                                    opt_log_area.set_value(f"[ERROR] {res.get('error')}\n")
+                                                    ui.notify(f"Compaction error: {res.get('error')}", type='negative')
+                                            except Exception as cex:
+                                                opt_log_area.set_value(f"[EXCEPTION] {cex}\n")
+
+                                        ui.button('Run Compaction ⚡', icon='bolt', color='primary', on_click=run_compaction_action).props('elevated dense').classes('px-4 py-2 text-xs font-bold self-start mt-1')
+
+                                    # Column 2: Vacuum
+                                    with ui.card().classes('flex-grow p-4 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl flex-col gap-3'):
+                                        with ui.row().classes('items-center gap-2 text-rose-600 dark:text-rose-400'):
+                                            ui.icon('delete_sweep', size='sm')
+                                            ui.label('2. Vacuum Stale File Cleanup').classes('font-bold text-sm')
+                                        ui.label('Permanently delete tombstoned Parquet files older than retention threshold to free S3 storage capacity.').classes('text-xs text-slate-400')
+                                        
+                                        retention_select = ui.select(
+                                            options={0: '0 Hours (Instant / Immediate)', 24: '24 Hours', 168: '7 Days (Default)', 720: '30 Days'},
+                                            value=168,
+                                            label='Retention Threshold'
+                                        ).props('outlined dense').classes('w-full')
+
+                                        async def run_vacuum_action(dry_run=True):
+                                            mode_str = "Dry Run" if dry_run else "Execute Deletion"
+                                            opt_log_area.set_value(f"[INFO] Vacuum ({mode_str}) started for {s3_uri} (retention: {retention_select.value}h)...\n")
+                                            try:
+                                                import delta_optimizer
+                                                loop = asyncio.get_event_loop()
+                                                res = await loop.run_in_executor(None, lambda: delta_optimizer.run_vacuum_delta_table(s3_uri, retention_select.value, dry_run=dry_run))
+                                                if res.get('success'):
+                                                    msg = res['message']
+                                                    opt_log_area.set_value(f"[SUCCESS] {msg}\nFiles: {res.get('candidate_files_count', res.get('deleted_files_count', 0))} | Freed: {res['freed_mb']} MB\n")
+                                                    ui.notify(msg, type='info' if dry_run else 'positive')
+                                                    if not dry_run:
+                                                        await update_optimization_health()
+                                                else:
+                                                    opt_log_area.set_value(f"[ERROR] {res.get('error')}\n")
+                                            except Exception as vex:
+                                                opt_log_area.set_value(f"[EXCEPTION] {vex}\n")
+
+                                        with ui.row().classes('gap-2 mt-1'):
+                                            ui.button('Dry Run 🔍', icon='preview', color='secondary', on_click=lambda: run_vacuum_action(dry_run=True)).props('outlined dense').classes('px-3 py-1.5 text-xs font-bold')
+                                            ui.button('Execute Vacuum 🧹', icon='delete_forever', color='negative', on_click=lambda: run_vacuum_action(dry_run=False)).props('elevated dense').classes('px-3 py-1.5 text-xs font-bold')
+
+                                # Execution & Diagnostic Log Area
+                                ui.label('Optimization Execution Log:').classes('text-xs font-bold text-slate-700 dark:text-slate-300 mt-2')
+                                opt_log_area = ui.textarea(value='Select an action above to execute compaction or vacuum optimization...\n').props('readonly outlined dense').classes('w-full font-mono text-xs h-28 bg-slate-900 text-emerald-400 rounded-lg p-2')
+
+                        def on_table_selected():
+                            asyncio.create_task(update_delta_table_history())
+                            asyncio.create_task(update_optimization_health())
+
+                        time_travel_table_select.on_value_change(lambda _: on_table_selected())
+                        if time_travel_table_select.value:
+                            asyncio.create_task(update_optimization_health())
         
         # Build dbt Docs & Lineage Container Content
         with dbt_docs_container:
