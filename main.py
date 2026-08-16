@@ -407,17 +407,30 @@ def load_attached_databases_for_connection(conn):
                 # Construct attach SQL
                 if db_type == 'ducklake':
                     data_path = options.get('data_path', 'data_parquet/')
-                    sql = f"ATTACH 'ducklake:{db_path}' AS {db_name} (DATA_PATH '{data_path}');"
+                    try:
+                        sql = f"ATTACH 'ducklake:{db_path}' AS {db_name} (DATA_PATH '{data_path}');"
+                        conn.execute(sql)
+                    except Exception as ex_dl:
+                        rel_data_path = data_path.lstrip('/')
+                        try:
+                            sql = f"ATTACH 'ducklake:{db_path}' AS {db_name} (DATA_PATH '{rel_data_path}');"
+                            conn.execute(sql)
+                        except Exception:
+                            sql = f"ATTACH 'ducklake:{db_path}' AS {db_name};"
+                            conn.execute(sql)
                 elif db_type == 'sqlite':
                     sql = f"ATTACH '{db_path}' AS {db_name} (TYPE sqlite);"
+                    conn.execute(sql)
                 elif db_type == 'postgres':
                     sql = f"ATTACH '{db_path}' AS {db_name} (TYPE postgres);"
+                    conn.execute(sql)
                 elif db_type == 'mysql':
                     sql = f"ATTACH '{db_path}' AS {db_name} (TYPE mysql);"
+                    conn.execute(sql)
                 else: # duckdb
                     sql = f"ATTACH '{db_path}' AS {db_name} (READ_ONLY true);"
+                    conn.execute(sql)
                 
-                conn.execute(sql)
                 print(f"INFO: Successfully auto-attached {db_type} database '{db_name}' from config.")
             except Exception as e:
                 print(f"WARNING: Failed to auto-attach database '{db_name}' ({db_type}): {e}")

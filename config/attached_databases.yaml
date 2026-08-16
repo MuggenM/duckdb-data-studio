@@ -1,7 +1,7 @@
 databases:
 - name: my_lakehouse
   options:
-    data_path: /ducklake/data_parquet/
+    data_path: ducklake/data_parquet/
   path: /ducklake/metadata.db
   type: ducklake
 - name: servicerequests
