@@ -1,7 +1,14 @@
 test_project:
-  target: prod
+  target: dev
   outputs:
     dev:
+      type: duckdb
+      path: '{{ env_var("DBT_DB_PATH", "/home/martin/volumes/duckdb-studio/databases/dbt_analytics.duckdb") }}'
+      threads: 4
+      extensions:
+        - httpfs
+        - delta
+    duckrun:
       type: duckrun
       root_path: 's3://devbucket/dev_tables'
       threads: 2

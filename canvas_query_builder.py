@@ -155,14 +155,24 @@ def compile_canvas_to_sql(graph_dict: dict, mode: str = 'standard') -> str:
     """
     Compiles a Canvas Node Graph into Standard DuckDB SQL or dbt Jinja SQL.
     """
-    nodes = graph_dict.get('nodes', {})
+    raw_nodes = graph_dict.get('nodes', {})
     connections = graph_dict.get('connections', [])
 
-    if not nodes:
+    if not raw_nodes:
+        return "-- Canvas is empty. Add Source Nodes to begin building your query pipeline."
+
+    if isinstance(raw_nodes, dict):
+        nodes_list = list(raw_nodes.values())
+    elif isinstance(raw_nodes, list):
+        nodes_list = raw_nodes
+    else:
+        nodes_list = []
+
+    if not nodes_list:
         return "-- Canvas is empty. Add Source Nodes to begin building your query pipeline."
 
     # Identify source nodes
-    source_nodes = [n for n in nodes.values() if n.get('type') == 'source']
+    source_nodes = [n for n in nodes_list if n.get('type') == 'source']
     if not source_nodes:
         return "-- Please add at least one Source Node (Database & Table) to the canvas."
 
@@ -178,10 +188,10 @@ def compile_canvas_to_sql(graph_dict: dict, mode: str = 'standard') -> str:
         return "-- Please select a database and table in the primary Source Node."
 
     # Find connected joins, transforms, filters, and output
-    join_nodes = [n for n in nodes.values() if n.get('type') == 'join']
-    transform_nodes = [n for n in nodes.values() if n.get('type') == 'transform']
-    filter_nodes = [n for n in nodes.values() if n.get('type') == 'filter']
-    output_nodes = [n for n in nodes.values() if n.get('type') == 'output']
+    join_nodes = [n for n in nodes_list if n.get('type') == 'join']
+    transform_nodes = [n for n in nodes_list if n.get('type') == 'transform']
+    filter_nodes = [n for n in nodes_list if n.get('type') == 'filter']
+    output_nodes = [n for n in nodes_list if n.get('type') == 'output']
 
     # 1. SELECT clause
     select_parts = []
@@ -221,9 +231,10 @@ def compile_canvas_to_sql(graph_dict: dict, mode: str = 'standard') -> str:
         select_parts.extend(transform_exprs)
     elif p_cols:
         for c in p_cols:
-            select_parts.append(f"  {p_alias}.{c}")
+            c_clean = c.strip().strip('"').replace('"', '""')
+            select_parts.append(f'  {p_alias}."{c_clean}"')
     else:
-        select_parts.append(f"  {p_alias}.*")
+        select_parts.append("  *")
 
     # Add columns from secondary sources if present in joins
     for idx, s_node in enumerate(source_nodes[1:]):
@@ -231,7 +242,8 @@ def compile_canvas_to_sql(graph_dict: dict, mode: str = 'standard') -> str:
         s_alias = s_data.get('alias', f"t{idx+2}")
         s_cols = s_data.get('selected_columns', [])
         for sc in s_cols:
-            select_parts.append(f"  {s_alias}.{sc}")
+            sc_clean = sc.strip().strip('"').replace('"', '""')
+            select_parts.append(f'  {s_alias}."{sc_clean}"')
 
     select_str = "SELECT\n" + ",\n".join(select_parts)
 
@@ -247,30 +259,75 @@ def compile_canvas_to_sql(graph_dict: dict, mode: str = 'standard') -> str:
     from_str = f"FROM {from_table} AS {p_alias}"
 
     # 3. JOIN clauses
+    source_table_map = {}
+    for s_node in source_nodes:
+        s_data = s_node.get('data', {})
+        s_tbl = s_data.get('table', '').strip()
+        s_al = s_data.get('alias', '').strip()
+        s_db = s_data.get('database', '').strip()
+        if s_tbl:
+            source_table_map[s_tbl] = s_al
+            if s_db:
+                source_table_map[f"{s_db}.{s_tbl}"] = s_al
+
     join_strs = []
     for idx, j_node in enumerate(join_nodes):
         j_data = j_node.get('data', {})
-        j_type = j_data.get('type', 'LEFT JOIN').upper()
-        j_db = j_data.get('database', 'car_rental')
-        j_schema = j_data.get('schema', 'main')
-        j_tbl = j_data.get('table', '')
-        j_alias = j_data.get('alias', f"t{idx+2}")
-        on_left = j_data.get('on_left', f"{p_alias}.id")
-        on_right = j_data.get('on_right', f"{j_alias}.id")
+        raw_joins = j_data.get('joins', [])
+        if not raw_joins and j_data.get('table'):
+            raw_joins = [j_data]
 
-        if not j_tbl:
-            continue
+        # If join node has no joins configured, auto-populate from secondary source nodes on canvas
+        if not raw_joins and len(source_nodes) > 1:
+            raw_joins = []
+            for s_idx, s_node in enumerate(source_nodes[1:]):
+                s_data = s_node.get('data', {})
+                s_tbl = s_data.get('table', '').strip()
+                if s_tbl:
+                    s_al = s_data.get('alias', '').strip() or f"t{s_idx+2}"
+                    raw_joins.append({
+                        'type': 'LEFT JOIN',
+                        'database': s_data.get('database', p_db),
+                        'schema': s_data.get('schema', 'main'),
+                        'table': s_tbl,
+                        'alias': s_al,
+                        'on_left': f"{p_alias}.id",
+                        'on_right': f"{s_al}.id"
+                    })
 
-        if mode == 'dbt':
-            if j_db in ('dbt_workspace', 'main', 'default', '') or not j_db:
-                j_table_ref = f"{{{{ ref('{j_tbl}') }}}}"
+        for j_sub_idx, item in enumerate(raw_joins):
+            j_type = item.get('type', 'LEFT JOIN').upper()
+            j_db = item.get('database', '').strip() or p_db
+            j_schema = item.get('schema', 'main')
+            j_tbl = item.get('table', '').strip()
+            
+            # Use source node alias if available and alias is generic or matches table
+            s_alias_match = source_table_map.get(j_tbl) or source_table_map.get(f"{j_db}.{j_tbl}")
+            j_alias = item.get('alias', '').strip()
+            if not j_alias or (j_alias.startswith('t') and j_alias[1:].isdigit() and s_alias_match):
+                j_alias = s_alias_match or j_alias or f"t{len(join_strs)+2}"
+            if not j_alias:
+                j_alias = f"t{len(join_strs)+2}"
+
+            on_left = item.get('on_left', '').strip() or f"{p_alias}.id"
+            on_right = item.get('on_right', '').strip() or f"{j_alias}.id"
+
+            if not j_tbl:
+                continue
+
+            if mode == 'dbt':
+                if j_db in ('dbt_workspace', 'main', 'default', '') or not j_db:
+                    j_table_ref = f"{{{{ ref('{j_tbl}') }}}}"
+                else:
+                    j_table_ref = f"{{{{ source('{j_db}', '{j_tbl}') }}}}"
             else:
-                j_table_ref = f"{{{{ source('{j_db}', '{j_tbl}') }}}}"
-        else:
-            j_table_ref = f"\"{j_db}\".\"{j_schema}\".\"{j_tbl}\""
+                j_table_ref = f"\"{j_db}\".\"{j_schema}\".\"{j_tbl}\"" if j_db else f"\"{j_tbl}\""
 
-        join_line = f"{j_type} {j_table_ref} AS {j_alias} ON {on_left} = {on_right}"
-        join_strs.append(join_line)
+            if j_type == 'CROSS JOIN':
+                join_line = f"CROSS JOIN {j_table_ref} AS {j_alias}"
+            else:
+                join_line = f"{j_type} {j_table_ref} AS {j_alias} ON {on_left} = {on_right}"
+            join_strs.append(join_line)
 
     joins_str = "\n".join(join_strs) if join_strs else ""
 
@@ -300,8 +357,12 @@ def compile_canvas_to_sql(graph_dict: dict, mode: str = 'standard') -> str:
                     float(val)
                     where_parts.append(f"{col} {op} {val}")
                 except ValueError:
-                    escaped_val = val.replace("'", "''")
-                    where_parts.append(f"{col} {op} '{escaped_val}'")
+                    val_str = val.strip()
+                    if (val_str.startswith("'") and val_str.endswith("'")) or (val_str.startswith('"') and val_str.endswith('"')):
+                        where_parts.append(f"{col} {op} {val_str}")
+                    else:
+                        escaped_val = val_str.replace("'", "''")
+                        where_parts.append(f"{col} {op} '{escaped_val}'")
 
     where_str = "WHERE\n  " + "\n  AND ".join(where_parts) if where_parts else ""
 

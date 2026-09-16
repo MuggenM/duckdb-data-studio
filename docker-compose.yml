@@ -188,42 +188,6 @@ services:
 #       - "traefik.http.routers.workbench.entrypoints=web"
 #       - "traefik.http.services.workbench.loadbalancer.server.port=3000"
 
-  dbt-code-server:
-    build:
-      context: .
-      dockerfile: Dockerfile.codeserver
-    container_name: dbt-code-server
-    ports:
-      - "8443:8080"
-    volumes:
-      - ./dbt_project:/home/coder/project
-      - ./profiles:/home/coder/.dbt
-      - ./dbt_data:/app/data
-      - ./databases:/app/databases
-      - code-server-extensions:/home/coder/.local/share/code-server
-      - ./entrypoint_codeserver.sh:/app/entrypoint_codeserver.sh
-      - ./s3_catalog_sync.py:/app/s3_catalog_sync.py
-      - ./s3_catalog_plugin.py:/app/s3_catalog_plugin.py
-      - ./column_lineage.py:/app/column_lineage.py
-    environment:
-      - AWS_ACCESS_KEY_ID=GK2713753aca1d72db5325f212
-      - AWS_SECRET_ACCESS_KEY=afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e
-      - AWS_DEFAULT_REGION=us-east-1
-      - AWS_ENDPOINT_URL=http://garage:3900
-      - AWS_S3_ALLOW_UNSAFE_RENAME=true
-      - AWS_ALLOW_HTTP=true
-      - AWS_EC2_METADATA_DISABLED=true
-      - PYTHONPATH=/app:/home/coder/project
-    entrypoint: ["/bin/bash", "/app/entrypoint_codeserver.sh"]
-    command: ["--auth", "none", "--bind-addr", "0.0.0.0:8080", "/home/coder/project"]
-    networks:
-      - studio_jupyter_net
-    restart: unless-stopped
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.editor.rule=Host(`editor.localhost`)"
-      - "traefik.http.routers.editor.entrypoints=web"
-      - "traefik.http.services.editor.loadbalancer.server.port=8080"
 
   garage:
     image: dxflrs/garage:v2.0.0
@@ -297,6 +261,5 @@ services:
 
 volumes:
   dbt_postgres_data:
-  code-server-extensions:
   superset_home:
 

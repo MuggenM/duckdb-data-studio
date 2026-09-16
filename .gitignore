@@ -23,9 +23,10 @@ pip-log.txt
 # Local database files can be large and are dynamically generated/seeded
 *.duckdb
 *.duckdb.wal
-databases/*.duckdb
-databases/*.duckdb.wal
-ducklake/metadata.db
+databases/
+ducklake/
+exports/
+
 
 # --- Local Configurations & Environments ---
 .env
@@ -46,6 +47,8 @@ shared/db_backup_test/
 shared/db_backup_sql_test/
 shared/*.parquet
 shared/*.txt
+shared/*.csv
+!shared/online-retail-dataset.csv
 shared/untitled.txt
 
 # --- NiceGUI State ---
@@ -82,7 +85,12 @@ config/*.db-shm
 
 # --- DBT targets & credentials ---
 dbt_project/target/
+dbt_project/logs/
 profiles/.user.yml
+
+# --- Excluded Local Helper Files ---
+verify_*.py
+
 
 # --- Temporary workspaces ---
 scratch/

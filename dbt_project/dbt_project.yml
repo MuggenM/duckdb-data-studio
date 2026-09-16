@@ -19,8 +19,7 @@ clean-targets:
 on-run-start:
   - "CREATE SCHEMA IF NOT EXISTS f1_staging;"
   - "CREATE SCHEMA IF NOT EXISTS f1_marts;"
-  - "ATTACH IF NOT EXISTS '/app/databases/formula1.duckdb' AS formula1 (READ_ONLY true);"
-  - "INSTALL httpfs; LOAD httpfs; INSTALL delta; LOAD delta; CREATE OR REPLACE SECRET s3_dbt_secret (TYPE S3, KEY_ID '{{ env_var(\"AWS_ACCESS_KEY_ID\") }}', SECRET '{{ env_var(\"AWS_SECRET_ACCESS_KEY\") }}', ENDPOINT 'garage:3900', REGION '{{ env_var(\"AWS_DEFAULT_REGION\", \"us-east-1\") }}', USE_SSL false, URL_STYLE 'path');"
+  - "ATTACH IF NOT EXISTS '{{ env_var(\"FORMULA1_DB_PATH\", \"/home/martin/volumes/duckdb-studio/databases/formula1.duckdb\") }}' AS formula1 (READ_ONLY true);"
 
 models:
   test_project:

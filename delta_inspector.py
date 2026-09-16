@@ -8,6 +8,8 @@ from config_manager import load_app_settings
 # Prevent AWS SDK / delta-rs from attempting IMDS metadata lookup (169.254.169.254)
 os.environ["AWS_EC2_METADATA_DISABLED"] = "true"
 
+from botocore.config import Config
+
 _TABLES_CACHE = {"timestamp": 0, "tables": []}
 
 def get_s3_client():
@@ -17,12 +19,14 @@ def get_s3_client():
     secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e")
     region_name = os.getenv("AWS_DEFAULT_REGION", "us-east-1")
     
+    boto_config = Config(connect_timeout=1, read_timeout=2, retries={'max_attempts': 1})
     return boto3.client(
         's3',
         endpoint_url=endpoint_url,
         aws_access_key_id=access_key,
         aws_secret_access_key=secret_key,
-        region_name=region_name
+        region_name=region_name,
+        config=boto_config
     )
 
 def discover_all_delta_tables(force_refresh=False):
@@ -32,7 +36,13 @@ def discover_all_delta_tables(force_refresh=False):
         return _TABLES_CACHE["tables"]
 
     settings = load_app_settings()
-    bucket_names = settings.get("s3_catalog_buckets", ["prodbucket", "devbucket"])
+    raw_buckets = settings.get("s3_catalog_buckets", ["prodbucket", "devbucket"])
+    if isinstance(raw_buckets, str):
+        bucket_names = [b.strip() for b in raw_buckets.split(",") if b.strip()]
+    elif isinstance(raw_buckets, list):
+        bucket_names = raw_buckets
+    else:
+        bucket_names = ["prodbucket", "devbucket"]
     s3_client = get_s3_client()
     
     discovered_tables = []

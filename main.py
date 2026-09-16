@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import os
+import json
 import asyncio
 import io
 import csv
@@ -676,34 +677,170 @@ def index():
         background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
         position: relative;
         border-radius: 12px;
+        overflow: hidden;
       }
+      .body--dark #drawflow_canvas {
+        background: #0f172a !important;
+        background-size: 25px 25px !important;
+        background-image: radial-gradient(circle, #334155 1px, transparent 1px) !important;
+      }
+
       .drawflow .drawflow-node {
         background: #ffffff !important;
         border: 2px solid #6366f1 !important;
         border-radius: 12px !important;
         min-width: 220px !important;
-        padding: 10px !important;
-        box-shadow: 0 4px 10px -1px rgba(0, 0, 0, 0.1) !important;
+        padding: 12px 14px !important;
+        box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.08), 0 2px 6px -1px rgba(0, 0, 0, 0.04) !important;
+        position: absolute !important;
+        z-index: 2 !important;
+        transition: box-shadow 0.2s ease, border-color 0.2s ease !important;
       }
+      .drawflow .drawflow-node.selected {
+        box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.3), 0 8px 16px -2px rgba(0, 0, 0, 0.12) !important;
+      }
+      .body--dark .drawflow .drawflow-node {
+        background: #1e293b !important;
+        color: #f1f5f9 !important;
+        box-shadow: 0 4px 14px -2px rgba(0, 0, 0, 0.4) !important;
+      }
+      .body--dark .drawflow .drawflow-node .drawflow-node-content .text-slate-700 {
+        color: #94a3b8 !important;
+      }
+
       .drawflow .drawflow-node.source { border-color: #6366f1 !important; }
       .drawflow .drawflow-node.join { border-color: #a855f7 !important; }
       .drawflow .drawflow-node.transform { border-color: #10b981 !important; }
       .drawflow .drawflow-node.filter { border-color: #f59e0b !important; }
       .drawflow .drawflow-node.output { border-color: #f43f5e !important; }
 
-      .drawflow .drawflow-node .input, .drawflow .drawflow-node .output {
-        width: 16px !important;
-        height: 16px !important;
-        background: #6366f1 !important;
-        border: 2px solid #ffffff !important;
-        border-radius: 50% !important;
-        top: 14px !important;
+      /* Ports containers - aligned on outer edges */
+      .drawflow .drawflow-node .inputs {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0 !important;
+        width: 0 !important;
+        height: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-evenly !important;
+        align-items: center !important;
+        z-index: 20 !important;
+        pointer-events: none !important;
       }
-      .drawflow .drawflow-node .input { left: -8px !important; }
-      .drawflow .drawflow-node .output { right: -8px !important; }
+      .drawflow .drawflow-node .outputs {
+        position: absolute !important;
+        right: 0 !important;
+        top: 0 !important;
+        width: 0 !important;
+        height: 100% !important;
+        display: flex !important;
+        flex-direction: column !important;
+        justify-content: space-evenly !important;
+        align-items: center !important;
+        z-index: 20 !important;
+        pointer-events: none !important;
+      }
+
+      /* Port dots on the outside of objects with snapping alignment */
+      .drawflow .drawflow-node .input,
+      .drawflow .drawflow-node .output {
+        position: relative !important;
+        width: 14px !important;
+        height: 14px !important;
+        top: auto !important;
+        bottom: auto !important;
+        margin: 0 !important;
+        border-radius: 50% !important;
+        background: #ffffff !important;
+        border: 2.5px solid #6366f1 !important;
+        box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2), 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+        cursor: crosshair !important;
+        pointer-events: all !important;
+        z-index: 25 !important;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease, border-color 0.15s ease !important;
+      }
+      .body--dark .drawflow .drawflow-node .input,
+      .body--dark .drawflow .drawflow-node .output {
+        background: #1e293b !important;
+      }
+      .drawflow .drawflow-node .input {
+        left: -8px !important;
+        right: auto !important;
+      }
+      .drawflow .drawflow-node .output {
+        right: -8px !important;
+        left: auto !important;
+      }
+
+      /* Port Hitbox for easier dragging & snapping */
+      .drawflow .drawflow-node .input::before,
+      .drawflow .drawflow-node .output::before {
+        content: '';
+        position: absolute;
+        top: -6px;
+        left: -6px;
+        right: -6px;
+        bottom: -6px;
+        border-radius: 50%;
+      }
+
+      /* Port Hover & Snap state */
+      .drawflow .drawflow-node .input:hover,
+      .drawflow .drawflow-node .output:hover {
+        transform: scale(1.4) !important;
+        background: #6366f1 !important;
+        box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.35), 0 3px 6px rgba(0, 0, 0, 0.2) !important;
+      }
+
+      /* Node-specific port colors */
+      .drawflow .drawflow-node.source .output { border-color: #6366f1 !important; }
+      .drawflow .drawflow-node.source .output:hover { background: #6366f1 !important; box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.35) !important; }
+
+      .drawflow .drawflow-node.join .input,
+      .drawflow .drawflow-node.join .output { border-color: #a855f7 !important; }
+      .drawflow .drawflow-node.join .input:hover,
+      .drawflow .drawflow-node.join .output:hover { background: #a855f7 !important; box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.35) !important; }
+
+      .drawflow .drawflow-node.transform .input,
+      .drawflow .drawflow-node.transform .output { border-color: #10b981 !important; }
+      .drawflow .drawflow-node.transform .input:hover,
+      .drawflow .drawflow-node.transform .output:hover { background: #10b981 !important; box-shadow: 0 0 0 4px rgba(16, 185, 129, 0.35) !important; }
+
+      .drawflow .drawflow-node.filter .input,
+      .drawflow .drawflow-node.filter .output { border-color: #f59e0b !important; }
+      .drawflow .drawflow-node.filter .input:hover,
+      .drawflow .drawflow-node.filter .output:hover { background: #f59e0b !important; box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.35) !important; }
+
+      .drawflow .drawflow-node.output .input { border-color: #f43f5e !important; }
+      .drawflow .drawflow-node.output .input:hover { background: #f43f5e !important; box-shadow: 0 0 0 4px rgba(244, 63, 94, 0.35) !important; }
+
+      /* Connecting lines snapping and styling */
       .drawflow .connection .main-path {
-        stroke-width: 3.5px !important;
+        stroke-width: 3px !important;
         stroke: #6366f1 !important;
+        stroke-linecap: round !important;
+        filter: drop-shadow(0 1px 3px rgba(99, 102, 241, 0.25));
+        transition: stroke 0.15s ease, stroke-width 0.15s ease !important;
+      }
+      .drawflow .connection .main-path:hover {
+        stroke: #4338ca !important;
+        stroke-width: 4.5px !important;
+        cursor: pointer;
+      }
+      .drawflow .connection.selected .main-path {
+        stroke: #4f46e5 !important;
+        stroke-width: 4px !important;
+      }
+      .drawflow .connection .point {
+        stroke-width: 2px !important;
+        stroke: #6366f1 !important;
+        fill: #ffffff !important;
+        transform: scale(1.2);
+      }
+      .drawflow .connection .point:hover {
+        stroke: #4338ca !important;
+        fill: #6366f1 !important;
       }
     </style>
     ''')
@@ -5300,7 +5437,6 @@ JOIN prodbucket.f1_marts.fact_race_results o ON u.id = o.driver_id;""", language
                                             db_size = os.path.getsize(DB_NAME) if os.path.exists(DB_NAME) else 0
                                             ui.label(f"{db_size / (1024*1024):.2f} MB").classes('text-sm font-mono font-bold text-slate-800 dark:text-slate-200')
 
-                    # 🎨 DRAWFLOW CLIENT-SIDE VISUAL CANVAS PIPELINE STUDIO
                     vqb_card = ui.card().classes('w-full flex-grow p-4 shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden min-h-0 flex-nowrap dark-bg-panel')
                     vqb_card.bind_visibility_from(workspace_sub_tabs, 'value', value='Visual Query Builder')
                     with vqb_card:
@@ -5310,14 +5446,642 @@ JOIN prodbucket.f1_marts.fact_race_results o ON u.id = o.driver_id;""", language
 
                         def update_canvas_sql_from_drawflow(df_json=None):
                             nonlocal current_drawflow_export
-                            if df_json is not None:
+                            if isinstance(df_json, list) and df_json:
+                                df_json = df_json[0]
+                            if isinstance(df_json, str):
+                                try:
+                                    df_json = json.loads(df_json)
+                                except Exception:
+                                    pass
+                            if df_json is not None and isinstance(df_json, dict):
                                 current_drawflow_export = df_json
                             mode = canvas_mode_select.value if 'canvas_mode_select' in locals() else 'standard'
                             sql = compile_drawflow_json_to_sql(current_drawflow_export, mode=mode)
                             canvas_preview_editor.value = sql
                             canvas_preview_editor.update()
 
-                        # Header Bar & Node Creation Toolbar
+                        vqb_card.on('drawflow_updated', lambda e: update_canvas_sql_from_drawflow(e.args))
+                        sync_listener_id = list(vqb_card._event_listeners.keys())[-1]
+                        vqb_card.on('open_node_config_modal', lambda e: open_drawflow_node_config_modal(e.args))
+                        edit_listener_id = list(vqb_card._event_listeners.keys())[-1]
+
+                        def save_df_node_data(node_id, new_data, summary_label):
+                            nonlocal current_drawflow_export
+                            if current_drawflow_export:
+                                home_data = current_drawflow_export.get('drawflow', {}).get('Home', {}).get('data', {})
+                                if str(node_id) in home_data:
+                                    home_data[str(node_id)]['data'] = new_data
+                            update_canvas_sql_from_drawflow(current_drawflow_export)
+                            data_json = json.dumps(new_data)
+                            summary_clean = summary_label.replace('"', '\\"')
+                            ui.run_javascript(f'''
+                                if (window.drawflow_editor) {{
+                                    if (typeof window.drawflow_editor.updateNodeDataFromId === 'function') {{
+                                        window.drawflow_editor.updateNodeDataFromId("{node_id}", {data_json});
+                                    }}
+                                    const node_info = window.drawflow_editor.getNodeFromId("{node_id}");
+                                    if (node_info) {{
+                                        node_info.data = {data_json};
+                                    }}
+                                    const mod = window.drawflow_editor.module || 'Home';
+                                    if (window.drawflow_editor.drawflow && window.drawflow_editor.drawflow.drawflow && window.drawflow_editor.drawflow.drawflow[mod] && window.drawflow_editor.drawflow.drawflow[mod].data["{node_id}"]) {{
+                                        window.drawflow_editor.drawflow.drawflow[mod].data["{node_id}"].data = {data_json};
+                                    }}
+                                    const node_elem = document.getElementById("node-{node_id}");
+                                    if (node_elem) {{
+                                        const lbl = node_elem.querySelector('.drawflow-node-content > div:last-child, .text-slate-700, .text-slate-300');
+                                        if (lbl) lbl.textContent = "{summary_clean}";
+                                    }}
+                                    window.sync_drawflow_to_backend();
+                                }}
+                            ''')
+
+                        def vqb_get_database_tables(db_name):
+                            if not db_name:
+                                return []
+                            try:
+                                query = """
+                                    SELECT table_name FROM duckdb_tables WHERE database_name = ? AND schema_name NOT IN ('information_schema', 'pg_catalog')
+                                    UNION
+                                    SELECT view_name AS table_name FROM duckdb_views WHERE database_name = ? AND schema_name NOT IN ('information_schema', 'pg_catalog')
+                                    UNION
+                                    SELECT table_name FROM information_schema.tables WHERE table_catalog = ? AND table_schema NOT IN ('information_schema', 'pg_catalog')
+                                    ORDER BY table_name;
+                                """
+                                return [r[0] for r in explorer.conn.execute(query, (db_name, db_name, db_name)).fetchall()]
+                            except Exception as e:
+                                print(f"Error fetching tables for db {db_name}: {e}")
+                                return []
+
+                        def vqb_get_all_available_databases():
+                            try:
+                                raw_dbs = [r[0] for r in explorer.conn.execute("SELECT database_name FROM duckdb_databases ORDER BY database_name").fetchall()]
+                                valid_dbs = [d for d in raw_dbs if d not in ('system', 'temp') and not d.startswith('__')]
+                                
+                                table_dbs = [r[0] for r in explorer.conn.execute("""
+                                    SELECT DISTINCT database_name FROM duckdb_tables WHERE database_name NOT IN ('system', 'temp')
+                                    UNION
+                                    SELECT DISTINCT database_name FROM duckdb_views WHERE database_name NOT IN ('system', 'temp')
+                                    UNION
+                                    SELECT DISTINCT table_catalog FROM information_schema.tables WHERE table_catalog NOT IN ('system', 'temp')
+                                """).fetchall()]
+                                
+                                all_dbs_set = set(valid_dbs).union(set(table_dbs))
+                                # Filter out empty 'main' if other databases with tables are available
+                                has_main_tables = bool(vqb_get_database_tables('main'))
+                                if not has_main_tables and len(all_dbs_set) > 1 and 'main' in all_dbs_set:
+                                    all_dbs_set.remove('main')
+                                
+                                dbs_list = sorted(list(all_dbs_set))
+                                return dbs_list if dbs_list else ['main']
+                            except Exception:
+                                return ['main']
+
+                        def vqb_get_next_available_alias(exclude_node_id=None):
+                            used = set()
+                            if current_drawflow_export:
+                                home_data = current_drawflow_export.get('drawflow', {}).get('Home', {}).get('data', {})
+                                for nid, nval in home_data.items():
+                                    if str(nid) == str(exclude_node_id):
+                                        continue
+                                    nd = nval.get('data', {})
+                                    if nd.get('alias'):
+                                        used.add(str(nd['alias']).strip())
+                                    for j in nd.get('joins', []):
+                                        if j.get('alias'):
+                                            used.add(str(j['alias']).strip())
+                            idx = 1
+                            while f"t{idx}" in used:
+                                idx += 1
+                            return f"t{idx}"
+
+                        def vqb_get_canvas_source_nodes():
+                            sources = []
+                            if current_drawflow_export:
+                                home_data = current_drawflow_export.get('drawflow', {}).get('Home', {}).get('data', {})
+                                sorted_nodes = sorted(home_data.items(), key=lambda x: int(x[0]) if x[0].isdigit() else 999)
+                                for nid, nval in sorted_nodes:
+                                    nd = nval.get('data', {})
+                                    ntype = nd.get('node_type') or nval.get('name')
+                                    if ntype == 'source':
+                                        sources.append({
+                                            'node_id': str(nid),
+                                            'database': nd.get('database', ''),
+                                            'table': nd.get('table', ''),
+                                            'alias': str(nd.get('alias', '')).strip() or f"t{len(sources)+1}",
+                                            'selected_columns': nd.get('selected_columns', [])
+                                        })
+                            return sources
+
+                        def open_drawflow_node_config_modal(args):
+                            if isinstance(args, list) and args:
+                                args = args[0]
+                            if not isinstance(args, dict):
+                                args = {}
+                            node_id = str(args.get('node_id', ''))
+                            node_data = dict(args.get('data', {}))
+                            ntype = node_data.get('node_type', 'source')
+
+                            title_map = {
+                                'source': '📥 Source Table Node',
+                                'join': '🔗 Table Join Node',
+                                'transform': '⚡ Transform & Function Node',
+                                'filter': '🎯 Filter (WHERE) Node',
+                                'output': '📊 Output & Export Node'
+                            }
+
+                            with ui.dialog(value=True) as dlg, ui.card().classes('w-[620px] max-w-[96vw] max-h-[92vh] min-h-[540px] flex flex-col p-6 gap-3 shadow-2xl dark-bg-panel').style('resize: vertical; min-height: 520px;') as card:
+                                is_maximized = {'val': False}
+                                def toggle_max():
+                                    is_maximized['val'] = not is_maximized['val']
+                                    if is_maximized['val']:
+                                        card.classes(remove='w-[620px] min-h-[540px] max-w-[96vw] max-h-[92vh]', add='!w-[96vw] !h-[92vh] !min-h-[92vh] !max-w-none !max-h-none')
+                                        card.style('resize: none; width: 96vw; height: 92vh; min-height: 92vh; max-height: 92vh;')
+                                        max_btn.props('icon=close_fullscreen')
+                                    else:
+                                        card.classes(remove='!w-[96vw] !h-[92vh] !min-h-[92vh] !max-w-none !max-h-none', add='w-[620px] max-w-[96vw] max-h-[92vh] min-h-[540px]')
+                                        card.style('resize: vertical; width: 620px; min-height: 520px; height: auto; max-height: 92vh;')
+                                        max_btn.props('icon=open_in_full')
+                                    card.update()
+                                    max_btn.update()
+
+                                with ui.row().classes('w-full items-center justify-between border-b pb-3'):
+                                    with ui.row().classes('items-center gap-2'):
+                                        ui.icon('settings', color='primary').classes('text-2xl')
+                                        with ui.column().classes('gap-0'):
+                                            ui.label(f"Configure {title_map.get(ntype, 'Node')}").classes('text-base font-extrabold text-slate-800 dark:text-white')
+                                            ui.label(f"Drawflow Node ID: {node_id}").classes('text-xs font-mono text-slate-400')
+                                    with ui.row().classes('items-center gap-1'):
+                                        max_btn = ui.button(icon='open_in_full', on_click=toggle_max).props('flat dense round size=sm').tooltip('Maximize / Restore dialog')
+                                        ui.button(icon='close', on_click=dlg.close).props('flat dense round size=sm')
+
+                                if ntype == 'source':
+                                    dbs = vqb_get_all_available_databases()
+                                    curr_db = node_data.get('database') or (dbs[0] if dbs else 'main')
+                                    if curr_db not in dbs and dbs:
+                                        curr_db = dbs[0]
+                                    
+                                    tbls = vqb_get_database_tables(curr_db)
+                                    curr_tbl = node_data.get('table', '')
+                                    p_tbl_opts = {t: t for t in tbls}
+                                    if curr_tbl and curr_tbl not in p_tbl_opts:
+                                        p_tbl_opts[curr_tbl] = curr_tbl
+                                    p_tbl_val = curr_tbl if curr_tbl in p_tbl_opts else (tbls[0] if tbls else None)
+                                    curr_alias = node_data.get('alias') or vqb_get_next_available_alias(exclude_node_id=node_id)
+
+                                    with ui.grid(columns=3 if len(dbs) > 1 else 2).classes('w-full gap-2 items-center'):
+                                        p_db = ui.select(options={d: d for d in dbs}, value=curr_db, label='Database').props('outlined dense').classes('w-full')
+                                        p_tbl = ui.select(options=p_tbl_opts, value=p_tbl_val, label='Table / Model').props('outlined dense').classes('w-full')
+                                        p_alias = ui.input('Table Alias', value=curr_alias).props('outlined dense').classes('w-full')
+                                    
+                                    current_cols = []
+                                    cb_widgets = []
+                                    cb_row_map = {}
+                                    master_cb_ref = {'cb': None}
+                                    count_label_ref = {'lbl': None}
+                                    is_syncing = False
+
+                                    def update_count_display():
+                                        if count_label_ref['lbl']:
+                                            tot = len(current_cols)
+                                            sel = len([c for c in sel_cols if any(c == ac[0] for ac in current_cols)])
+                                            count_label_ref['lbl'].text = f"({sel}/{tot} selected)" if tot else ""
+
+                                    with ui.row().classes('w-full items-center justify-between mt-1 gap-2'):
+                                        with ui.row().classes('items-center gap-1.5'):
+                                            ui.icon('view_column', color='primary').classes('text-sm')
+                                            ui.label('Select Columns to Propagate:').classes('text-xs font-bold text-slate-700 dark:text-slate-200')
+                                            count_lbl = ui.label('').classes('text-[11px] font-mono text-slate-500 dark:text-slate-400')
+                                            count_label_ref['lbl'] = count_lbl
+                                        
+                                        with ui.row().classes('items-center gap-1.5'):
+                                            col_search = ui.input(placeholder='🔍 Filter columns...').props('outlined dense clearable').classes('w-44 text-xs font-mono')
+                                            def on_filter_cols(e):
+                                                q = (e.value or '').strip().lower()
+                                                for col_name, row_elem in cb_row_map.items():
+                                                    row_elem.set_visibility(not q or q in col_name.lower())
+                                            col_search.on_value_change(on_filter_cols)
+
+                                            def select_all_cols():
+                                                nonlocal is_syncing
+                                                is_syncing = True
+                                                try:
+                                                    sel_cols.clear()
+                                                    for c_name, _ in current_cols:
+                                                        sel_cols.append(c_name)
+                                                    for cb in cb_widgets:
+                                                        cb.value = True
+                                                    if master_cb_ref['cb']:
+                                                        master_cb_ref['cb'].value = True
+                                                    update_count_display()
+                                                finally:
+                                                    is_syncing = False
+
+                                            def clear_all_cols():
+                                                nonlocal is_syncing
+                                                is_syncing = True
+                                                try:
+                                                    sel_cols.clear()
+                                                    for cb in cb_widgets:
+                                                        cb.value = False
+                                                    if master_cb_ref['cb']:
+                                                        master_cb_ref['cb'].value = False
+                                                    update_count_display()
+                                                finally:
+                                                    is_syncing = False
+
+                                            ui.button('Select All', icon='done_all', on_click=select_all_cols).props('flat dense size=xs color=primary').classes('text-[11px] font-bold').tooltip('Select all columns')
+                                            ui.button('Clear', icon='clear', on_click=clear_all_cols).props('flat dense size=xs color=grey').classes('text-[11px]').tooltip('Deselect all columns')
+
+                                    col_container = ui.column().classes('w-full flex-grow min-h-[260px] max-h-[60vh] overflow-y-auto border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 bg-slate-50 dark:bg-slate-900/70 shadow-inner gap-0.5')
+                                    sel_cols = list(node_data.get('selected_columns', []))
+
+                                    def load_tbl_cols(db_val, tbl_val):
+                                        nonlocal current_cols, cb_widgets, cb_row_map, is_syncing
+                                        col_container.clear()
+                                        current_cols = []
+                                        cb_widgets = []
+                                        cb_row_map = {}
+                                        master_cb_ref['cb'] = None
+                                        if not db_val or not tbl_val:
+                                            update_count_display()
+                                            return
+                                        try:
+                                            cols = explorer.list_columns_with_types(tbl_val, database=db_val, schema='main')
+                                            current_cols = cols
+                                            with col_container:
+                                                all_selected_init = bool(cols and all(c[0] in sel_cols for c in cols))
+                                                def on_master_toggle(e):
+                                                    nonlocal is_syncing
+                                                    if is_syncing:
+                                                        return
+                                                    if e.value:
+                                                        select_all_cols()
+                                                    else:
+                                                        clear_all_cols()
+                                                master_cb = ui.checkbox('Select All Columns', value=all_selected_init, on_change=on_master_toggle).classes('text-xs font-bold font-mono pb-1.5 mb-1 border-b border-slate-200 dark:border-slate-800 w-full')
+                                                master_cb_ref['cb'] = master_cb
+                                                
+                                                for c_name, c_type in cols:
+                                                    is_in = c_name in sel_cols
+                                                    def make_toggle(col_name):
+                                                        def _toggle(e):
+                                                            nonlocal is_syncing
+                                                            if is_syncing:
+                                                                return
+                                                            if e.value and col_name not in sel_cols:
+                                                                sel_cols.append(col_name)
+                                                            elif not e.value and col_name in sel_cols:
+                                                                sel_cols.remove(col_name)
+                                                            if master_cb_ref['cb']:
+                                                                all_checked = bool(cols and all(c[0] in sel_cols for c in cols))
+                                                                if master_cb_ref['cb'].value != all_checked:
+                                                                    is_syncing = True
+                                                                    try:
+                                                                        master_cb_ref['cb'].value = all_checked
+                                                                    finally:
+                                                                        is_syncing = False
+                                                            update_count_display()
+                                                        return _toggle
+                                                    
+                                                    with ui.row().classes('w-full items-center py-0.5 px-1 hover:bg-slate-100 dark:hover:bg-slate-800/60 rounded') as crow:
+                                                        cb = ui.checkbox(f"{c_name}", value=is_in, on_change=make_toggle(c_name)).classes('text-xs font-mono font-medium')
+                                                        ui.label(f"{c_type}").classes('text-[10px] font-mono text-slate-400 dark:text-slate-500 ml-auto')
+                                                        cb_widgets.append(cb)
+                                                        cb_row_map[c_name] = crow
+                                            update_count_display()
+                                        except Exception as err:
+                                            print(f"Error loading table columns: {err}")
+
+                                    def on_db_sel(db_val):
+                                        try:
+                                            new_tbls = vqb_get_database_tables(db_val)
+                                            p_tbl.options = {t: t for t in new_tbls}
+                                            if new_tbls:
+                                                p_tbl.value = new_tbls[0]
+                                            else:
+                                                p_tbl.value = None
+                                            p_tbl.update()
+                                            if p_tbl.value:
+                                                load_tbl_cols(db_val, p_tbl.value)
+                                            else:
+                                                col_container.clear()
+                                        except Exception: pass
+
+                                    p_db.on_value_change(lambda e: on_db_sel(e.value))
+                                    p_tbl.on_value_change(lambda e: load_tbl_cols(p_db.value, e.value))
+                                    if p_tbl_val:
+                                        load_tbl_cols(curr_db, p_tbl_val)
+
+                                    def save_source_props():
+                                        node_data['database'] = p_db.value
+                                        node_data['table'] = p_tbl.value or ''
+                                        node_data['alias'] = p_alias.value.strip() or vqb_get_next_available_alias(exclude_node_id=node_id)
+                                        node_data['selected_columns'] = sel_cols
+                                        summary = f"{p_db.value}.{p_tbl.value}" if p_tbl.value else "Click ⚙️ to configure"
+                                        save_df_node_data(node_id, node_data, summary)
+                                        dlg.close()
+
+                                    save_func_map = {'source': save_source_props}
+
+                                elif ntype == 'join':
+                                    dbs = vqb_get_all_available_databases()
+                                    canvas_sources = vqb_get_canvas_source_nodes()
+                                    p_alias = canvas_sources[0]['alias'] if canvas_sources and canvas_sources[0].get('alias') else 't1'
+                                    sec_sources = canvas_sources[1:] if len(canvas_sources) > 1 else []
+
+                                    # Helper map for table to alias
+                                    src_tbl_map = {s['table']: s['alias'] for s in canvas_sources if s.get('table')}
+
+                                    joins = [dict(j) for j in node_data.get('joins', [])]
+                                    if not joins and node_data.get('table'):
+                                        j_al = node_data.get('alias') or src_tbl_map.get(node_data.get('table')) or 't2'
+                                        joins = [{
+                                            'type': node_data.get('type', 'LEFT JOIN'),
+                                            'database': node_data.get('database', dbs[0] if dbs else ''),
+                                            'table': node_data.get('table', ''),
+                                            'alias': j_al,
+                                            'on_left': node_data.get('on_left', f'{p_alias}.id'),
+                                            'on_right': node_data.get('on_right', f'{j_al}.id'),
+                                        }]
+                                    
+                                    # Auto-populate joins matching secondary canvas source nodes if unconfigured!
+                                    if not joins or (len(joins) == 1 and not joins[0].get('table') and sec_sources):
+                                        if sec_sources:
+                                            joins = []
+                                            for s in sec_sources:
+                                                s_al = s.get('alias') or f"t{len(joins)+2}"
+                                                joins.append({
+                                                    'type': 'INNER JOIN' if len(sec_sources) == 1 else 'LEFT JOIN',
+                                                    'database': s.get('database') or (dbs[0] if dbs else ''),
+                                                    'table': s.get('table', ''),
+                                                    'alias': s_al,
+                                                    'on_left': f"{p_alias}.id",
+                                                    'on_right': f"{s_al}.id",
+                                                })
+                                        else:
+                                            joins = [{
+                                                'type': 'LEFT JOIN',
+                                                'database': dbs[0] if dbs else '',
+                                                'table': '',
+                                                'alias': 't2',
+                                                'on_left': f'{p_alias}.id',
+                                                'on_right': 't2.id',
+                                            }]
+
+                                    # Top Banner displaying canvas source nodes
+                                    if canvas_sources:
+                                        with ui.row().classes('w-full items-center gap-1.5 p-2 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-800 rounded-lg'):
+                                            ui.icon('hub', color='primary').classes('text-base')
+                                            ui.label('Detected Canvas Sources:').classes('text-xs font-bold text-indigo-900 dark:text-indigo-200')
+                                            for s in canvas_sources:
+                                                tbl_display = f"{s['database']}.{s['table']}" if s['table'] else f"Node {s['node_id']}"
+                                                ui.badge(f"{s['alias']} ({tbl_display})", color='indigo' if s['alias'] == p_alias else 'purple').props('outline').classes('text-[11px] font-mono')
+
+                                    join_cards_container = ui.column().classes('w-full gap-3 max-h-72 overflow-y-auto pr-1')
+
+                                    def render_join_cards():
+                                        join_cards_container.clear()
+                                        with join_cards_container:
+                                            for idx, j_item in enumerate(joins):
+                                                with ui.card().classes('w-full p-3 border-l-4 border-l-purple-500 bg-slate-50 dark:bg-slate-900 shadow-sm relative gap-2'):
+                                                    with ui.row().classes('w-full items-center justify-between'):
+                                                        with ui.row().classes('items-center gap-2'):
+                                                            ui.badge(f"Join #{idx+1}", color='purple').classes('font-bold text-xs')
+                                                            if j_item.get('alias'):
+                                                                ui.label(f"Alias: {j_item.get('alias')}").classes('text-xs font-mono font-bold text-purple-600 dark:text-purple-400')
+                                                        if len(joins) > 1:
+                                                            def make_del_cb(del_idx):
+                                                                return lambda: (joins.pop(del_idx), render_join_cards())
+                                                            ui.button(icon='delete', color='negative', on_click=make_del_cb(idx)).props('flat dense round size=xs').tooltip('Remove this join table')
+                                                    
+                                                    # Optional Quick-Link to secondary canvas source
+                                                    if sec_sources:
+                                                        valid_sec = [s for s in sec_sources if s.get('table')]
+                                                        if valid_sec:
+                                                            sec_opts = {s['node_id']: f"📥 Sync from Source: {s['alias']} ({s['database']}.{s['table']})" for s in valid_sec}
+                                                            def make_src_sync(item_ref):
+                                                                def _on_src_sync(e):
+                                                                    matched = next((s for s in sec_sources if s['node_id'] == e.value), None)
+                                                                    if matched:
+                                                                        item_ref['database'] = matched.get('database', '')
+                                                                        item_ref['table'] = matched.get('table', '')
+                                                                        item_ref['alias'] = matched.get('alias', '')
+                                                                        item_ref['on_right'] = f"{matched.get('alias')}.id"
+                                                                        render_join_cards()
+                                                                return _on_src_sync
+                                                            ui.select(options=sec_opts, label='Sync from Canvas Source Table', on_change=make_src_sync(j_item)).props('outlined dense size=sm').classes('w-full text-xs')
+
+                                                    with ui.grid(columns=2).classes('w-full gap-2'):
+                                                        j_types = ['LEFT JOIN', 'INNER JOIN', 'RIGHT JOIN', 'FULL JOIN', 'CROSS JOIN']
+                                                        j_type_sel = ui.select(options={t: t for t in j_types}, value=j_item.get('type', 'LEFT JOIN'), label='Join Type').props('outlined dense').classes('w-full')
+                                                        def make_type_chg(item_ref):
+                                                            return lambda e: item_ref.update({'type': e.value})
+                                                        j_type_sel.on_value_change(make_type_chg(j_item))
+
+                                                        j_curr_db = j_item.get('database') or (dbs[0] if dbs else '')
+                                                        j_item['database'] = j_curr_db
+                                                        j_db_sel = ui.select(options={d: d for d in dbs}, value=j_curr_db, label='Database').props('outlined dense').classes('w-full')
+                                                        
+                                                        j_tbls = vqb_get_database_tables(j_curr_db)
+                                                        j_curr_tbl = j_item.get('table', '')
+                                                        j_tbl_opts = {t: t for t in j_tbls}
+                                                        if j_curr_tbl and j_curr_tbl not in j_tbl_opts:
+                                                            j_tbl_opts[j_curr_tbl] = j_curr_tbl
+                                                        j_tbl_val = j_curr_tbl if j_curr_tbl in j_tbl_opts else (j_tbls[0] if j_tbls else None)
+                                                        j_item['table'] = j_tbl_val or ''
+                                                        j_tbl_sel = ui.select(options=j_tbl_opts, value=j_tbl_val, label='Table / Model').props('outlined dense').classes('w-full')
+
+                                                        def make_db_chg(item_ref, tbl_widget):
+                                                            def _on_db_change(e):
+                                                                item_ref['database'] = e.value
+                                                                new_tbls = vqb_get_database_tables(e.value)
+                                                                tbl_widget.options = {t: t for t in new_tbls}
+                                                                if new_tbls:
+                                                                    tbl_widget.value = new_tbls[0]
+                                                                    item_ref['table'] = new_tbls[0]
+                                                                else:
+                                                                    tbl_widget.value = None
+                                                                    item_ref['table'] = ''
+                                                                tbl_widget.update()
+                                                            return _on_db_change
+                                                        j_db_sel.on_value_change(make_db_chg(j_item, j_tbl_sel))
+
+                                                        def make_tbl_chg(item_ref):
+                                                            return lambda e: item_ref.update({'table': e.value or ''})
+                                                        j_tbl_sel.on_value_change(make_tbl_chg(j_item))
+
+                                                        current_alias = j_item.get('alias') or (src_tbl_map.get(j_item.get('table')) if j_item.get('table') else None) or f"t{idx+2}"
+                                                        j_item['alias'] = current_alias
+                                                        j_alias_in = ui.input('Alias', value=current_alias).props('outlined dense').classes('w-full')
+                                                        def make_alias_chg(item_ref):
+                                                            return lambda e: item_ref.update({'alias': e.value.strip() or f"t{idx+2}"})
+                                                        j_alias_in.on_value_change(make_alias_chg(j_item))
+
+                                                    with ui.row().classes('w-full items-center gap-1 mt-1'):
+                                                        ui.label('ON').classes('text-xs font-bold text-slate-500 uppercase')
+                                                        j_left_val = j_item.get('on_left') or f"{p_alias}.id"
+                                                        j_item['on_left'] = j_left_val
+                                                        j_left_in = ui.input(placeholder=f'{p_alias}.col', value=j_left_val).props('outlined dense').classes('flex-1 font-mono text-xs')
+                                                        def on_left_chg(e, ref=j_item): ref['on_left'] = e.value.strip()
+                                                        j_left_in.on_value_change(on_left_chg)
+
+                                                        ui.label('=').classes('text-xs font-bold text-slate-500')
+                                                        j_right_val = j_item.get('on_right') or f"{j_item.get('alias', f't{idx+2}')}.id"
+                                                        j_item['on_right'] = j_right_val
+                                                        j_right_in = ui.input(placeholder=f"{j_item.get('alias', f't{idx+2}')}.col", value=j_right_val).props('outlined dense').classes('flex-1 font-mono text-xs')
+                                                        def on_right_chg(e, ref=j_item): ref['on_right'] = e.value.strip()
+                                                        j_right_in.on_value_change(on_right_chg)
+
+                                    render_join_cards()
+
+                                    def add_join_step():
+                                        existing_tbls = {j.get('table', '').strip() for j in joins if j.get('table')}
+                                        existing_aliases = {j.get('alias', '').strip() for j in joins if j.get('alias')}
+                                        
+                                        candidate_src = None
+                                        for s in sec_sources:
+                                            if s.get('table') and s['table'] not in existing_tbls:
+                                                candidate_src = s
+                                                break
+                                            if s.get('alias') and s['alias'] not in existing_aliases:
+                                                candidate_src = s
+                                                break
+
+                                        if candidate_src:
+                                            init_db = candidate_src.get('database') or (dbs[0] if dbs else '')
+                                            init_tbl = candidate_src.get('table', '')
+                                            new_alias = candidate_src.get('alias') or f"t{len(joins) + 2}"
+                                        else:
+                                            a_idx = len(joins) + 2
+                                            while f"t{a_idx}" in existing_aliases or f"t{a_idx}" == p_alias:
+                                                a_idx += 1
+                                            new_alias = f"t{a_idx}"
+                                            init_db = dbs[0] if dbs else ''
+                                            init_tbls = vqb_get_database_tables(init_db) if init_db else []
+                                            init_tbl = init_tbls[0] if init_tbls else ''
+
+                                        joins.append({
+                                            'type': 'LEFT JOIN',
+                                            'database': init_db,
+                                            'table': init_tbl,
+                                            'alias': new_alias,
+                                            'on_left': f'{p_alias}.id',
+                                            'on_right': f"{new_alias}.id"
+                                        })
+                                        render_join_cards()
+
+                                    ui.button('+ Add Another Join Table', icon='add', on_click=add_join_step).props('flat dense size=sm color=primary').classes('mt-1')
+
+                                    def save_join_props():
+                                        for idx, j in enumerate(joins):
+                                            if not j.get('database'):
+                                                j['database'] = dbs[0] if dbs else ''
+                                            if not j.get('table'):
+                                                tbls = vqb_get_database_tables(j['database'])
+                                                if tbls:
+                                                    j['table'] = tbls[0]
+                                            if not j.get('alias'):
+                                                j['alias'] = src_tbl_map.get(j['table']) or f"t{idx+2}"
+                                            if not j.get('on_left'):
+                                                j['on_left'] = f'{p_alias}.id'
+                                            if not j.get('on_right'):
+                                                j['on_right'] = f"{j.get('alias', f't{idx+2}')}.id"
+                                        node_data['joins'] = joins
+                                        if joins:
+                                            node_data['type'] = joins[0].get('type', 'LEFT JOIN')
+                                            node_data['database'] = joins[0].get('database', '')
+                                            node_data['table'] = joins[0].get('table', '')
+                                            node_data['alias'] = joins[0].get('alias', 't2')
+                                            node_data['on_left'] = joins[0].get('on_left', f'{p_alias}.id')
+                                            node_data['on_right'] = joins[0].get('on_right', f"{joins[0].get('alias', 't2')}.id")
+
+                                        valid_joins = [j for j in joins if j.get('table')]
+                                        if not valid_joins:
+                                            summary = "Click ⚙️ to configure"
+                                        elif len(valid_joins) == 1:
+                                            summary = f"{valid_joins[0].get('type', 'JOIN')} {valid_joins[0].get('database')}.{valid_joins[0].get('table')} ({valid_joins[0].get('alias')})"
+                                        else:
+                                            tbl_names = ", ".join([f"{j.get('alias')}:{j.get('table')}" for j in valid_joins])
+                                            summary = f"{len(valid_joins)} Joins ({tbl_names})"
+                                        
+                                        save_df_node_data(node_id, node_data, summary)
+                                        dlg.close()
+
+                                    save_func_map = {'join': save_join_props}
+
+                                elif ntype == 'transform':
+                                    exprs = [dict(ex) for ex in node_data.get('expressions', [{'column': 't1.name', 'func': 'UPPER', 'alias': 'upper_name'}])]
+                                    expr_container = ui.column().classes('w-full gap-2 max-h-56 overflow-y-auto')
+                                    
+                                    def render_expr_rows():
+                                        expr_container.clear()
+                                        with expr_container:
+                                            for idx, ex in enumerate(exprs):
+                                                with ui.row().classes('w-full items-center gap-2 no-wrap border-b pb-2'):
+                                                    c_in = ui.input('Column Expr', value=ex.get('column', 't1.name')).props('outlined dense size=sm').style('width: 140px;')
+                                                    f_sel = ui.select(options={'NONE': 'None', 'UPPER': 'UPPER', 'LOWER': 'LOWER', 'ROUND': 'ROUND', 'DATE_TRUNC': 'DATE_TRUNC', 'SUM': 'SUM', 'COUNT': 'COUNT', 'AVG': 'AVG', 'MIN': 'MIN', 'MAX': 'MAX', 'COUNT_DISTINCT': 'COUNT DISTINCT', 'COALESCE': 'COALESCE'}, value=ex.get('func', 'UPPER'), label='Function').props('outlined dense size=sm').style('width: 140px;')
+                                                    a_in = ui.input('Output Alias', value=ex.get('alias', '')).props('outlined dense size=sm').style('width: 130px;')
+                                                    
+                                                    c_in.on_value_change(lambda e, i=idx: exprs[i].update(column=e.value))
+                                                    f_sel.on_value_change(lambda e, i=idx: exprs[i].update(func=e.value))
+                                                    a_in.on_value_change(lambda e, i=idx: exprs[i].update(alias=e.value))
+                                                    
+                                                    def rm_row(i=idx):
+                                                        if len(exprs) > 1:
+                                                            exprs.pop(i)
+                                                            render_expr_rows()
+                                                    ui.button(icon='delete', color='negative', on_click=rm_row).props('flat dense round size=sm')
+
+                                    render_expr_rows()
+                                    ui.button('Add Transformation +', on_click=lambda: (exprs.append({'column': 't1.id', 'func': 'NONE', 'alias': ''}), render_expr_rows())).props('flat dense size=sm color=primary')
+
+                                    def save_transform_props():
+                                        node_data['expressions'] = exprs
+                                        summary = f"{len(exprs)} expressions" if exprs else "Click ⚙️ to configure"
+                                        save_df_node_data(node_id, node_data, summary)
+                                        dlg.close()
+
+                                    save_func_map = {'transform': save_transform_props}
+
+                                elif ntype == 'filter':
+                                    f_col = ui.input('Column to Filter', value=node_data.get('column', 't1.id')).props('outlined dense').classes('w-full')
+                                    f_op = ui.select(options={'=': '=', '!=': '!=', '>': '>', '>=': '>=', '<': '<', '<=': '<=', 'LIKE': 'LIKE', 'ILIKE': 'ILIKE', 'IN': 'IN', 'IS NULL': 'IS NULL', 'IS NOT NULL': 'IS NOT NULL'}, value=node_data.get('operator', '='), label='Operator').props('outlined dense').classes('w-full')
+                                    f_val = ui.input('Filter Value (e.g. 100 or \'active\')', value=str(node_data.get('value', ''))).props('outlined dense').classes('w-full')
+
+                                    def save_filter_props():
+                                        node_data['column'] = f_col.value.strip()
+                                        node_data['operator'] = f_op.value
+                                        node_data['value'] = f_val.value.strip()
+                                        summary = f"WHERE {node_data['column']} {node_data['operator']} {node_data['value']}".strip() if node_data['column'] else "Click ⚙️ to configure"
+                                        save_df_node_data(node_id, node_data, summary)
+                                        dlg.close()
+
+                                    save_func_map = {'filter': save_filter_props}
+
+                                elif ntype == 'output':
+                                    o_col = ui.input('ORDER BY Column (Optional)', value=node_data.get('order_column', '')).props('outlined dense').classes('w-full')
+                                    o_dir = ui.select(options={'ASC': 'ASC (Ascending)', 'DESC': 'DESC (Descending)'}, value=node_data.get('order_direction', 'ASC'), label='Sort Direction').props('outlined dense').classes('w-full')
+                                    o_lim = ui.number('LIMIT Rows', value=node_data.get('limit', 100), min=1, max=100000).props('outlined dense').classes('w-full')
+
+                                    def save_output_props():
+                                        node_data['order_column'] = o_col.value.strip()
+                                        node_data['order_direction'] = o_dir.value
+                                        node_data['limit'] = int(o_lim.value or 100)
+                                        res = f"LIMIT {node_data['limit']}"
+                                        if node_data['order_column']: res = f"ORDER BY {node_data['order_column']} | {res}"
+                                        save_df_node_data(node_id, node_data, res)
+                                        dlg.close()
+
+                                    save_func_map = {'output': save_output_props}
+
+                                with ui.row().classes('w-full justify-end gap-2 border-t pt-3 mt-2'):
+                                    ui.button('Cancel', on_click=dlg.close).props('flat')
+                                    ui.button('Save Properties 💾', color='primary', on_click=save_func_map[ntype]).props('elevated')
+
+                                dlg.open()
+
+                        # Header Bar & Mode Selector
                         with ui.row().classes('w-full items-center justify-between no-wrap pb-3 border-b border-slate-200 dark:border-slate-800 flex-none'):
                             with ui.row().classes('items-center gap-2'):
                                 ui.icon('auto_awesome', color='primary').classes('text-2xl')
@@ -5325,15 +6089,7 @@ JOIN prodbucket.f1_marts.fact_race_results o ON u.id = o.driver_id;""", language
                                     ui.label('Canvas Visual Pipeline Studio').classes('text-base font-extrabold text-slate-800 dark:text-white')
                                     ui.label('Drag, connect, transform, and export cross-database queries visually.').classes('text-xs text-slate-500')
 
-                            with ui.row().classes('items-center gap-2 no-wrap flex-wrap'):
-                                ui.button('➕ Add Source', icon='storage', on_click=lambda: ui.run_javascript("window.add_df_node('source')")).props('outline dense size=xs color=primary').classes('text-xs font-bold')
-                                ui.button('➕ Add Join', icon='hub', on_click=lambda: ui.run_javascript("window.add_df_node('join')")).props('outline dense size=xs color=purple').classes('text-xs font-bold')
-                                ui.button('➕ Add Transform', icon='auto_awesome', on_click=lambda: ui.run_javascript("window.add_df_node('transform')")).props('outline dense size=xs color=emerald').classes('text-xs font-bold')
-                                ui.button('➕ Add Filter', icon='filter_alt', on_click=lambda: ui.run_javascript("window.add_df_node('filter')")).props('outline dense size=xs color=amber').classes('text-xs font-bold')
-                                ui.button('➕ Add Output', icon='flag', on_click=lambda: ui.run_javascript("window.add_df_node('output')")).props('outline dense size=xs color=rose').classes('text-xs font-bold')
-                                
-                                ui.separator().props('vertical').classes('h-6 mx-1 hidden sm:block')
-                                
+                            with ui.row().classes('items-center gap-2 no-wrap'):
                                 ui.label('Mode:').classes('text-xs font-bold text-slate-600 dark:text-slate-300')
                                 canvas_mode_select = ui.select(
                                     options={
@@ -5403,74 +6159,151 @@ JOIN prodbucket.f1_marts.fact_race_results o ON u.id = o.driver_id;""", language
                             canvas_preview_editor = ui.codemirror(value='', language='sql', theme='basicLight').classes('w-full border rounded shadow-inner').style('height: 120px; font-size: 13px;')
 
                     def vqb_init_dropdowns():
-                        ui.run_javascript(r'''
-                            if (!window.drawflow_initialized && document.getElementById('drawflow_canvas')) {
-                                window.drawflow_initialized = true;
+                        c_id = vqb_card.id
+                        edit_id = edit_listener_id
+                        sync_id = sync_listener_id
+                        ui.run_javascript(f'''
+                            function try_init_df(attempts) {{
+                                if (window.drawflow_initialized) return;
                                 const id = document.getElementById('drawflow_canvas');
+                                if (!id) {{
+                                    if (attempts > 0) setTimeout(() => try_init_df(attempts - 1), 100);
+                                    return;
+                                }}
+                                window.drawflow_initialized = true;
                                 window.drawflow_editor = new Drawflow(id);
                                 window.drawflow_editor.reroute = true;
+                                window.drawflow_editor.reroute_fix_curvature = true;
+                                window.drawflow_editor.curvature = 0.5;
+                                window.drawflow_editor.force_first_input = false;
                                 window.drawflow_editor.start();
 
-                                window.add_df_node = function(type) {
-                                    const titles = {
+                                window.emit_node_edit = function(btn) {{
+                                    try {{
+                                        const node_elem = btn.closest ? btn.closest('.drawflow-node') : btn;
+                                        if (!node_elem) return;
+                                        const node_id = node_elem.id.replace('node-', '');
+                                        const node_info = window.drawflow_editor.getNodeFromId(node_id);
+                                        if (!node_info) return;
+
+                                        if (window.socket && window.clientId) {{
+                                            window.socket.emit("event", {{
+                                                id: {c_id},
+                                                client_id: window.clientId,
+                                                listener_id: "{edit_id}",
+                                                args: [JSON.stringify({{ node_id: node_id, data: node_info.data }})]
+                                            }});
+                                        }}
+                                    }} catch(err) {{
+                                        console.error("Error in emit_node_edit:", err);
+                                    }}
+                                }};
+
+                                window.sync_drawflow_to_backend = function() {{
+                                    if (!window.drawflow_editor) return;
+                                    try {{
+                                        const export_data = window.drawflow_editor.export();
+                                        if (window.socket && window.clientId) {{
+                                            window.socket.emit("event", {{
+                                                id: {c_id},
+                                                client_id: window.clientId,
+                                                listener_id: "{sync_id}",
+                                                args: [JSON.stringify(export_data)]
+                                            }});
+                                        }}
+                                    }} catch(err) {{
+                                        console.error("Error in sync_drawflow_to_backend:", err);
+                                    }}
+                                }};
+
+                                window.add_df_node = function(type, pos_x, pos_y) {{
+                                    const titles = {{
                                         source: '📥 Source Table',
                                         join: '🔗 Table Join',
                                         transform: '⚡ Transform & Function',
                                         filter: '🎯 Filter (WHERE)',
                                         output: '📊 Output & Export'
-                                    };
-                                    const colors = {
+                                    }};
+                                    const colors = {{
                                         source: 'indigo', join: 'purple', transform: 'emerald', filter: 'amber', output: 'rose'
-                                    };
-                                    const node_data = { node_type: type };
-                                    if (type === 'source') {
-                                        node_data.database = 'sqlite_lakehouse';
+                                    }};
+                                    const node_data = {{ node_type: type }};
+                                    let nextAliasIdx = 1;
+                                    try {{
+                                        const homeData = (window.drawflow_editor && window.drawflow_editor.drawflow && window.drawflow_editor.drawflow.drawflow) ? window.drawflow_editor.drawflow.drawflow.Home.data : {{}};
+                                        const usedAliases = new Set();
+                                        for (const k in homeData) {{
+                                            const nd = homeData[k].data;
+                                            if (nd && nd.alias) usedAliases.add(String(nd.alias).trim());
+                                            if (nd && nd.joins && Array.isArray(nd.joins)) {{
+                                                nd.joins.forEach(j => {{ if (j && j.alias) usedAliases.add(String(j.alias).trim()); }});
+                                            }}
+                                        }}
+                                        while (usedAliases.has('t' + nextAliasIdx)) {{
+                                            nextAliasIdx++;
+                                        }}
+                                    }} catch(e) {{}}
+
+                                    if (type === 'source') {{
+                                        node_data.database = '';
                                         node_data.schema = 'main';
-                                        node_data.table = 'complex1';
-                                        node_data.alias = 't1';
+                                        node_data.table = '';
+                                        node_data.alias = 't' + nextAliasIdx;
                                         node_data.selected_columns = [];
-                                    } else if (type === 'join') {
-                                        node_data.type = 'LEFT JOIN';
-                                        node_data.database = 'car_rental';
-                                        node_data.schema = 'main';
-                                        node_data.table = 'customers';
-                                        node_data.alias = 't2';
-                                        node_data.on_left = 't1.mainid';
-                                        node_data.on_right = 't2.customer_id';
-                                    } else if (type === 'transform') {
-                                        node_data.expressions = [{ column: 't1.firstName', func: 'UPPER', alias: 'upper_first' }];
-                                    } else if (type === 'filter') {
-                                        node_data.column = 't1.firstName';
+                                    }} else if (type === 'join') {{
+                                        const joinAliasIdx = Math.max(2, nextAliasIdx);
+                                        node_data.joins = [{{
+                                            type: 'LEFT JOIN',
+                                            database: '',
+                                            schema: 'main',
+                                            table: '',
+                                            alias: 't' + joinAliasIdx,
+                                            on_left: '',
+                                            on_right: ''
+                                        }}];
+                                    }} else if (type === 'transform') {{
+                                        node_data.expressions = [];
+                                    }} else if (type === 'filter') {{
+                                        node_data.column = '';
                                         node_data.operator = '=';
                                         node_data.value = '';
-                                    } else if (type === 'output') {
+                                    }} else if (type === 'output') {{
                                         node_data.order_column = '';
                                         node_data.order_direction = 'ASC';
                                         node_data.limit = 100;
-                                    }
+                                    }}
 
                                     const html = `
-                                        <div class="drawflow-node-content">
-                                            <div class="flex items-center justify-between border-b pb-1 font-extrabold text-xs text-\${colors[type]}-600 uppercase">
-                                                <span>\${titles[type]}</span>
-                                                <button onclick="window.emit_node_edit(this)" class="text-slate-400 hover:text-slate-600">⚙️</button>
+                                        <div class="drawflow-node-content" ondblclick="event.stopPropagation(); window.emit_node_edit(this);">
+                                            <div class="flex items-center justify-between border-b pb-1 font-extrabold text-xs text-${{colors[type]}}-600 uppercase select-none">
+                                                <span class="truncate mr-1">${{titles[type]}}</span>
+                                                <button type="button" onclick="event.stopPropagation(); window.emit_node_edit(this);" class="text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm font-bold px-1 py-0.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer" title="Configure Node Properties">⚙️</button>
                                             </div>
-                                            <div class="text-[11px] font-mono mt-1 text-slate-700">Click ⚙️ to configure</div>
+                                            <div class="text-[11px] font-mono mt-1 text-slate-700 dark:text-slate-300 truncate">Click ⚙️ to configure</div>
                                         </div>
                                     `;
                                     
                                     const num_inputs = type === 'source' ? 0 : 1;
                                     const num_outputs = type === 'output' ? 0 : 1;
-                                    window.drawflow_editor.addNode(type, num_inputs, num_outputs, 150, 100, type, node_data, html);
-                                    window.sync_drawflow_to_backend();
-                                };
 
-                                window.sync_drawflow_to_backend = function() {
-                                    if (window.drawflow_editor) {
-                                        const export_data = window.drawflow_editor.export();
-                                        emitEvent('drawflow_updated', export_data);
-                                    }
-                                };
+                                    let x = pos_x;
+                                    let y = pos_y;
+                                    if (x === undefined || y === undefined) {{
+                                        try {{
+                                            const homeData = window.drawflow_editor.drawflow.drawflow.Home.data;
+                                            const existingCount = Object.keys(homeData).length;
+                                            x = 80 + (existingCount % 3) * 260;
+                                            y = 70 + Math.floor(existingCount / 3) * 140;
+                                        }} catch(e) {{
+                                            x = 150;
+                                            y = 100;
+                                        }}
+                                    }}
+
+                                    const new_node_id = window.drawflow_editor.addNode(type, num_inputs, num_outputs, x, y, type, node_data, html);
+                                    window.sync_drawflow_to_backend();
+                                    return new_node_id;
+                                }};
 
                                 window.drawflow_editor.on('nodeCreated', window.sync_drawflow_to_backend);
                                 window.drawflow_editor.on('nodeRemoved', window.sync_drawflow_to_backend);
@@ -5478,10 +6311,15 @@ JOIN prodbucket.f1_marts.fact_race_results o ON u.id = o.driver_id;""", language
                                 window.drawflow_editor.on('connectionRemoved', window.sync_drawflow_to_backend);
                                 window.drawflow_editor.on('nodeMoved', window.sync_drawflow_to_backend);
 
-                                // Add default initial nodes
-                                window.add_df_node('source');
-                                window.add_df_node('output');
-                            }
+                                // Add default initial nodes staggered and connected
+                                const src_id = window.add_df_node('source', 60, 110);
+                                const out_id = window.add_df_node('output', 440, 110);
+                                try {{
+                                    window.drawflow_editor.addConnection(src_id, out_id, 'output_1', 'input_1');
+                                }} catch(e) {{}}
+                                window.sync_drawflow_to_backend();
+                            }}
+                            try_init_df(20);
                         ''')
 
                     def canvas_run_in_editor():
