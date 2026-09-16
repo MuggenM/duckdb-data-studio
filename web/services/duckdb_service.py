@@ -15,6 +15,9 @@ import numpy as np
 import pandas as pd
 import yaml
 
+# Disable AWS EC2 metadata lookup to prevent link-local 169.254.169.254 timeout in non-EC2 environments
+os.environ["AWS_EC2_METADATA_DISABLED"] = "true"
+
 logger = logging.getLogger("duckdb_studio.service")
 logging.basicConfig(level=logging.INFO)
 
@@ -267,8 +270,58 @@ class DuckDBService:
         except Exception as e:
             logger.warning(f"Failed to configure HTTP/S3 settings: {e}")
 
+        # Configure S3 / Garage credentials and Delta extension
+        self._configure_s3_and_delta()
+
         # Auto-attach databases
         self._attach_all_configured_databases()
+
+    @staticmethod
+    def _resolve_s3_endpoint() -> str:
+        """Determines whether to reach Garage via docker network or host traefik proxy."""
+        if os.environ.get("AWS_ENDPOINT_URL"):
+            return os.environ["AWS_ENDPOINT_URL"].replace("http://", "").replace("https://", "").rstrip("/")
+        try:
+            import socket
+            socket.gethostbyname("garage")
+            return "garage:3900"
+        except Exception:
+            return "s3.localhost:8880"
+
+    def _configure_s3_and_delta(self):
+        """Initializes httpfs and delta extensions, and registers Garage/S3 credentials."""
+        try:
+            os.environ["AWS_EC2_METADATA_DISABLED"] = "true"
+            access_key = os.environ.get("AWS_ACCESS_KEY_ID", "GK2713753aca1d72db5325f212")
+            secret_key = os.environ.get("AWS_SECRET_ACCESS_KEY", "afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e")
+            region = os.environ.get("AWS_DEFAULT_REGION", "us-east-1")
+            endpoint = self._resolve_s3_endpoint()
+
+            try:
+                self._conn.execute("INSTALL httpfs; LOAD httpfs;")
+            except Exception as e:
+                logger.debug(f"httpfs load status: {e}")
+
+            try:
+                self._conn.execute("INSTALL delta; LOAD delta;")
+            except Exception as e:
+                logger.debug(f"delta load status: {e}")
+
+            self._conn.execute(f"""
+                CREATE OR REPLACE SECRET garage_s3_secret (
+                    TYPE S3,
+                    KEY_ID '{access_key}',
+                    SECRET '{secret_key}',
+                    ENDPOINT '{endpoint}',
+                    REGION '{region}',
+                    USE_SSL false,
+                    URL_STYLE 'path'
+                );
+            """)
+            logger.info(f"Configured Garage S3 secret pointing to endpoint '{endpoint}'")
+        except Exception as e:
+            logger.warning(f"Failed to configure S3 / Delta secrets: {e}")
+
 
     def _attach_all_configured_databases(self):
         """Reads attached_databases.yaml and attaches all databases with read_only fallback."""

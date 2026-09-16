@@ -9,7 +9,11 @@ import logging
 import re
 from typing import Dict, Any, List, Optional
 
+# Disable AWS EC2 metadata lookup to prevent link-local 169.254.169.254 timeout
+os.environ["AWS_EC2_METADATA_DISABLED"] = "true"
+
 logger = logging.getLogger("duckdb_studio.dbt")
+
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DBT_PROJECT_DIR = os.getenv("DBT_PROJECT_DIR", os.path.join(BASE_DIR, "dbt_project"))
@@ -323,6 +327,25 @@ def run_dbt_cli(action: str = "run", select: Optional[str] = None, full_refresh:
 
 def _attach_databases(con) -> None:
     """Helper to attach all duckdb files in databases/ in read-only mode."""
+    try:
+        from web.services.duckdb_service import DuckDBService
+        endpoint = DuckDBService._resolve_s3_endpoint()
+        con.execute("INSTALL httpfs; LOAD httpfs;")
+        con.execute("INSTALL delta; LOAD delta;")
+        con.execute(f"""
+            CREATE OR REPLACE SECRET IF NOT EXISTS garage_s3_secret (
+                TYPE S3,
+                KEY_ID 'GK2713753aca1d72db5325f212',
+                SECRET 'afd53ab8d8e6f762973bab0b5a33998265530dee63cae200e1a8e065be2a4b6e',
+                ENDPOINT '{endpoint}',
+                REGION 'us-east-1',
+                USE_SSL false,
+                URL_STYLE 'path'
+            );
+        """)
+    except Exception:
+        pass
+
     if os.path.exists(DATABASES_DIR):
         for db_file in os.listdir(DATABASES_DIR):
             if db_file.endswith(".duckdb") and db_file != "dbt_analytics.duckdb":
@@ -332,6 +355,7 @@ def _attach_databases(con) -> None:
                     con.execute(f"ATTACH IF NOT EXISTS '{full_p}' AS {alias} (READ_ONLY)")
                 except Exception:
                     pass
+
 
 def preview_dbt_model_data(model_name: str, limit: int = 50) -> Dict[str, Any]:
     """Queries the materialized table/view in dbt_analytics.duckdb."""
